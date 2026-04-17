@@ -1,0 +1,43 @@
+@{
+    var title = ViewData["Title"] as string ?? "CasinoShiz Admin";
+}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@title</title>
+    <script src="https://unpkg.com/htmx.org@2.0.3"></script>
+    <style>
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; background: #0f1115; color: #e6e6e6; }
+        header { background: #161922; padding: 12px 20px; border-bottom: 1px solid #262a36; display: flex; gap: 16px; align-items: center; }
+        header a { color: #9ac3ff; text-decoration: none; font-weight: 600; }
+        header a:hover { text-decoration: underline; }
+        main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+        h1 { margin-top: 0; font-size: 22px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #242836; }
+        th { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #8b93a7; }
+        tr:hover td { background: #141825; }
+        input, button, select { background: #161922; color: #e6e6e6; border: 1px solid #2b3142; padding: 6px 10px; border-radius: 4px; font: inherit; }
+        button { cursor: pointer; }
+        button:hover { border-color: #4e78d2; }
+        .muted { color: #8b93a7; }
+        .card { background: #161922; border: 1px solid #262a36; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+        .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+        .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #26304a; font-size: 12px; }
+    </style>
+</head>
+<body>
+<header>
+    <strong>CasinoShiz Admin</strong>
+    <a href="/admin">Users</a>
+    <a href="http://localhost:3001" target="_blank" rel="noreferrer">Grafana ↗</a>
+</header>
+<main>
+    @RenderBody()
+</main>
+</body>
+</html>

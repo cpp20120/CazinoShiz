@@ -15,6 +15,7 @@ public sealed class BotOptions
     public int DaysOfInactivityToHideInTop { get; init; } = 3;
     public int WebhookPort { get; init; } = 3000;
     public string TrustedChannel { get; init; } = "@businonews";
+    public string? AdminWebToken { get; init; }
 
     public int PokerBuyIn { get; init; } = 100;
     public int PokerSmallBlind { get; init; } = 5;

@@ -1,0 +1,13 @@
+@page "/admin/user/{id:long}/pay"
+@model CasinoShiz.Pages.Admin.PayModel
+@{
+    Layout = null;
+}
+@if (Model.Target != null)
+{
+    <partial name="_UserStats" model="Model.Target" />
+}
+else
+{
+    <div id="user-stats" class="muted">User not found.</div>
+}

@@ -1,0 +1,123 @@
+{
+  "title": "CasinoShiz — Overview",
+  "uid": "casinoshiz-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "",
+  "tags": ["casinoshiz"],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Events (24h)",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT count() FROM analytics.events WHERE created_at >= now() - INTERVAL 24 HOUR",
+        "format": 1
+      }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Active users (24h)",
+      "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT uniq(JSONExtractInt(payload, 'user_id')) FROM analytics.events WHERE created_at >= now() - INTERVAL 24 HOUR AND payload IS NOT NULL",
+        "format": 1
+      }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Errors (24h)",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT count() FROM analytics.events WHERE event_type = 'error_handler' AND created_at >= now() - INTERVAL 24 HOUR",
+        "format": 1
+      }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Dice rolls (24h)",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT count() FROM analytics.events WHERE event_type = 'dice' AND JSONExtractString(payload, 'type') = 'success' AND created_at >= now() - INTERVAL 24 HOUR",
+        "format": 1
+      }],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Event rate by type",
+      "gridPos": { "x": 0, "y": 4, "w": 24, "h": 9 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT toStartOfInterval(created_at, INTERVAL 1 MINUTE) AS time, event_type, count() AS count FROM analytics.events WHERE $__timeFilter(created_at) GROUP BY time, event_type ORDER BY time",
+        "format": 0
+      }]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Top dice winners (24h)",
+      "gridPos": { "x": 0, "y": 13, "w": 12, "h": 9 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT JSONExtractInt(payload, 'user_id') AS user_id, sum(JSONExtractInt(payload, 'prize')) AS total_prize, count() AS rolls FROM analytics.events WHERE event_type = 'dice' AND JSONExtractString(payload, 'type') = 'success' AND created_at >= now() - INTERVAL 24 HOUR GROUP BY user_id ORDER BY total_prize DESC LIMIT 20",
+        "format": 1
+      }]
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Recent errors",
+      "gridPos": { "x": 12, "y": 13, "w": 12, "h": 9 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "clickhouse" },
+      "targets": [{
+        "refId": "A",
+        "rawSql": "SELECT created_at, JSONExtractString(payload, 'exception_type') AS exception, JSONExtractString(payload, 'message') AS message FROM analytics.events WHERE event_type = 'error_handler' ORDER BY created_at DESC LIMIT 50",
+        "format": 1
+      }]
+    }
+  ]
+}

@@ -2,6 +2,9 @@ services:
   clickhouse:
     image: clickhouse/clickhouse-server:24.8-alpine
     restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9000:9000"
     volumes:
       - ./data/clickhouse:/var/lib/clickhouse
     environment:
@@ -34,3 +37,25 @@ services:
       clickhouse:
         condition: service_healthy
     restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_LOG_LEVEL: debug
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+volumes:
+  grafana_data:

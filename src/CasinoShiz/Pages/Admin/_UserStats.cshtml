@@ -1,0 +1,7 @@
+@model CasinoShiz.Data.Entities.UserState
+
+<div id="user-stats" class="row">
+    <div><span class="muted">Coins</span><br /><strong style="font-size: 20px;">@Model.Coins</strong></div>
+    <div><span class="muted">Attempts today</span><br /><strong>@Model.AttemptCount</strong> <span class="muted">(+@Model.ExtraAttempts extra)</span></div>
+    <div><span class="muted">Last day (UTC ms)</span><br /><code>@Model.LastDayUtc</code></div>
+</div>

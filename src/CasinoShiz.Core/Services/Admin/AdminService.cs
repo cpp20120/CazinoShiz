@@ -63,6 +63,51 @@ public sealed class AdminService(
         return new UserLookup(user);
     }
 
+    public async Task<UserListResult> ListUsersAsync(string? search, int skip, int take, CancellationToken ct)
+    {
+        var query = db.Users.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            query = long.TryParse(s, out var id)
+                ? query.Where(u => u.TelegramUserId == id || EF.Functions.Like(u.DisplayName, $"%{s}%"))
+                : query.Where(u => EF.Functions.Like(u.DisplayName, $"%{s}%"));
+        }
+
+        var total = await query.CountAsync(ct);
+        var users = await query
+            .OrderByDescending(u => u.Coins)
+            .Skip(skip)
+            .Take(take)
+            .Select(u => new UserListItem(u.TelegramUserId, u.DisplayName, u.Coins, u.LastDayUtc, u.AttemptCount, u.ExtraAttempts))
+            .ToListAsync(ct);
+
+        return new UserListResult(users, total, skip, take);
+    }
+
+    public async Task<UserDetail?> GetUserDetailAsync(long targetUserId, CancellationToken ct)
+    {
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.TelegramUserId == targetUserId, ct);
+        if (user == null) return null;
+
+        var bets = await db.HorseBets.AsNoTracking()
+            .Where(b => b.UserId == targetUserId)
+            .OrderByDescending(b => b.RaceDate)
+            .Take(10)
+            .ToListAsync(ct);
+
+        var codes = await db.FreespinCodes.AsNoTracking()
+            .Where(c => c.IssuedBy == targetUserId)
+            .OrderByDescending(c => c.IssuedAt)
+            .Take(10)
+            .ToListAsync(ct);
+
+        var seat = await db.PokerSeats.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.UserId == targetUserId, ct);
+
+        return new UserDetail(user, bets, codes, seat);
+    }
+
     public void ReportNotAdmin(long userId)
     {
         reporter.SendEvent(new EventData

@@ -212,6 +212,37 @@ Successful redemption adds `ExtraAttempts` (default +3) to the user and sets `Fr
 
 Events emitted: `admin_command` with `{ command, calleeId, … }` and `user_map` during `usersync`.
 
+### Becoming an admin (Telegram)
+
+1. Get your numeric Telegram user ID (message `@userinfobot`).
+2. Add it to `Bot:Admins` in `src/CasinoShiz/appsettings.json`:
+   ```json
+   "Admins": [123456789]
+   ```
+3. Restart the bot — options are bound at startup.
+
+Telegram admin-only commands: `/horserun`, `/run <subcmd>`, `/codegen`, `/rename`, `/renames`, `/notification`. Non-admin callers of `/horserun` are silently ignored (see `HorseHandler.HandleRunAsync`).
+
+### Admin web UI
+
+The ASP.NET app serves Razor pages under `/admin` (see `src/CasinoShiz/Pages/`) on the same port as the webhook (`3000`). Access is gated by a shared-secret query-string token:
+
+1. Set `Bot:AdminWebToken` in `appsettings.json` to an unguessable string (e.g. `openssl rand -hex 32`):
+   ```json
+   "AdminWebToken": "9f2c…"
+   ```
+2. Restart the bot.
+3. Open `http://localhost:3000/admin?token=9f2c…` — the middleware stores an `admin_token` cookie (HttpOnly, SameSite=Strict, 30 days), so subsequent `/admin` visits work without the query param.
+
+Responses if misconfigured:
+
+| State | HTTP | Body |
+|---|---|---|
+| `AdminWebToken` not set | 503 | `Admin UI disabled: Bot:AdminWebToken not set` |
+| Wrong / missing token | 401 | `Unauthorized` |
+
+Leave `AdminWebToken` empty in any environment where `/admin` should stay disabled — the gate fails closed.
+
 ## Analytics
 
 `ClickHouseReporter` is a singleton that buffers events (size 10, interval 3 s, `Timer`-driven flush). Events are tagged with `EventType` (e.g. `dice`, `horse_bet`, `poker_action`, `admin_command`, `error_handler`, `update_in`) and a `Payload` object serialized via `System.Text.Json`. If ClickHouse is unreachable at startup the connection is set to null and events become no-ops — the bot never blocks on analytics.
@@ -285,12 +316,72 @@ Docker:
 
 ```bash
 cd BusinoBot
-docker compose up --build              # brings up clickhouse + bot
+docker compose up --build              # brings up bot + clickhouse + grafana
 ```
 
 The ClickHouse healthcheck uses `clickhouse-client --query 'SELECT 1'` (Alpine BusyBox `wget` doesn't handle the ping endpoint reliably).
 
 `/health` endpoint returns `ok` in any mode and is the Docker healthcheck target for the bot service.
+
+### Ports & URLs
+
+Defaults, from `docker-compose.yml`:
+
+| Service | Host port | URL | Purpose |
+|---|---|---|---|
+| Bot (ASP.NET) | 3000 | `http://localhost:3000` | Webhook + admin UI + `/health` |
+| Bot — webhook | 3000 | `POST http://localhost:3000/{botToken}` | Telegram pushes updates here when `IsProduction=true` |
+| Bot — admin UI | 3000 | `http://localhost:3000/admin?token=…` | Razor pages, token-gated |
+| Bot — health | 3000 | `http://localhost:3000/health` | Returns `ok` |
+| ClickHouse HTTP | 8123 | `http://localhost:8123` | Queries (`?query=SELECT…`) |
+| Grafana | 3001 | `http://localhost:3001` | Dashboards (default `admin`/`admin`) |
+
+`Bot:WebhookPort` in `appsettings.json` sets the in-container listen port; the host mapping comes from `docker-compose.yml`. When running the bot locally (`dotnet run`) against Docker ClickHouse, the app's `ClickHouse:Host` stays as `http://localhost:8123`; when the bot runs inside compose, point it at `http://clickhouse:8123` via `.env`.
+
+### Analytics
+
+- **Grafana** — http://localhost:3001, credentials from `.env` (`GRAFANA_ADMIN_USER`/`GRAFANA_ADMIN_PASSWORD`, default `admin`/`admin`). The ClickHouse datasource is auto-provisioned; the `overview.json` dashboard in `grafana/dashboards/` loads on first boot.
+- **Raw ClickHouse** — `curl 'http://localhost:8123/?query=SELECT+*+FROM+analytics.events+LIMIT+10'` or `docker compose exec clickhouse clickhouse-client`.
+
+## Bot commands
+
+All UI is in Russian; command names are ASCII.
+
+### Everyone
+
+| Command | Effect |
+|---|---|
+| `🎰` (native dice emoji) | Spin the slot machine — deducts `DiceCost` from balance, applies gas + bank tax, pays from prize table. |
+| `/balance` | Current coins + tier emoji (`NameDecorators`). |
+| `/top` | Per-chat leaderboard; inactive users hidden after `DaysOfInactivityToHideInTop`. |
+| `/help` | Russian command reference. |
+| `/horse bet <1-N> <amount>` | Place a bet on today's race. |
+| `/horse info` | Current day's bets + koefs. |
+| `/horse result` | Today's winner image (if a race has run). |
+| `/redeem <uuid>` | Redeem a freespin code (**private chat only**, emoji captcha). |
+| `/poker …` | See `PokerCommandParser.cs` — create/join/start/fold/call/raise/check/leave. |
+
+### Chat-owner-only (gated via Telegram `getChatMember`)
+
+| Command | Effect |
+|---|---|
+| `/regchat` | Register the current chat to receive channel broadcasts + game events. |
+| `/notification <text>` | Broadcast to all registered chats. |
+
+### Bot-admin-only (caller's Telegram ID must be in `Bot:Admins`)
+
+| Command | Effect |
+|---|---|
+| `/horserun` | Runs today's race, renders GIF, pays winners. Silent no-op for non-admins. |
+| `/codegen [count]` | Generate freespin code(s) in a group. |
+| `/run usersync` | Sync user table → ClickHouse. |
+| `/run userinfo` | Reply to a message → returns that user's ID. |
+| `/run pay <id> <amount>` | Manual coin adjustment. |
+| `/run getUser <id>` | JSON dump of a `UserState`. |
+| `/rename <old> <new\|*>` | Display-name override; `*` clears it. |
+| `/renames` | List all active overrides. |
+
+New users start with **100 coins** and **3 daily attempts**. Day rolls over at midnight UTC+7 (`TimeHelper.GetRaceDate`).
 
 ## Conventions
 
@@ -302,3 +393,5 @@ The ClickHouse healthcheck uses `clickhouse-client --query 'SELECT 1'` (Alpine B
 - Single-writer SQLite with EF Core: one `SaveChangesAsync` per logical operation is the unit of work. `PokerService` adds a process-wide `SemaphoreSlim` on top.
 - Logging: source-generated `[LoggerMessage]` only. Each event gets a stable `EventId`. No string interpolation in log calls.
 - Adding a route: decorate the handler class with an attribute from `RouteAttributes.cs`. No central registration.
+
+

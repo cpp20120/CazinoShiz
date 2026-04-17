@@ -6,7 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <DisableTransitiveFrameworkReferences>true</DisableTransitiveFrameworkReferences>
     <RootNamespace>BusinoBot.Tests</RootNamespace>
   </PropertyGroup>
 
@@ -19,7 +18,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\CasinoShiz\CasinoShiz.csproj" />
+    <ProjectReference Include="..\..\src\CasinoShiz.Core\CasinoShiz.Core.csproj" />
+    <ProjectReference Include="..\..\src\CasinoShiz.Data\CasinoShiz.Data.csproj" />
   </ItemGroup>
 
 </Project>

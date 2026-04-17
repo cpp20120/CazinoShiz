@@ -8,15 +8,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Telegram.Bot" Version="22.*" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0-*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0-*">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="SkiaSharp" Version="3.*" />
-    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.*" />
-    <PackageReference Include="ClickHouse.Client" Version="7.*" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation" Version="10.0.0-*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CasinoShiz.Core\CasinoShiz.Core.csproj" />
+    <ProjectReference Include="..\CasinoShiz.Data\CasinoShiz.Data.csproj" />
   </ItemGroup>
 
 </Project>

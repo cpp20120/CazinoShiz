@@ -1,0 +1,23 @@
+@page "/admin/user/{id:long}/rename"
+@model CasinoShiz.Pages.Admin.RenameModel
+@{
+    Layout = null;
+}
+@switch (Model.Status)
+{
+    case "missing":
+        <span style="color:#ff9a9a;">User not found.</span>
+        break;
+    case "cleared":
+        <span>Override cleared for <code>@Model.OldName</code>. Applies on next <code>/run usersync</code>.</span>
+        break;
+    case "nochange":
+        <span class="muted">No override was set — nothing to clear.</span>
+        break;
+    case "set":
+        <span>Override saved: <code>@Model.OldName</code> → <strong>@Model.NewName</strong>. Applies on next <code>/run usersync</code>.</span>
+        break;
+    default:
+        <span class="muted">@Model.Status</span>
+        break;
+}

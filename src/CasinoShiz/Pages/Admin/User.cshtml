@@ -1,0 +1,93 @@
+@page "/admin/user/{id:long}"
+@model CasinoShiz.Pages.Admin.UserDetailModel
+@{
+    ViewData["Title"] = Model.Detail == null ? "User not found" : $"{Model.Detail.User.DisplayName} — CasinoShiz Admin";
+}
+
+<p><a href="/admin">← Back to users</a></p>
+
+@if (Model.Detail == null)
+{
+    <h1>User not found</h1>
+    <p class="muted">No user with id <code>@Model.Id</code>.</p>
+}
+else
+{
+    var u = Model.Detail.User;
+
+    <h1>@u.DisplayName <span class="muted">#@u.TelegramUserId</span></h1>
+
+    <div class="card">
+        <partial name="_UserStats" model="u" />
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0; font-size:16px;">Adjust coins</h2>
+        <form class="row" hx-post="/admin/user/@u.TelegramUserId/pay" hx-target="#user-stats" hx-swap="outerHTML">
+            <input type="number" name="amount" value="0" step="1" required style="width: 140px;" />
+            <button type="submit">Pay / Charge</button>
+            <span class="muted">Positive adds coins, negative deducts.</span>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0; font-size:16px;">Rename display name</h2>
+        <form class="row" hx-post="/admin/user/@u.TelegramUserId/rename" hx-target="#rename-result" hx-swap="innerHTML">
+            <input type="text" name="newName" placeholder="New name (or * to clear)" required style="flex:1; min-width:200px;" />
+            <button type="submit">Rename</button>
+        </form>
+        <div id="rename-result" class="muted" style="margin-top:8px;">Applies on next <code>/run usersync</code>.</div>
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0; font-size:16px;">Recent horse bets</h2>
+        @if (Model.Detail.RecentBets.Count == 0)
+        {
+            <p class="muted">No bets.</p>
+        }
+        else
+        {
+            <table>
+                <thead><tr><th>Race date</th><th>Horse</th><th>Amount</th></tr></thead>
+                <tbody>
+                @foreach (var b in Model.Detail.RecentBets)
+                {
+                    <tr><td>@b.RaceDate</td><td>#@b.HorseId</td><td>@b.Amount</td></tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0; font-size:16px;">Issued freespin codes</h2>
+        @if (Model.Detail.IssuedCodes.Count == 0)
+        {
+            <p class="muted">No codes issued.</p>
+        }
+        else
+        {
+            <table>
+                <thead><tr><th>Code</th><th>Active</th><th>Issued at</th></tr></thead>
+                <tbody>
+                @foreach (var c in Model.Detail.IssuedCodes)
+                {
+                    <tr>
+                        <td><code>@c.Code</code></td>
+                        <td>@(c.Active ? "yes" : "no")</td>
+                        <td class="muted">@c.IssuedAt</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    @if (Model.Detail.PokerSeat is { } seat)
+    {
+        <div class="card">
+            <h2 style="margin-top:0; font-size:16px;">Poker seat</h2>
+            <p>Table <code>@seat.InviteCode</code> · seat @seat.Position · stack @seat.Stack · <span class="pill">@seat.Status</span></p>
+        </div>
+    }
+}

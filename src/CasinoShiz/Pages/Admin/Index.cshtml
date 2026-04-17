@@ -1,0 +1,31 @@
+@page "/admin"
+@model CasinoShiz.Pages.Admin.IndexModel
+@{
+    ViewData["Title"] = "Users — CasinoShiz Admin";
+}
+
+<h1>Users</h1>
+
+<div class="card">
+    <form class="row" hx-get="/admin/users/rows" hx-target="#user-rows" hx-trigger="input changed delay:300ms from:#search, submit" hx-push-url="false">
+        <input id="search" type="search" name="q" value="@Model.Search" placeholder="Search by name or user id" style="flex: 1; min-width: 260px;" />
+        <button type="submit">Search</button>
+        <span class="muted">@Model.Result.Total total</span>
+    </form>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>User ID</th>
+            <th>Name</th>
+            <th>Coins</th>
+            <th>Attempts</th>
+            <th>Last day (UTC ms)</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody id="user-rows">
+        <partial name="_UserRows" model="Model.Result" />
+    </tbody>
+</table>
