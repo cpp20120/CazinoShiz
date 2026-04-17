@@ -1,0 +1,12 @@
+bin/
+obj/
+*.db
+*.db-shm
+*.db-wal
+.env
+data/
+*.user
+.vs/
+.claude
+.idea
+*.DotSettings.user

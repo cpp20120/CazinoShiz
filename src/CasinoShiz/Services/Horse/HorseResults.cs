@@ -1,0 +1,30 @@
+using CasinoShiz.Data.Entities;
+
+namespace CasinoShiz.Services.Horse;
+
+public enum HorseError
+{
+    None = 0,
+    InvalidHorseId,
+    AmountNotSpecified,
+    InvalidAmount,
+    NotAdmin,
+}
+
+public sealed record BetResult(HorseError Error, int HorseId, int Amount, int RemainingCoins);
+
+public sealed record RaceInfo(int BetsCount, Dictionary<int, double> Koefs);
+
+public sealed record RaceOutcome(
+    HorseError Error,
+    int Winner,
+    byte[] GifBytes,
+    List<(long UserId, int Amount)> Transactions);
+
+public sealed record TodayResult(HorseResult? Result);
+
+public static class HorseResultHelpers
+{
+    public static BetResult BetFail(HorseError e, int horseId = 0, int coins = 0) => new(e, horseId, 0, coins);
+    public static RaceOutcome RaceFail(HorseError e) => new(e, -1, [], []);
+}
