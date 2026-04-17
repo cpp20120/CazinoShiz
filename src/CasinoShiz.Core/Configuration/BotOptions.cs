@@ -7,14 +7,14 @@ public sealed class BotOptions
     public required string Token { get; init; }
     public bool IsProduction { get; init; }
     public List<long> Admins { get; init; } = [];
-    public string CurrentKey { get; init; } = "busino-dev";
+    public string CurrentKey { get; init; } = "CazinoShizBot-dev";
     public int AttemptsLimit { get; init; } = 3;
     public int DiceCost { get; init; } = 7;
     public double FreecodeProbability { get; init; } = 0.15;
     public int CaptchaItems { get; init; } = 5;
     public int DaysOfInactivityToHideInTop { get; init; } = 3;
     public int WebhookPort { get; init; } = 3000;
-    public string TrustedChannel { get; init; } = "@businonews";
+    public string TrustedChannel { get; init; } = "cazinonews";
     public string? AdminWebToken { get; init; }
 
     public int PokerBuyIn { get; init; } = 100;
