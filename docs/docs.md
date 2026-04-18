@@ -17,8 +17,6 @@ A Telegram casino/gambling mini-game bot. Russian-language UI. Games: slots (�
 
 UTC+7 is used for "day" resets (`Helpers/TimeHelper.cs`).
 
-For an orientation aimed at future Claude Code sessions, see `CLAUDE.md` at the repo root.
-
 ## Layout
 
 Three-project solution (`CasinoShiz.slnx` at repo root):
@@ -32,7 +30,6 @@ CasinoShiz/
 ├── grafana/                          — datasource + dashboards provisioning
 ├── docs/docs.md                      — this document
 ├── README.md
-├── CLAUDE.md                         — guidance for Claude Code sessions
 ├── src/
 │   ├── CasinoShiz/                   — ASP.NET Core Web host
 │   │   ├── Program.cs                — DI composition root + webhook + admin middleware
