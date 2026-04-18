@@ -10,7 +10,7 @@ public sealed class ClickHouseOptions
     public string Password { get; init; } = "";
     public string Database { get; init; } = "analytics";
     public string Table { get; init; } = "events";
-    public string Project { get; init; } = "busino-bot";
+    public string Project { get; init; } = "cazinoshiz";
     public int BufferSize { get; init; } = 10;
     public int FlushIntervalMs { get; init; } = 3000;
 }
