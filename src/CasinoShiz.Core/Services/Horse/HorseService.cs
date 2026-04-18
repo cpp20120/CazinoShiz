@@ -19,6 +19,7 @@ public sealed partial class HorseService(
     ILogger<HorseService> logger)
 {
     public const int HorseCount = 4;
+    public const int MinBetsToRun = 4;
     private readonly BotOptions _opts = options.Value;
 
     public async Task<BetResult> PlaceBetAsync(long userId, string displayName, int horseId, int amount, CancellationToken ct)
@@ -86,9 +87,17 @@ public sealed partial class HorseService(
             LogHorseRunDenied(callerUserId);
             return RaceFail(HorseError.NotAdmin);
         }
+        return await RunRaceCoreAsync(ct);
+    }
 
+    public Task<RaceOutcome> RunRaceFromAdminAsync(CancellationToken ct) => RunRaceCoreAsync(ct);
+
+    private async Task<RaceOutcome> RunRaceCoreAsync(CancellationToken ct)
+    {
         var raceDate = TimeHelper.GetRaceDate();
         var bets = await db.HorseBets.Where(b => b.RaceDate == raceDate).ToListAsync(ct);
+
+        if (bets.Count < MinBetsToRun) return RaceFail(HorseError.NotEnoughBets);
 
         var stakes = new Dictionary<int, int>();
         for (var i = 0; i < HorseCount; i++) stakes[i] = 0;
@@ -120,11 +129,24 @@ public sealed partial class HorseService(
 
         var transactions = Payoff(bets, ks, winner);
 
-        foreach (var (uid, prize) in transactions.GroupBy(t => t.UserId).Select(g => (g.Key, g.Sum(x => x.Amount))))
+        var payoutByUser = transactions
+            .GroupBy(t => t.UserId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+        foreach (var (uid, prize) in payoutByUser)
         {
             var user = await db.Users.FindAsync([uid], ct);
             if (user != null) await economics.CreditAsync(user, prize, "horse.payout", ct);
         }
+
+        var participants = bets
+            .GroupBy(b => b.UserId)
+            .Select(g => new RacerSummary(
+                g.Key,
+                g.Sum(x => x.Amount),
+                payoutByUser.GetValueOrDefault(g.Key, 0)))
+            .ToList();
+
         db.HorseBets.RemoveRange(bets);
         await db.SaveChangesAsync(ct);
 
@@ -141,7 +163,7 @@ public sealed partial class HorseService(
             }
         });
 
-        return new RaceOutcome(HorseError.None, winner, gifBytes, transactions);
+        return new RaceOutcome(HorseError.None, winner, gifBytes, transactions, participants);
     }
 
     public static Dictionary<int, double> GetKoefs(Dictionary<int, int> stakes)

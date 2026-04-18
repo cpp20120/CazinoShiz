@@ -1,4 +1,5 @@
 using CasinoShiz.Data.Entities;
+using CasinoShiz.Services.Horse;
 using CasinoShiz.Services.Poker.Application;
 
 namespace CasinoShiz.Services.Admin;
@@ -33,7 +34,24 @@ public sealed record OverviewStats(
     int DiceAttemptsToday,
     int ActiveFreespinCodes,
     int CubePendingBets,
-    int CubePendingPot);
+    int CubePendingPot,
+    int DartsPendingBets,
+    int DartsPendingPot);
+
+public sealed record HorseRaceAdminView(
+    string RaceDate,
+    int BetsCount,
+    int MinBetsToRun,
+    Dictionary<int, int> Stakes,
+    Dictionary<int, double> Koefs,
+    HorseResult? LastResult);
+
+public sealed record HorseRunAdminResult(
+    HorseError Error,
+    int? Winner,
+    List<(long UserId, int Amount)> Winners,
+    bool BroadcastedToChannel,
+    byte[]? GifBytes = null);
 
 public enum AdminCancelOp { Done, Noop }
 public sealed record CancelResult(AdminCancelOp Op, int Refunded);

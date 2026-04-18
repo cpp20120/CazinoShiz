@@ -84,6 +84,12 @@ public sealed partial class HorseHandler(
 
         var outcome = await service.RunRaceAsync(userId, ct);
         if (outcome.Error == HorseError.NotAdmin) return; // silent reject (matches prior behavior)
+        if (outcome.Error == HorseError.NotEnoughBets)
+        {
+            await bot.SendMessage(chatId, $"Недостаточно ставок для забега (нужно {HorseService.MinBetsToRun})",
+                replyParameters: new ReplyParameters { MessageId = msg.MessageId }, cancellationToken: ct);
+            return;
+        }
 
         await bot.SendMessage(chatId, "Активность запущена",
             replyParameters: new ReplyParameters { MessageId = msg.MessageId }, cancellationToken: ct);

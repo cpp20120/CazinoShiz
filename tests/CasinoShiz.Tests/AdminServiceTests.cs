@@ -4,6 +4,7 @@ using CasinoShiz.Data.Entities;
 using CasinoShiz.Services.Admin;
 using CasinoShiz.Services.Analytics;
 using CasinoShiz.Services.Economics;
+using CasinoShiz.Services.Horse;
 using CasinoShiz.Services.Poker.Application;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -26,7 +27,9 @@ public class AdminServiceTests
         var bot = Options.Create(new BotOptions { Token = "test" });
         var economics = new EconomicsService(db, NullLogger<EconomicsService>.Instance);
         var poker = new PokerService(db, bot, reporter, economics, NullLogger<PokerService>.Instance);
-        return (new AdminService(db, reporter, poker, economics), db);
+        var horse = new HorseService(db, bot, reporter, economics, NullLogger<HorseService>.Instance);
+        var botClient = new Telegram.Bot.TelegramBotClient("1:AAAA");
+        return (new AdminService(db, reporter, poker, economics, horse, botClient, bot), db);
     }
 
     [Fact]

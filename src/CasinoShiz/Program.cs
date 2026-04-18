@@ -34,6 +34,7 @@ builder.Services.AddScoped<CaptchaService>();
 
 builder.Services.AddScoped<DiceHandler>();
 builder.Services.AddScoped<DiceCubeHandler>();
+builder.Services.AddScoped<DartsHandler>();
 builder.Services.AddScoped<HorseHandler>();
 builder.Services.AddScoped<RedeemHandler>();
 builder.Services.AddScoped<AdminHandler>();
@@ -44,6 +45,7 @@ builder.Services.AddScoped<CasinoShiz.Services.Poker.Application.PokerService>()
 builder.Services.AddScoped<CasinoShiz.Services.Horse.HorseService>();
 builder.Services.AddScoped<CasinoShiz.Services.Dice.DiceService>();
 builder.Services.AddScoped<CasinoShiz.Services.Dice.DiceCubeService>();
+builder.Services.AddScoped<CasinoShiz.Services.Dice.DartsService>();
 builder.Services.AddScoped<CasinoShiz.Services.Redeem.RedeemService>();
 builder.Services.AddScoped<CasinoShiz.Services.Leaderboard.LeaderboardService>();
 builder.Services.AddScoped<CasinoShiz.Services.Admin.AdminService>();

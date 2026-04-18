@@ -92,6 +92,22 @@ public static class Locales
         return $"<b>На следующий забег стоит {Plural(stakesCount, ["ставка", "ставки", "ставок"], true)}</b>";
     }
 
+    public static string HorseRaceWinnerDm(int winnerHorse, int totalBet, int payout)
+    {
+        var net = payout - totalBet;
+        var pluralNet = Plural(net, ["монету", "монеты", "монет"], true);
+        var pluralPayout = Plural(payout, ["монета", "монеты", "монет"], true);
+        return $"🏆 Скачки завершились — победила <b>лошадь {winnerHorse}</b>!\n" +
+               $"Ваша ставка: {totalBet}, выплата: <b>{pluralPayout}</b> (чистыми +{pluralNet}). Поздравляю! 💰";
+    }
+
+    public static string HorseRaceLoserDm(int winnerHorse, int totalBet)
+    {
+        var pluralBet = Plural(totalBet, ["монету", "монеты", "монет"], true);
+        return $"🏁 Скачки завершились — победила <b>лошадь {winnerHorse}</b>.\n" +
+               $"Увы, ваша лошадь не пришла первой, вы потеряли <b>{pluralBet}</b>. Удачи в следующий раз! 🤞";
+    }
+
     public static string Koefs(Dictionary<int, double> ks)
     {
         var horseKs = string.Join("", ks.Select(kv =>

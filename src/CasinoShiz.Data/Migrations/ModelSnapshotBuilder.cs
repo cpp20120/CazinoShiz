@@ -43,6 +43,16 @@ internal static class ModelSnapshotBuilder
             b.ToTable("DiceCubeBets");
         });
 
+        modelBuilder.Entity("CasinoShiz.Data.Entities.DartsBet", b =>
+        {
+            b.Property<long>("UserId").HasColumnType("bigint");
+            b.Property<long>("ChatId").HasColumnType("bigint");
+            b.Property<int>("Amount").HasColumnType("integer");
+            b.Property<long>("CreatedAt").HasColumnType("bigint");
+            b.HasKey("UserId", "ChatId");
+            b.ToTable("DartsBets");
+        });
+
         modelBuilder.Entity("CasinoShiz.Data.Entities.DisplayNameOverride", b =>
         {
             b.Property<string>("OriginalName").HasMaxLength(64).HasColumnType("text");

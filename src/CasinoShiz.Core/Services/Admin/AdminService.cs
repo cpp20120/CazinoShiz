@@ -1,10 +1,16 @@
+using CasinoShiz.Configuration;
 using CasinoShiz.Data;
 using CasinoShiz.Data.Entities;
 using CasinoShiz.Helpers;
 using CasinoShiz.Services.Analytics;
 using CasinoShiz.Services.Economics;
+using CasinoShiz.Services.Horse;
 using CasinoShiz.Services.Poker.Application;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Telegram.Bot;
+using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
 
 namespace CasinoShiz.Services.Admin;
 
@@ -12,8 +18,13 @@ public sealed class AdminService(
     AppDbContext db,
     ClickHouseReporter reporter,
     PokerService poker,
-    EconomicsService economics)
+    EconomicsService economics,
+    HorseService horse,
+    ITelegramBotClient bot,
+    IOptions<BotOptions> options)
 {
+    private readonly BotOptions _opts = options.Value;
+
     public async Task<int> UserSyncAsync(long callerId, CancellationToken ct)
     {
         var users = await db.Users.ToListAsync(ct);
@@ -138,6 +149,67 @@ public sealed class AdminService(
         return new PokerKickResult(AdminCancelOp.Done, stack.Value, result.TableClosed ? null : result.Snapshot);
     }
 
+    public async Task<HorseRaceAdminView> GetHorseRaceViewAsync(CancellationToken ct)
+    {
+        var raceDate = TimeHelper.GetRaceDate();
+        var bets = await db.HorseBets.AsNoTracking().Where(b => b.RaceDate == raceDate).ToListAsync(ct);
+        var stakes = new Dictionary<int, int>();
+        for (var i = 0; i < HorseService.HorseCount; i++) stakes[i] = 0;
+        foreach (var b in bets) stakes[b.HorseId] += b.Amount;
+        var koefs = HorseService.GetKoefs(stakes);
+        var result = await db.HorseResults.AsNoTracking().FirstOrDefaultAsync(r => r.RaceDate == raceDate, ct);
+        return new HorseRaceAdminView(raceDate, bets.Count, HorseService.MinBetsToRun, stakes, koefs, result);
+    }
+
+    public async Task<HorseRunAdminResult> RunHorseRaceAsync(long callerId, CancellationToken ct)
+    {
+        var outcome = await horse.RunRaceFromAdminAsync(ct);
+        if (outcome.Error == HorseError.NotEnoughBets)
+            return new HorseRunAdminResult(HorseError.NotEnoughBets, null, [], false);
+
+        var winners = outcome.Transactions;
+        bool broadcast = false;
+        if (!string.IsNullOrWhiteSpace(_opts.TrustedChannel))
+        {
+            var channel = _opts.TrustedChannel.StartsWith('@') ? _opts.TrustedChannel : "@" + _opts.TrustedChannel;
+            try
+            {
+                await using var gifStream = new MemoryStream(outcome.GifBytes);
+                await bot.SendAnimation(channel, InputFile.FromStream(gifStream, "horses.gif"), cancellationToken: ct);
+                var text = winners.Count > 0
+                    ? string.Join("\n", new[] { $"<b>Лошадь {outcome.Winner + 1} побеждает!</b>\n" }
+                        .Concat(winners.Select((tx, i) =>
+                            $"<a href=\"tg://user?id={tx.UserId}\">Победитель {i + 1}</a>: <b>+{tx.Amount}</b>")))
+                    : $"<b>Лошадь {outcome.Winner + 1} побеждает!</b>\nСегодня никому не удалось победить :(";
+                await bot.SendMessage(channel, text, parseMode: ParseMode.Html, cancellationToken: ct);
+                broadcast = true;
+            }
+            catch { /* swallow: admin still gets inline view */ }
+        }
+
+        int notified = 0;
+        foreach (var p in outcome.Participants)
+        {
+            var text = p.Payout > 0
+                ? Locales.HorseRaceWinnerDm(outcome.Winner + 1, p.TotalBet, p.Payout)
+                : Locales.HorseRaceLoserDm(outcome.Winner + 1, p.TotalBet);
+            try
+            {
+                await bot.SendMessage(p.UserId, text, parseMode: ParseMode.Html, cancellationToken: ct);
+                notified++;
+            }
+            catch { /* user may have never DMed the bot — skip silently */ }
+        }
+
+        reporter.SendEvent(new EventData
+        {
+            EventType = "admin_command",
+            Payload = new { command = "horse_run", calleeId = callerId, winner = outcome.Winner + 1, payouts = winners.Count, broadcast, notified, participants = outcome.Participants.Count },
+        });
+
+        return new HorseRunAdminResult(HorseError.None, outcome.Winner, winners, broadcast, outcome.GifBytes);
+    }
+
     public async Task<OverviewStats> GetOverviewStatsAsync(CancellationToken ct)
     {
         var raceDate = TimeHelper.GetRaceDate();
@@ -165,11 +237,16 @@ public sealed class AdminService(
         var cubePendingBets = cubeBets.Count;
         var cubePendingPot = cubeBets.Sum();
 
+        var dartsBets = await db.DartsBets.Select(b => b.Amount).ToListAsync(ct);
+        var dartsPendingBets = dartsBets.Count;
+        var dartsPendingPot = dartsBets.Sum();
+
         return new OverviewStats(
             totalUsers, pokerTables, pokerPlayers, activeBj, totalBj,
             horseBetsToday, horsePotToday, horseRacesRun,
             diceAttemptsToday, activeCodes,
-            cubePendingBets, cubePendingPot);
+            cubePendingBets, cubePendingPot,
+            dartsPendingBets, dartsPendingPot);
     }
 
     public void ReportNotAdmin(long userId)
