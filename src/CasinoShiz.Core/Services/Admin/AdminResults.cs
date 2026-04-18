@@ -1,6 +1,7 @@
 using CasinoShiz.Data.Entities;
 using CasinoShiz.Services.Horse;
 using CasinoShiz.Services.Poker.Application;
+using CasinoShiz.Services.SecretHitler.Application;
 
 namespace CasinoShiz.Services.Admin;
 
@@ -22,7 +23,9 @@ public sealed record UserDetail(
     PokerSeat? PokerSeat,
     BlackjackHand? BlackjackHand,
     DiceCubeBet? DiceCubeBet,
-    DartsBet? DartsBet);
+    DartsBet? DartsBet,
+    SecretHitlerPlayer? SecretHitlerPlayer,
+    SecretHitlerGame? SecretHitlerGame);
 
 public sealed record OverviewStats(
     int TotalUsers,
@@ -38,7 +41,11 @@ public sealed record OverviewStats(
     int CubePendingBets,
     int CubePendingPot,
     int DartsPendingBets,
-    int DartsPendingPot);
+    int DartsPendingPot,
+    int ShLobbyRooms,
+    int ShActiveRooms,
+    int ShTotalPlayers,
+    int ShPotLocked);
 
 public sealed record HorseRaceAdminView(
     string RaceDate,
@@ -58,3 +65,22 @@ public sealed record HorseRunAdminResult(
 public enum AdminCancelOp { Done, Noop }
 public sealed record CancelResult(AdminCancelOp Op, int Refunded);
 public sealed record PokerKickResult(AdminCancelOp Op, int Refunded, TableSnapshot? RemainingSnapshot);
+
+public sealed record ShRoomListItem(
+    string InviteCode,
+    long HostUserId,
+    ShStatus Status,
+    ShPhase Phase,
+    int PlayerCount,
+    int BuyIn,
+    int Pot,
+    int LiberalPolicies,
+    int FascistPolicies,
+    long CreatedAt,
+    long LastActionAt);
+
+public sealed record ShRoomListResult(IReadOnlyList<ShRoomListItem> Rooms);
+
+public sealed record ShRoomDetailView(SecretHitlerGame Game, IReadOnlyList<SecretHitlerPlayer> Players);
+
+public sealed record ShCancelResult(AdminCancelOp Op, int TotalRefunded, int PlayersRefunded);

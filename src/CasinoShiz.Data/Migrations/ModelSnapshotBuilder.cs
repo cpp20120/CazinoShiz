@@ -136,6 +136,52 @@ internal static class ModelSnapshotBuilder
             b.ToTable("PokerTables");
         });
 
+        modelBuilder.Entity("CasinoShiz.Data.Entities.SecretHitlerGame", b =>
+        {
+            b.Property<string>("InviteCode").HasMaxLength(8).HasColumnType("text");
+            b.Property<int>("BuyIn").HasColumnType("integer");
+            b.Property<string>("ChancellorReceived").IsRequired().HasMaxLength(8).HasColumnType("text");
+            b.Property<long>("ChatId").HasColumnType("bigint");
+            b.Property<long>("CreatedAt").HasColumnType("bigint");
+            b.Property<int>("CurrentPresidentPosition").HasColumnType("integer");
+            b.Property<string>("DeckState").IsRequired().HasMaxLength(64).HasColumnType("text");
+            b.Property<string>("DiscardState").IsRequired().HasMaxLength(64).HasColumnType("text");
+            b.Property<int>("ElectionTracker").HasColumnType("integer");
+            b.Property<int>("FascistPolicies").HasColumnType("integer");
+            b.Property<long>("HostUserId").HasColumnType("bigint");
+            b.Property<int>("LastElectedChancellorPosition").HasColumnType("integer");
+            b.Property<int>("LastElectedPresidentPosition").HasColumnType("integer");
+            b.Property<long>("LastActionAt").HasColumnType("bigint");
+            b.Property<int>("LiberalPolicies").HasColumnType("integer");
+            b.Property<int>("NominatedChancellorPosition").HasColumnType("integer");
+            b.Property<int>("Phase").HasColumnType("integer");
+            b.Property<int>("Pot").HasColumnType("integer");
+            b.Property<string>("PresidentDraw").IsRequired().HasMaxLength(8).HasColumnType("text");
+            b.Property<int>("Status").HasColumnType("integer");
+            b.Property<int>("WinReason").HasColumnType("integer");
+            b.Property<int>("Winner").HasColumnType("integer");
+            b.HasKey("InviteCode");
+            b.HasIndex("Status");
+            b.ToTable("SecretHitlerGames");
+        });
+
+        modelBuilder.Entity("CasinoShiz.Data.Entities.SecretHitlerPlayer", b =>
+        {
+            b.Property<string>("InviteCode").HasMaxLength(8).HasColumnType("text");
+            b.Property<int>("Position").HasColumnType("integer");
+            b.Property<long>("ChatId").HasColumnType("bigint");
+            b.Property<string>("DisplayName").IsRequired().HasMaxLength(64).HasColumnType("text");
+            b.Property<bool>("IsAlive").HasColumnType("boolean");
+            b.Property<long>("JoinedAt").HasColumnType("bigint");
+            b.Property<int>("LastVote").HasColumnType("integer");
+            b.Property<int>("Role").HasColumnType("integer");
+            b.Property<int?>("StateMessageId").HasColumnType("integer");
+            b.Property<long>("UserId").HasColumnType("bigint");
+            b.HasKey("InviteCode", "Position");
+            b.HasIndex("UserId");
+            b.ToTable("SecretHitlerPlayers");
+        });
+
         modelBuilder.Entity("CasinoShiz.Data.Entities.UserState", b =>
         {
             b.Property<long>("TelegramUserId").HasColumnType("bigint");

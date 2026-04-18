@@ -149,6 +149,20 @@ else
         }
     </div>
 
+    @if (Model.Detail.SecretHitlerPlayer is { } shPlayer && Model.Detail.SecretHitlerGame is { } shGame)
+    {
+        <div class="card">
+            <h2 style="margin-top:0; font-size:16px;">Secret Hitler 🗳</h2>
+            <p>
+                Room <a href="/admin/sh/@shGame.InviteCode"><code>@shGame.InviteCode</code></a> ·
+                seat @shPlayer.Position ·
+                role <strong>@shPlayer.Role</strong> ·
+                <span class="pill">@shGame.Status / @shGame.Phase</span>
+            </p>
+            <p class="muted">Host: @shGame.HostUserId · buy-in @shGame.BuyIn · pot @shGame.Pot · alive: @(shPlayer.IsAlive ? "yes" : "no")</p>
+        </div>
+    }
+
     <div class="card">
         <h2 style="margin-top:0; font-size:16px;">Blackjack</h2>
         <p>Hands played: <strong>@u.BlackjackHandsPlayed</strong></p>

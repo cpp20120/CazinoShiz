@@ -17,6 +17,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<BlackjackHand> BlackjackHands => Set<BlackjackHand>();
     public DbSet<DiceCubeBet> DiceCubeBets => Set<DiceCubeBet>();
     public DbSet<DartsBet> DartsBets => Set<DartsBet>();
+    public DbSet<SecretHitlerGame> SecretHitlerGames => Set<SecretHitlerGame>();
+    public DbSet<SecretHitlerPlayer> SecretHitlerPlayers => Set<SecretHitlerPlayer>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -40,6 +42,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<DartsBet>()
             .HasKey(b => new { b.UserId, b.ChatId });
+
+        modelBuilder.Entity<SecretHitlerPlayer>()
+            .HasKey(p => new { p.InviteCode, p.Position });
+
+        modelBuilder.Entity<SecretHitlerPlayer>()
+            .HasIndex(p => p.UserId);
+
+        modelBuilder.Entity<SecretHitlerGame>()
+            .HasIndex(g => g.Status);
 
         modelBuilder.Entity<UserState>(b =>
         {

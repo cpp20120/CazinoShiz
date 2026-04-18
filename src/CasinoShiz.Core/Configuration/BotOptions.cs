@@ -23,6 +23,8 @@ public sealed class BotOptions
     public int PokerMaxPlayers { get; init; } = 6;
     public int PokerTurnTimeoutMs { get; init; } = 30_000;
 
+    public int SecretHitlerBuyIn { get; init; } = 50;
+
     public int BlackjackMinBet { get; init; } = 10;
     public int BlackjackMaxBet { get; init; } = 500;
     public int BlackjackHandTimeoutMs { get; init; } = 300_000;

@@ -139,6 +139,8 @@ public static class Locales
         "",
         "♠️ <b>Покер</b> (Техасский холдем, только в ЛС) — <code>/poker create</code>, <code>/poker join &lt;код&gt;</code>, <code>/poker start</code>.",
         "",
+        "🗳 <b>Secret Hitler</b> (5–10 игроков, только в ЛС) — <code>/sh create</code>, <code>/sh join &lt;код&gt;</code>, <code>/sh start</code>.",
+        "",
         "💰 <code>/top</code> — топ игроков, <code>/balance</code> — баланс.",
         "",
         "Удачи! 🍀",
@@ -203,6 +205,58 @@ public static class Locales
         Data.Entities.PokerPhase.Showdown => "Шоудаун",
         _ => "—",
     };
+
+    public static string ShUsage() => string.Join("\n", [
+        "🗳 <b>Secret Hitler</b> (только в ЛС)",
+        "",
+        "/sh create — создать игру",
+        "/sh join <i>код</i> — присоединиться",
+        "/sh start — хост начинает игру (5–10 игроков)",
+        "/sh leave — выйти (только из лобби)",
+        "/sh status — показать текущее состояние",
+        "",
+        "Играем в личке. Бай-ин списывается при присоединении.",
+    ]);
+
+    public static string ShOnlyPrivate() => "Secret Hitler играем только в личке! Напиши мне в ЛС: /sh create";
+    public static string ShNotEnoughCoins(int buyIn) => $"Нужен бай-ин: {Plural(buyIn, ["монета", "монеты", "монет"], true)}.";
+    public static string ShAlreadyInGame() => "Ты уже в игре. Сначала /sh leave (пока игра в лобби).";
+    public static string ShGameNotFound() => "Игра с таким кодом не найдена или уже завершена.";
+    public static string ShGameFull() => "В игре уже максимум игроков (10).";
+    public static string ShGameInProgress() => "Игра уже идёт — выйти нельзя, дождись конца.";
+    public static string ShNotHost() => "Только создатель может начать игру.";
+    public static string ShNotInGame() => "Ты не в игре. /sh create — создать новую.";
+    public static string ShNotEnoughPlayers() => $"Нужно минимум {Services.SecretHitler.Domain.ShRoleDealer.MinPlayers} игроков.";
+    public static string ShWrongPhase() => "Сейчас не эта фаза.";
+    public static string ShNotPresident() => "Это действие доступно только президенту.";
+    public static string ShNotChancellor() => "Это действие доступно только канцлеру.";
+    public static string ShInvalidTarget() => "Нельзя выбрать этого игрока.";
+    public static string ShTermLimited() => "Этот игрок был избран в прошлом раунде и не может сейчас.";
+    public static string ShAlreadyVoted() => "Ты уже проголосовал в этом раунде.";
+    public static string ShInvalidPolicy() => "Неверный выбор карты.";
+
+    public static string ShGameCreated(string code, int buyIn) =>
+        $"🗳 Игра создана! Код: <code>{code}</code>\n" +
+        $"Бай-ин: {Plural(buyIn, ["монета", "монеты", "монет"], true)}.\n" +
+        $"Пригласи остальных: <code>/sh join {code}</code>\n" +
+        $"Когда все собрались — /sh start (5–10 игроков).";
+
+    public static string ShJoined(string code, int joined, int max) =>
+        $"Ты в игре <code>{code}</code>. Игроков: {joined}/{max}. Ждём старта от хоста.";
+
+    public static string ShLeft() => "Ты вышел из игры. Бай-ин возвращён.";
+    public static string ShGameClosed() => "Игра закрыта — последний игрок покинул лобби.";
+
+    public static string ShElectionPassed(int ja, int nein, string chancellorName) =>
+        $"✅ Выборы приняты ({ja}:{nein}). Канцлер — <b>{chancellorName}</b>.";
+    public static string ShElectionFailed(int ja, int nein, int tracker) =>
+        $"❌ Выборы провалены ({ja}:{nein}). Трекер выборов: {tracker}/{Services.SecretHitler.Domain.ShTransitions.ElectionTrackerCap}.";
+    public static string ShHitlerElectedWin(string hitlerName) =>
+        $"💀 <b>Гитлер избран канцлером!</b> Фашисты побеждают. Им был <b>{hitlerName}</b>.";
+    public static string ShPolicyEnacted(bool liberal) =>
+        liberal ? "📜 Принят <b>либеральный</b> закон 🟦." : "📜 Принят <b>фашистский</b> закон 🟥.";
+    public static string ShChaosEnacted(bool liberal) =>
+        $"⚠️ Трекер выборов переполнился — автоматически принят верхний закон ({(liberal ? "🟦" : "🟥")}).";
 
     public static string BlackjackUsage(int minBet, int maxBet) =>
         $"🃏 <b>Блэкджек</b>\n\n" +

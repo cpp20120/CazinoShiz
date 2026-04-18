@@ -53,6 +53,8 @@ builder.Services.AddScoped<CasinoShiz.Services.Blackjack.BlackjackService>();
 builder.Services.AddScoped<CasinoShiz.Services.Economics.EconomicsService>();
 builder.Services.AddScoped<PokerHandler>();
 builder.Services.AddScoped<BlackjackHandler>();
+builder.Services.AddScoped<SecretHitlerHandler>();
+builder.Services.AddScoped<CasinoShiz.Services.SecretHitler.Application.SecretHitlerService>();
 
 builder.Services.AddScoped<LoggingMiddleware>();
 builder.Services.AddScoped<ExceptionMiddleware>();

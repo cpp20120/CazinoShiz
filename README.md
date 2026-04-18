@@ -10,6 +10,11 @@ Built with ASP.NET Core (.NET 10), Telegram.Bot, EF Core + Dapper (Postgres), an
 
 - **Dice Game** - Telegram slot machine with prize tables, daily attempt limits, and taxes
 - **Horse Racing** - Bet on horses, watch animated GIF races rendered with SkiaSharp
+- **Poker Game** - Texas Holdem
+- **BlackJack Game** - Black Jack
+- **Dice Cubes** - Telegram dice cube 
+- **Darts Game** - Telegram dice darts
+- **Secret Hitler** - Secret Hitler game for mutilple users
 - **Freespin Codes** - Admin-generated redeem codes with emoji CAPTCHA verification
 - **Leaderboards** - Balance rankings and user stats
 - **Analytics** - ClickHouse integration with Grafana dashboards

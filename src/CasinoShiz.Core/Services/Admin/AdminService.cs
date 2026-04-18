@@ -116,7 +116,14 @@ public sealed class AdminService(
         var darts = await db.DartsBets.AsNoTracking()
             .FirstOrDefaultAsync(b => b.UserId == targetUserId, ct);
 
-        return new UserDetail(user, bets, codes, seat, blackjack, cube, darts);
+        var shPlayer = await db.SecretHitlerPlayers.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.UserId == targetUserId, ct);
+        SecretHitlerGame? shGame = null;
+        if (shPlayer != null)
+            shGame = await db.SecretHitlerGames.AsNoTracking()
+                .FirstOrDefaultAsync(g => g.InviteCode == shPlayer.InviteCode, ct);
+
+        return new UserDetail(user, bets, codes, seat, blackjack, cube, darts, shPlayer, shGame);
     }
 
     public async Task<CancelResult> CancelDiceCubeBetAsync(long callerId, long targetUserId, CancellationToken ct)
@@ -305,12 +312,91 @@ public sealed class AdminService(
         var dartsPendingBets = dartsBets.Count;
         var dartsPendingPot = dartsBets.Sum();
 
+        var shLobby = await db.SecretHitlerGames.CountAsync(g => g.Status == ShStatus.Lobby, ct);
+        var shActive = await db.SecretHitlerGames.CountAsync(g => g.Status == ShStatus.Active, ct);
+        var shPlayers = await db.SecretHitlerPlayers.CountAsync(ct);
+        var shPotLocked = await db.SecretHitlerGames
+            .Where(g => g.Status == ShStatus.Lobby || g.Status == ShStatus.Active)
+            .SumAsync(g => (int?)g.Pot, ct) ?? 0;
+
         return new OverviewStats(
             totalUsers, pokerTables, pokerPlayers, activeBj, totalBj,
             horseBetsToday, horsePotToday, horseRacesRun,
             diceAttemptsToday, activeCodes,
             cubePendingBets, cubePendingPot,
-            dartsPendingBets, dartsPendingPot);
+            dartsPendingBets, dartsPendingPot,
+            shLobby, shActive, shPlayers, shPotLocked);
+    }
+
+    public async Task<ShRoomListResult> ListSecretHitlerRoomsAsync(CancellationToken ct)
+    {
+        var games = await db.SecretHitlerGames.AsNoTracking()
+            .Where(g => g.Status == ShStatus.Lobby || g.Status == ShStatus.Active)
+            .OrderByDescending(g => g.LastActionAt)
+            .ToListAsync(ct);
+        if (games.Count == 0) return new ShRoomListResult([]);
+
+        var codes = games.Select(g => g.InviteCode).ToList();
+        var playerCounts = await db.SecretHitlerPlayers.AsNoTracking()
+            .Where(p => codes.Contains(p.InviteCode))
+            .GroupBy(p => p.InviteCode)
+            .Select(g => new { Code = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var byCode = playerCounts.ToDictionary(x => x.Code, x => x.Count);
+
+        var rooms = games.Select(g => new ShRoomListItem(
+            g.InviteCode, g.HostUserId, g.Status, g.Phase,
+            byCode.GetValueOrDefault(g.InviteCode, 0),
+            g.BuyIn, g.Pot,
+            g.LiberalPolicies, g.FascistPolicies,
+            g.CreatedAt, g.LastActionAt)).ToList();
+        return new ShRoomListResult(rooms);
+    }
+
+    public async Task<ShRoomDetailView?> GetSecretHitlerRoomAsync(string inviteCode, CancellationToken ct)
+    {
+        var code = inviteCode.ToUpperInvariant();
+        var game = await db.SecretHitlerGames.AsNoTracking().FirstOrDefaultAsync(g => g.InviteCode == code, ct);
+        if (game == null) return null;
+        var players = await db.SecretHitlerPlayers.AsNoTracking()
+            .Where(p => p.InviteCode == code)
+            .OrderBy(p => p.Position)
+            .ToListAsync(ct);
+        return new ShRoomDetailView(game, players);
+    }
+
+    public async Task<ShCancelResult> CancelSecretHitlerRoomAsync(long callerId, string inviteCode, CancellationToken ct)
+    {
+        var code = inviteCode.ToUpperInvariant();
+        var game = await db.SecretHitlerGames.FirstOrDefaultAsync(g => g.InviteCode == code, ct);
+        if (game == null) return new ShCancelResult(AdminCancelOp.Noop, 0, 0);
+        if (game.Status == ShStatus.Closed || game.Status == ShStatus.Completed)
+            return new ShCancelResult(AdminCancelOp.Noop, 0, 0);
+
+        var players = await db.SecretHitlerPlayers.Where(p => p.InviteCode == code).ToListAsync(ct);
+        var refund = game.BuyIn;
+        var refunded = 0;
+        foreach (var p in players)
+        {
+            var user = await db.Users.FindAsync([p.UserId], ct);
+            if (user == null) continue;
+            await economics.CreditAsync(user, refund, "admin.cancel_sh", ct);
+            refunded++;
+        }
+
+        db.SecretHitlerPlayers.RemoveRange(players);
+        game.Pot = 0;
+        game.Status = ShStatus.Closed;
+        game.Phase = ShPhase.None;
+        game.LastActionAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        await db.SaveChangesAsync(ct);
+
+        reporter.SendEvent(new EventData
+        {
+            EventType = "admin_command",
+            Payload = new { command = "cancel_sh_room", calleeId = callerId, invite_code = code, players_refunded = refunded, refund_each = refund },
+        });
+        return new ShCancelResult(AdminCancelOp.Done, refund * refunded, refunded);
     }
 
     public void ReportNotAdmin(long userId)

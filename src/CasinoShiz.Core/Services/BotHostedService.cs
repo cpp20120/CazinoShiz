@@ -80,8 +80,11 @@ public sealed partial class BotHostedService(
     {
         var commands = new BotCommand[]
         {
+            new() { Command = "dice", Description = "Кубик 🎲" },
+            new() { Command = "darts", Description = "Дартс 🎯" },
             new() { Command = "blackjack", Description = "Сыграть в блэкджек" },
             new() { Command = "poker", Description = "Техасский холдем" },
+            new() { Command = "sh", Description = "Secret Hitler 🗳" },
             new() { Command = "horse", Description = "Скачки" },
             new() { Command = "redeem", Description = "Ввести промокод на фриспины" },
             new() { Command = "top", Description = "Таблица лидеров" },

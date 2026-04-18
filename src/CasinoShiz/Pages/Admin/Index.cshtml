@@ -5,7 +5,10 @@
 }
 
 <h1>Users</h1>
-<p><a href="/admin/horse">Horse race &rarr;</a></p>
+<p>
+    <a href="/admin/horse">Horse race &rarr;</a> ·
+    <a href="/admin/sh">Secret Hitler rooms &rarr;</a>
+</p>
 
 <div class="card">
     <h2 style="margin-top:0; font-size:16px;">Overview</h2>
@@ -30,6 +33,16 @@
         <div><span class="muted">Darts bets pending</span><br/><strong>@Model.Stats.DartsPendingBets</strong></div>
         <div><span class="muted">Darts pot</span><br/><strong>@Model.Stats.DartsPendingPot</strong></div>
         <div><span class="muted">Active freespin codes</span><br/><strong>@Model.Stats.ActiveFreespinCodes</strong></div>
+    </div>
+</div>
+
+<div class="card">
+    <h2 style="margin-top:0; font-size:16px;">Secret Hitler</h2>
+    <div class="row" style="gap:24px; flex-wrap:wrap;">
+        <div><span class="muted">Lobby rooms</span><br/><strong>@Model.Stats.ShLobbyRooms</strong></div>
+        <div><span class="muted">Active rooms</span><br/><strong>@Model.Stats.ShActiveRooms</strong></div>
+        <div><span class="muted">Players seated</span><br/><strong>@Model.Stats.ShTotalPlayers</strong></div>
+        <div><span class="muted">Pot locked</span><br/><strong>@Model.Stats.ShPotLocked</strong></div>
     </div>
 </div>
 
