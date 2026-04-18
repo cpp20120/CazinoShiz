@@ -1,5 +1,7 @@
 # Casino
 
+[![](https://tokei.rs/b1/github/cpp20120/CazinoShiz)](https://github.com/cpp20120/CazinoShiz).
+
 Telegram casino mini-game bot with dice games, horse racing, freespin codes, and coin management.
 
 Built with ASP.NET Core (.NET 10), Telegram.Bot, EF Core + Dapper (Postgres), and SkiaSharp.
