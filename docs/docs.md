@@ -1,6 +1,6 @@
 # CasinoShiz
 
-A Telegram casino/gambling mini-game bot. Russian-language UI. Games: dice casino (🎰), horse racing, Texas Hold'em poker, blackjack, freespin code redemption.
+A Telegram casino/gambling mini-game bot. Russian-language UI. Games: slots (🎰), dice cube (🎲), darts (🎯), horse racing, Texas Hold'em poker, blackjack, freespin code redemption.
 
 ## Stack
 
@@ -12,7 +12,7 @@ A Telegram casino/gambling mini-game bot. Russian-language UI. Games: dice casin
 | Analytics | ClickHouse 24.x via `ClickHouse.Client` 7.x (buffered, degrades gracefully) |
 | Dashboards | Grafana 11 with auto-provisioned ClickHouse datasource |
 | Graphics | SkiaSharp 3.x (horse race GIF renderer) |
-| Tests | xUnit, EF Core InMemory, 71 tests covering services + domain + router |
+| Tests | xUnit, EF Core InMemory, 82 tests covering services + domain + router |
 | Deploy | Docker Compose (bot + postgres + clickhouse + grafana) |
 
 UTC+7 is used for "day" resets (`Helpers/TimeHelper.cs`).
@@ -58,7 +58,7 @@ CasinoShiz/
 │       ├── Data/AppDbContext.cs
 │       ├── Data/Entities/            — POCOs (UserState, PokerTable, BlackjackHand, …)
 │       └── Migrations/               — EF migrations + ModelSnapshot
-└── tests/CasinoShiz.Tests/           — xUnit project (71 tests)
+└── tests/CasinoShiz.Tests/           — xUnit project (82 tests)
 ```
 
 Namespaces are flat under `CasinoShiz.*` regardless of project/folder depth (e.g. `CasinoShiz.Services.Economics`, not `CasinoShiz.Core.Services.Economics`). `RootNamespace` is set explicitly in `CasinoShiz.Core.csproj`.
@@ -217,11 +217,30 @@ Hand state lives in a `BlackjackHands` table keyed on `UserId` (one active hand 
 
 `Services/Horse/` mirrors the poker split but lighter (no domain layer — the game is per-race, not per-turn):
 
-- `HorseService` — bets, admin-gated `/horserun`, payout math, emits `horse_bet` + `horse_run` events.
+- `HorseService` — bets, admin-gated `/horserun` + web-admin `RunRaceFromAdminAsync`, payout math, emits `horse_bet` + `horse_run` events.
 - `HorseHandler` — thin transport, maps `HorseError` to Russian strings.
 - `Generators/HorseRaceRenderer` + `SpeedGenerator` + `GifEncoder` — SkiaSharp canvas frames stitched into an LZW GIF89a sent to chats as a GIF document.
 
 `HorseResult` and `HorseBet` are keyed on `RaceDate` (string, MM-dd-yyyy in UTC+7) so everything is day-scoped.
+
+**Race gate.** A race only runs with at least `HorseService.MinBetsToRun = 4` bets for the day — `RunRaceCoreAsync` short-circuits with `HorseError.NotEnoughBets` otherwise. `RunRaceAsync(callerId, …)` adds an admin check on top; `RunRaceFromAdminAsync(…)` is used by the web panel where the caller is already authenticated by the `Bot:AdminWebToken` gate.
+
+**Notifications.** `RaceOutcome.Participants` is a per-user summary `(UserId, TotalBet, Payout)` built from the full bet list before deletion. `AdminService.RunHorseRaceAsync` iterates it after the race and DMs each bettor the race GIF (as `SendAnimation`) with a localized caption — winners see net profit, losers see their lost stake. Per-user `try/catch` swallows `403 Forbidden` from users who never started a private chat with the bot. The GIF is also broadcast to `Bot:TrustedChannel` when configured.
+
+## Dice cube (🎲)
+
+`Services/Dice/DiceCubeService.cs` + `DiceCubeHandler`. Two-step interaction per chat:
+
+1. `/dice bet <amount>` — debits the stake via `EconomicsService.DebitAsync` and inserts a pending `DiceCubeBet` row keyed on `(UserId, ChatId)`. Only one pending bet per (user, chat) at a time.
+2. User rolls the native 🎲 emoji — the handler reads `message.Dice.Value` (1–6), multiplies the stake by `Multipliers[face]`, credits the payout, and deletes the pending bet.
+
+Multipliers: `1/2/3 → x0`, `4 → x2`, `5 → x3`, `6 → x5`. Emits `dicecube_bet` and `dicecube_roll` events.
+
+## Darts (🎯)
+
+`Services/Dice/DartsService.cs` + `DartsHandler` — structurally identical to dice cube but against its own `DartsBets` table (so a user can hold one cube bet and one darts bet in the same chat simultaneously).
+
+Multipliers: `1/2/3 → x0`, `4 → x2`, `5 → x3`, `6 (bullseye) → x6`. Emits `darts_bet` and `darts_throw` events.
 
 ## Dice
 
@@ -249,7 +268,7 @@ Successful redemption adds `ExtraAttempts` (default +3) to the user and sets `Fr
 
 ### Telegram commands
 
-`AdminService` handles: `usersync` (syncs the user table to ClickHouse for analytics joins), `userinfo` (reply-to → user id), `pay <id> <amount>` (manual coin adjustment via `EconomicsService.AdjustUncheckedAsync`), `getUser <id>` (raw JSON dump), `rename <old> <new|*>` (display-name override, `*` clears). Also: `cancel_blackjack` (refund an active blackjack hand) and `kick_poker` (remove a user from their poker table, refund stack). All admin commands gate on `BotOptions.Admins` containing the caller's Telegram ID.
+`AdminService` handles: `usersync` (syncs the user table to ClickHouse for analytics joins), `userinfo` (reply-to → user id), `pay <id> <amount>` (manual coin adjustment via `EconomicsService.AdjustUncheckedAsync`), `getUser <id>` (raw JSON dump), `rename <old> <new|*>` (display-name override, `*` clears). Also: `cancel_blackjack` (refund an active blackjack hand), `kick_poker` (remove a user from their poker table, refund stack), and the web-only `CancelDiceCubeBetAsync` / `CancelDartsBetAsync` / `ResetSlotAttemptsAsync` actions exposed as POST endpoints on the user detail page. All Telegram admin commands gate on `BotOptions.Admins` containing the caller's Telegram ID.
 
 Events emitted: `admin_command` with `{ command, calleeId, … }` and `user_map` during `usersync`.
 
@@ -266,7 +285,11 @@ Telegram admin-only commands: `/horserun`, `/run <subcmd>`, `/codegen`, `/rename
 
 ### Admin web UI
 
-The ASP.NET app serves Razor pages under `/admin` (see `src/CasinoShiz/Pages/`) on the same port as the webhook (`3000`). Runtime compilation is enabled, so `.cshtml` edits don't require a rebuild. Pages include overview stats, user search + detail (bets, codes, active poker/blackjack state), and manual admin actions.
+The ASP.NET app serves Razor pages under `/admin` (see `src/CasinoShiz/Pages/`) on the same port as the webhook (`3000`). Runtime compilation is enabled, so `.cshtml` edits don't require a rebuild. Pages:
+
+- `/admin` — overview stats (users, poker tables, blackjack hands, pending horse/cube/darts bets, active freespin codes) + user search with htmx-driven live filtering.
+- `/admin/user/{id}` — user detail: balance, slot attempts, recent horse bets, issued freespin codes, active poker seat, active blackjack hand, pending cube/darts bets. Each card exposes the relevant admin action (pay, rename, reset attempts, cancel bet, kick from poker, refund blackjack).
+- `/admin/horse` — horse race control panel. Shows today's bets, per-horse stakes and koefs, and a "Run race" button enabled only when `BetsCount >= MinBetsToRun`. On run, renders the GIF inline, broadcasts it to `TrustedChannel`, and DMs each bettor the result.
 
 Access is gated by a shared-secret token:
 
@@ -307,12 +330,19 @@ All entities are plain POCOs under `CasinoShiz.Data/Data/Entities/`, each using 
 | `PokerTable` | `InviteCode` (8 chars) | `Status` | Per-table state machine + deck |
 | `PokerSeat` | `(InviteCode, Position)` composite | `UserId` | One row per seated player |
 | `BlackjackHand` | `UserId` | — | At most one active hand per user |
+| `DiceCubeBet` | `(UserId, ChatId)` composite | — | Pending 🎲 stake awaiting a roll |
+| `DartsBet` | `(UserId, ChatId)` composite | — | Pending 🎯 stake awaiting a throw |
 
 `UserState.Coins` and `UserState.Version` are configured with `SetAfterSaveBehavior(PropertySaveBehavior.Ignore)` — EF writes them on INSERT only. Post-insert, `EconomicsService` (Dapper) owns those columns.
 
 ### Migrations
 
-`CasinoShiz.Data/Migrations/20260420000000_InitialCreate.cs` is the consolidated baseline for Postgres; `ModelSnapshotBuilder.cs` is shared between the migration's `.Designer.cs` and `AppDbContextModelSnapshot.cs`. `BotHostedService` runs `db.Database.MigrateAsync(cancellationToken)` on startup — new deployments get the schema; existing ones skip migrations already recorded in `__EFMigrationsHistory`.
+`CasinoShiz.Data/Migrations/20260420000000_InitialCreate.cs` is the consolidated Postgres baseline. Subsequent migrations add table by table:
+
+- `20260420000001_AddDiceCubeBets` — `DiceCubeBets` table for 🎲 pending bets.
+- `20260421000000_AddDartsBets` — `DartsBets` table for 🎯 pending bets.
+
+`ModelSnapshotBuilder.cs` is shared between every migration's `.Designer.cs` and `AppDbContextModelSnapshot.cs` — add new entities there as well as in the migration. `BotHostedService` runs `db.Database.MigrateAsync(cancellationToken)` on startup — new deployments get the schema; existing ones skip migrations already recorded in `__EFMigrationsHistory`.
 
 Generate subsequent migrations from `src/CasinoShiz` (the `Microsoft.EntityFrameworkCore.Design` tooling lives on the web project):
 
@@ -323,7 +353,7 @@ dotnet ef database update --project ../CasinoShiz.Data --startup-project .
 
 ## Testing
 
-`tests/CasinoShiz.Tests/` — xUnit project, 71 tests. Uses `DisableTransitiveFrameworkReferences=true` so the test host runs on plain .NET Core without requiring ASP.NET Core runtime (the web project is Web SDK; the transitive reference would otherwise demand it).
+`tests/CasinoShiz.Tests/` — xUnit project, 82 tests. Uses `DisableTransitiveFrameworkReferences=true` so the test host runs on plain .NET Core without requiring ASP.NET Core runtime (the web project is Web SDK; the transitive reference would otherwise demand it).
 
 Covered:
 
@@ -406,6 +436,8 @@ All UI is in Russian; command names are ASCII.
 | Command | Effect |
 |---|---|
 | `🎰` (native dice emoji) | Spin the slot machine — deducts `DiceCost` from balance, applies gas + bank tax, pays from prize table. |
+| `/dice bet <amount>` + `🎲` | Place a stake, then roll the cube. 4→x2, 5→x3, 6→x5. One pending bet per (user, chat). |
+| `/darts bet <amount>` + `🎯` | Place a stake, then throw. 4→x2, 5→x3, 6 (bullseye)→x6. Independent from cube. |
 | `/balance` | Current coins + tier emoji. |
 | `/top` | Per-chat leaderboard; inactive users hidden after `DaysOfInactivityToHideInTop`. |
 | `/help` | Russian command reference. |
@@ -427,7 +459,7 @@ All UI is in Russian; command names are ASCII.
 
 | Command | Effect |
 |---|---|
-| `/horserun` | Runs today's race, renders GIF, pays winners. Silent no-op for non-admins. |
+| `/horserun` | Runs today's race, renders GIF, pays winners. Requires ≥ `HorseService.MinBetsToRun` bets (default 4). Silent no-op for non-admins. |
 | `/codegen [count]` | Generate freespin code(s) in a group. |
 | `/run usersync` | Sync user table → ClickHouse. |
 | `/run userinfo` | Reply to a message → returns that user's ID. |
