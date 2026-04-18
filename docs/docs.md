@@ -1,56 +1,67 @@
 # CasinoShiz
 
-A Telegram casino/gambling mini-game bot. Russian-language UI. Games: dice casino (🎰), horse racing, Texas Hold'em poker, freespin code redemption.
+A Telegram casino/gambling mini-game bot. Russian-language UI. Games: dice casino (🎰), horse racing, Texas Hold'em poker, blackjack, freespin code redemption.
 
 ## Stack
 
 | Layer | Tech |
 |---|---|
-| Runtime | ASP.NET Core, .NET 10 |
+| Runtime | ASP.NET Core, .NET 10 (preview SDK) |
 | Telegram | `Telegram.Bot` 22.x (polling + webhook) |
-| Persistence | SQLite via EF Core 10 with migrations (`Database.MigrateAsync` on startup) |
-| Analytics | ClickHouse via `ClickHouse.Client` 7.x (buffered, degrades gracefully) |
+| Persistence | **PostgreSQL 16** via EF Core 10 (CRUD + migrations) + **Dapper** (balance hot path with `SELECT ... FOR UPDATE`) |
+| Analytics | ClickHouse 24.x via `ClickHouse.Client` 7.x (buffered, degrades gracefully) |
+| Dashboards | Grafana 11 with auto-provisioned ClickHouse datasource |
 | Graphics | SkiaSharp 3.x (horse race GIF renderer) |
-| Tests | xUnit, EF Core InMemory, 47 tests covering services + domain + router |
-| Deploy | Docker Compose (bot + clickhouse) |
+| Tests | xUnit, EF Core InMemory, 71 tests covering services + domain + router |
+| Deploy | Docker Compose (bot + postgres + clickhouse + grafana) |
 
 UTC+7 is used for "day" resets (`Helpers/TimeHelper.cs`).
 
+For an orientation aimed at future Claude Code sessions, see `CLAUDE.md` at the repo root.
+
 ## Layout
 
+Three-project solution (`CasinoShiz.slnx` at repo root):
+
 ```
-BusinoBot/                           (repo folder — project name is CasinoShiz)
-├── docker-compose.yml                — bot + clickhouse services
-├── Dockerfile
-├── BusinoBot.slnx                    — solution manifest (src + tests)
-├── data/                             — mounted into container (busino.db, CH state)
+CasinoShiz/
+├── docker-compose.yml                — bot + postgres + clickhouse + grafana
+├── Dockerfile                        — dotnet/sdk:10.0-preview
+├── CasinoShiz.slnx                   — solution manifest
+├── data/                             — volumes (postgres, clickhouse)
+├── grafana/                          — datasource + dashboards provisioning
 ├── docs/docs.md                      — this document
-├── src/CasinoShiz/
-│   ├── Program.cs                    — DI composition root + webhook endpoint
-│   ├── appsettings.json              — config (token, admins, game tuning)
-│   ├── Configuration/                — POCO options (BotOptions, ClickHouseOptions)
-│   ├── Data/
-│   │   ├── AppDbContext.cs           — EF Core DbContext + OnModelCreating
-│   │   └── Entities/                 — POCOs (UserState, PokerTable, HorseBet, …)
-│   ├── Migrations/                   — EF migrations + ModelSnapshot
-│   ├── Generators/                   — SkiaSharp race frames, LZW GIF89a encoder
-│   ├── Helpers/                      — Mulberry32 PRNG, Locales, TimeHelper, …
-│   └── Services/
-│       ├── BotHostedService.cs           — IHostedService: polling loop / webhook
-│       ├── UpdateHandler.cs              — thin entrypoint: wraps Update into ctx
-│       ├── PokerTurnTimeoutService.cs    — IHostedService: 10s sweeper for stuck turns
-│       ├── CaptchaService.cs, TaxService.cs
-│       ├── Analytics/ClickHouseReporter.cs
-│       ├── Pipeline/                     — middleware, router, attributes
-│       ├── Handlers/                     — Telegram transport, one per feature
-│       ├── Admin/     AdminService      + Results
-│       ├── Dice/      DiceService       + Results
-│       ├── Horse/     HorseService      + Results
-│       ├── Leaderboard/ LeaderboardService + Results
-│       ├── Redeem/    RedeemService     + Results
-│       └── Poker/     Domain / Application / Presentation
-└── tests/BusinoBot.Tests/              — xUnit project
+├── README.md
+├── CLAUDE.md                         — guidance for Claude Code sessions
+├── src/
+│   ├── CasinoShiz/                   — ASP.NET Core Web host
+│   │   ├── Program.cs                — DI composition root + webhook + admin middleware
+│   │   ├── appsettings.json          — config (token, admins, game tuning, conn string)
+│   │   ├── Configuration/            — POCO options (BotOptions, ClickHouseOptions)
+│   │   └── Pages/Admin/              — Razor pages for /admin UI
+│   ├── CasinoShiz.Core/              — all business logic; root namespace `CasinoShiz` (flat)
+│   │   ├── Generators/               — SkiaSharp race frames, LZW GIF89a encoder
+│   │   ├── Helpers/                  — Mulberry32 PRNG, Locales, TimeHelper, …
+│   │   └── Services/
+│   │       ├── BotHostedService.cs             — IHostedService: polling / webhook, auto-migrates DB
+│   │       ├── UpdateHandler.cs                — entrypoint: wraps Update into ctx
+│   │       ├── PokerTurnTimeoutService.cs      — hosted sweeper for stuck poker turns
+│   │       ├── BlackjackHandTimeoutService.cs  — hosted sweeper for stuck blackjack hands
+│   │       ├── CaptchaService.cs, TaxService.cs
+│   │       ├── Analytics/ClickHouseReporter.cs
+│   │       ├── Pipeline/                       — middleware, router, route attributes
+│   │       ├── Handlers/                       — Telegram transport, one per feature
+│   │       ├── Economics/                      — balance bounded context (Dapper + FOR UPDATE)
+│   │       ├── Admin/, Dice/, Horse/, Blackjack/, Leaderboard/, Redeem/
+│   │       └── Poker/{Domain,Application,Presentation}
+│   └── CasinoShiz.Data/              — EF Core DbContext + entities + migrations
+│       ├── Data/AppDbContext.cs
+│       ├── Data/Entities/            — POCOs (UserState, PokerTable, BlackjackHand, …)
+│       └── Migrations/               — EF migrations + ModelSnapshot
+└── tests/CasinoShiz.Tests/           — xUnit project (71 tests)
 ```
+
+Namespaces are flat under `CasinoShiz.*` regardless of project/folder depth (e.g. `CasinoShiz.Services.Economics`, not `CasinoShiz.Core.Services.Economics`). `RootNamespace` is set explicitly in `CasinoShiz.Core.csproj`.
 
 ## Architecture
 
@@ -62,11 +73,14 @@ Telegram ─► BotHostedService (polling loop  OR  webhook POST /{token})
               └─► UpdatePipeline.InvokeAsync (delegate chain)
                    ├─ ExceptionMiddleware       catch + log + report to ClickHouse
                    ├─ LoggingMiddleware         scope: update_id/user_id/chat_id, duration
+                   ├─ RateLimitMiddleware       per-user/per-chat rate limit
                    └─ UpdateRouter.DispatchAsync
                         first-match against attribute-scanned routes
                         └─► IUpdateHandler.HandleAsync   (DiceHandler, PokerHandler, …)
                              └─► feature service         (DiceService, PokerService, …)
-                                  └─► AppDbContext (EF) + ClickHouseReporter
+                                  ├─► AppDbContext (EF) for CRUD + models
+                                  ├─► EconomicsService (Dapper + FOR UPDATE) for balance
+                                  └─► ClickHouseReporter
 ```
 
 The pipeline is composed in `Services/Pipeline/UpdatePipeline.cs` as a plain delegate chain. Adding middleware = one file + one line. Order is explicit in `UpdatePipeline.cs` — exception first so it wraps everything downstream.
@@ -98,42 +112,53 @@ Attribute family (`Services/Pipeline/RouteAttributes.cs`):
 Two ordering rules fall out of this scheme for free:
 
 1. `/horserun` outranks `/horse` because its prefix is longer (priority 109 vs 106).
-2. `CallbackPrefix("poker:")` (200) outranks `CallbackFallback` (1), so poker callbacks land in `PokerHandler` and anything else falls through to `RedeemHandler`'s captcha.
+2. `CallbackPrefix("poker:")` and `CallbackPrefix("bj:")` (200) outrank `CallbackFallback` (1), so poker/blackjack callbacks land in their handlers and anything else falls through to `RedeemHandler`'s captcha.
 
 To add a command: drop a handler class in `Services/Handlers/` implementing `IUpdateHandler`, decorate it with one or more route attributes, register it in `Program.cs` as scoped. No router changes needed.
 
 ### Middleware
 
-- **`ExceptionMiddleware`** — catches everything except `OperationCanceledException` during shutdown. Logs `update.error` (EventId 1900), reports an `error_handler` event to ClickHouse with exception type + message + stack. Swallows the exception so the polling loop keeps running.
-- **`LoggingMiddleware`** — `BeginScope` with structured props (`update_id`, `user_id`, `chat_id`, `kind`). Logs `update.in` (1001) at entry and `update.out` (1002) at exit with `duration_ms` measured via `Stopwatch.GetTimestamp`. Text is truncated to 80 chars.
+- **`ExceptionMiddleware`** — catches everything except `OperationCanceledException` during shutdown. Logs `update.error`, reports an `error_handler` event to ClickHouse with exception type + message + stack. Swallows the exception so the polling loop keeps running.
+- **`LoggingMiddleware`** — `BeginScope` with structured props (`update_id`, `user_id`, `chat_id`, `kind`). Logs `update.in` at entry and `update.out` at exit with `duration_ms` measured via `Stopwatch.GetTimestamp`. Text is truncated.
+- **`RateLimitMiddleware`** — per-user / per-chat token-bucket limiter; drops updates above the threshold to keep handlers from being hammered.
 
-All logging uses source-generated `[LoggerMessage]` for zero-allocation structured logs. EventId ranges: 1000s = pipeline, 1100s = router, 1900 = error.
+All logging uses source-generated `[LoggerMessage]` for zero-allocation structured logs.
 
 ### Handler vs Service
 
 Handlers in `Services/Handlers/` are the transport layer. They own:
 
 - parsing text commands (or delegating to a parser),
-- mapping service-level error enums (`PokerError`, `HorseError`, `DiceOutcome`, `BeginRedeemError`, …) to localized Russian strings,
+- mapping service-level error enums (`PokerError`, `HorseError`, `DiceOutcome`, `BlackjackError`, `BeginRedeemError`, …) to localized Russian strings,
 - rendering state (inline keyboards, Markdown/HTML messages),
 - calling the corresponding Service.
 
-Services own domain logic + DB + ClickHouse + logs. They return plain result records (`DicePlayResult`, `PayResult`, `BeginRedeemResult`, …) — never throw for business-rule violations. This keeps handlers trivial and makes services reusable from non-Telegram code (e.g. `PokerTurnTimeoutService` calls `PokerService.RunAutoActionAsync` directly).
+Services own domain logic + DB + ClickHouse + logs. They return plain result records (`DicePlayResult`, `PayResult`, `BlackjackResult`, …) — never throw for business-rule violations. This keeps handlers trivial and makes services reusable from non-Telegram code (e.g. `PokerTurnTimeoutService` calls `PokerService.RunAutoActionAsync` directly; `BlackjackHandTimeoutService` settles stuck blackjack hands).
 
-The split is applied to **every** feature now: Dice, Redeem, Leaderboard, Admin, Horse, Poker each have a matching `<Feature>Service` + `<Feature>Results`. Channel and Chat are still transport-only because they have minimal logic.
 
-Handler line counts as of this doc:
 
-| Handler | LOC |
-|---|---|
-| PokerHandler | 296 |
-| RedeemHandler | 195 |
-| ChatHandler | 148 |
-| HorseHandler | 145 |
-| AdminHandler | 143 |
-| LeaderboardHandler | 115 |
-| DiceHandler | 93 |
-| ChannelHandler | 78 |
+## Economics (balance bounded context)
+
+`Services/Economics/EconomicsService.cs` is the **only** place balances mutate. Every service that wants to change a user's `Coins` goes through it:
+
+```csharp
+await economics.DebitAsync(user, amount, "horse.bet", ct);           // throws on insufficient funds
+await economics.TryDebitAsync(user, amount, "poker.join", ct);       // bool: did it succeed?
+await economics.CreditAsync(user, payout, "blackjack.settle", ct);
+await economics.AdjustAsync(user, delta, "dice.play", ct);           // positive or negative
+await economics.AdjustUncheckedAsync(user, delta, "admin.pay", ct);  // allows negative balance (admin only)
+```
+
+Internally:
+
+- On a relational provider (Postgres in prod), each call opens `SELECT "Coins", "Version" FROM "Users" WHERE "TelegramUserId" = @id FOR UPDATE`, validates the change, writes back via Dapper, and bumps `Version`. The query uses EF's `DbConnection` so if the caller has started a `DbContext` transaction the mutation joins that transaction — balance + bet insert land atomically.
+- On the `InMemoryDatabase` provider (unit tests), it falls back to direct mutation of the tracked entity since there's no real DB to lock.
+
+Because Dapper is the sole writer on UPDATE, EF is configured to ignore `Coins` and `Version` on save (`AppDbContext.OnModelCreating` sets `SetAfterSaveBehavior(Ignore)` on both). EF still writes them on INSERT for new users. A typo of `user.Coins += 10` anywhere outside `EconomicsService` is now a silent no-op at persistence time — easy to catch in review, impossible to half-commit.
+
+`Version` is monotonically incremented per mutation for audit + future replication use; the FOR UPDATE lock replaces the old optimistic-concurrency token.
+
+Events logged per call: `economics.credit / economics.debit / economics.debit_rejected / economics.adjust_unchecked` with `{UserId, Amount, Balance, Reason}`.
 
 ## Poker (DDD split)
 
@@ -149,7 +174,7 @@ Services/Poker/
 │   └── PokerDomain.cs       (StartHand, Validate, Apply, ResolveAfterAction, DecideAutoAction)
 ├── Application/     — orchestration: transactions, logs, ClickHouse
 │   ├── PokerResults.cs      (PokerError, TableSnapshot, Create/Join/Leave/Start/ActionResult)
-│   └── PokerService.cs      (EF access + SemaphoreSlim Gate + emits domain calls)
+│   └── PokerService.cs      (EF access + SemaphoreSlim Gate + emits domain calls + EconomicsService for buy-ins/cashout)
 └── Presentation/    — Telegram surface
     ├── PokerCommand.cs          (discriminated union: Usage/Create/Join/Start/Raise/…)
     ├── PokerCommandParser.cs    (text + callback data → PokerCommand)
@@ -168,11 +193,25 @@ The domain layer operates on `PokerTable` / `PokerSeat` entities (mutates in pla
 
 `PokerService.ResolveAfterActionAsync` is the thin shim that invokes the domain, persists, and translates the transition into `ActionResult` + structured logs + ClickHouse events (`poker_hand_end` with reason).
 
-**Concurrency.** A single `PokerService.Gate` (`SemaphoreSlim(1,1)`) serializes all write operations across all tables. For the expected load (a handful of concurrent tables) this is fine. If it ever matters, move to a per-table gate keyed on `InviteCode`.
+**Concurrency.** A single `PokerService.Gate` (`SemaphoreSlim(1,1)`) serializes all write operations across all tables. For the expected load (a handful of concurrent tables) this is fine. If it ever matters, move to a per-table gate keyed on `InviteCode`. Balance changes (buy-in, cashout) go through `EconomicsService` so they participate in the same row-level lock as any other balance-touching operation.
 
 **Timeouts.** `PokerTurnTimeoutService` (hosted) polls every 10 s for `PokerTable` rows where `Status == HandActive && LastActionAt < now - PokerTurnTimeoutMs`. For each stuck table it calls `PokerService.RunAutoActionAsync(code)` — which runs `PokerDomain.DecideAutoAction` (check if possible, else fold) and broadcasts. Same path handles restart recovery: after the bot restarts, the sweeper picks up any hand still waiting on a player.
 
 **UI model.** Each seated player has a private DM with one `StateMessageId` that the bot edits in place on every state change (`editMessageText`, falls back to a fresh send if deleted). Hole cards live in that DM naturally — the bot stores only the last message ID, not the rendered text.
+
+## Blackjack
+
+`Services/Blackjack/BlackjackService.cs` runs classic single-deck blackjack against the dealer. Public API:
+
+- `StartAsync(userId, displayName, chatId, bet, ct)` — debits bet via EconomicsService, deals two cards each, auto-settles on natural blackjack.
+- `HitAsync(userId, ct)` — adds a card; auto-settles on bust.
+- `StandAsync(userId, ct)` — dealer draws to 17, then resolves.
+- `DoubleAsync(userId, ct)` — doubles the bet, draws exactly one card, resolves.
+- `GetSnapshotAsync(userId, ct)` / `SetStateMessageIdAsync(...)` — UI helpers for in-place edits (same `StateMessageId` pattern as poker).
+
+Hand state lives in a `BlackjackHands` table keyed on `UserId` (one active hand per user). Dealer rule: hit until hard 17+. Payouts: push = bet back, win = 2× bet, natural blackjack = 2.5× bet.
+
+`BlackjackHandTimeoutService` is a hosted sweeper that force-settles hands idle past a threshold so no bet is stuck indefinitely.
 
 ## Horse racing
 
@@ -198,7 +237,7 @@ Returns `DicePlayResult { Outcome, Prize, Loss, NewBalance, TotalAttempts, MoreR
 
 ## Redeem (freespin codes)
 
-`RedeemService` + `RedeemHandler` + `CaptchaService`. Codes generated by an admin (`/codegen`, in-group) and redeemed by users (`/redeem <uuid>` in private chat). The captcha is emoji-based: `CaptchaService` picks N random items from a fixed Russian emoji list using `Mulberry32` seeded by the code, corrupts ~25% of characters in descriptions via a typo map, and asks the user to match. In-memory state `RedeemHandler.PendingCaptchas` expires after 15 s via `Task.Run(async () => await Task.Delay(15_000); remove())`. Callback-based UI — this is why the router has a `[CallbackFallback]` route to `RedeemHandler`.
+`RedeemService` + `RedeemHandler` + `CaptchaService`. Codes generated by an admin (`/codegen`, in-group) and redeemed by users (`/redeem <uuid>` in private chat). The captcha is emoji-based: `CaptchaService` picks N random items from a fixed Russian emoji list using `Mulberry32` seeded by the code, corrupts ~25% of characters in descriptions via a typo map, and asks the user to match. In-memory state `RedeemHandler.PendingCaptchas` expires after 15 s. Callback-based UI — this is why the router has a `[CallbackFallback]` route to `RedeemHandler`.
 
 Successful redemption adds `ExtraAttempts` (default +3) to the user and sets `FreespinCode.Active = false`.
 
@@ -208,11 +247,13 @@ Successful redemption adds `ExtraAttempts` (default +3) to the user and sets `Fr
 
 ## Admin
 
-`AdminService` handles: `usersync` (syncs the user table to ClickHouse for analytics joins), `userinfo` (reply-to → user id), `pay <id> <amount>` (manual coin adjustment), `getUser <id>` (raw JSON dump), `rename <old> <new|*>` (display-name override, `*` clears). All admin commands gate on `BotOptions.Admins` containing the caller's Telegram ID.
+### Telegram commands
+
+`AdminService` handles: `usersync` (syncs the user table to ClickHouse for analytics joins), `userinfo` (reply-to → user id), `pay <id> <amount>` (manual coin adjustment via `EconomicsService.AdjustUncheckedAsync`), `getUser <id>` (raw JSON dump), `rename <old> <new|*>` (display-name override, `*` clears). Also: `cancel_blackjack` (refund an active blackjack hand) and `kick_poker` (remove a user from their poker table, refund stack). All admin commands gate on `BotOptions.Admins` containing the caller's Telegram ID.
 
 Events emitted: `admin_command` with `{ command, calleeId, … }` and `user_map` during `usersync`.
 
-### Becoming an admin (Telegram)
+#### Becoming an admin
 
 1. Get your numeric Telegram user ID (message `@userinfobot`).
 2. Add it to `Bot:Admins` in `src/CasinoShiz/appsettings.json`:
@@ -221,11 +262,13 @@ Events emitted: `admin_command` with `{ command, calleeId, … }` and `user_map`
    ```
 3. Restart the bot — options are bound at startup.
 
-Telegram admin-only commands: `/horserun`, `/run <subcmd>`, `/codegen`, `/rename`, `/renames`, `/notification`. Non-admin callers of `/horserun` are silently ignored (see `HorseHandler.HandleRunAsync`).
+Telegram admin-only commands: `/horserun`, `/run <subcmd>`, `/codegen`, `/rename`, `/renames`, `/notification`. Non-admin callers of `/horserun` are silently ignored.
 
 ### Admin web UI
 
-The ASP.NET app serves Razor pages under `/admin` (see `src/CasinoShiz/Pages/`) on the same port as the webhook (`3000`). Access is gated by a shared-secret query-string token:
+The ASP.NET app serves Razor pages under `/admin` (see `src/CasinoShiz/Pages/`) on the same port as the webhook (`3000`). Runtime compilation is enabled, so `.cshtml` edits don't require a rebuild. Pages include overview stats, user search + detail (bets, codes, active poker/blackjack state), and manual admin actions.
+
+Access is gated by a shared-secret token:
 
 1. Set `Bot:AdminWebToken` in `appsettings.json` to an unguessable string (e.g. `openssl rand -hex 32`):
    ```json
@@ -245,83 +288,95 @@ Leave `AdminWebToken` empty in any environment where `/admin` should stay disabl
 
 ## Analytics
 
-`ClickHouseReporter` is a singleton that buffers events (size 10, interval 3 s, `Timer`-driven flush). Events are tagged with `EventType` (e.g. `dice`, `horse_bet`, `poker_action`, `admin_command`, `error_handler`, `update_in`) and a `Payload` object serialized via `System.Text.Json`. If ClickHouse is unreachable at startup the connection is set to null and events become no-ops — the bot never blocks on analytics.
+`ClickHouseReporter` is a singleton that buffers events (size 10, interval 3 s, `Timer`-driven flush). Events are tagged with `EventType` (e.g. `dice`, `horse_bet`, `poker_action`, `blackjack`, `admin_command`, `error_handler`, `update_in`) and a `Payload` object serialized via `System.Text.Json`. If ClickHouse is unreachable at startup the connection is set to null and events become no-ops — the bot never blocks on analytics.
 
 Table schema is ensured once at startup (`CreateTableIfNotExists`). The table is wide and schemaless-ish: a `timestamp` column plus an `event_type` and a JSON `payload` column; downstream queries unpack the JSON.
 
 ## Data model
 
-All entities are plain POCOs under `Data/Entities/`, each using `[MaxLength]` data annotations for string columns so EF emits correct `VARCHAR(n)` in migrations (SQLite itself doesn't enforce it).
+All entities are plain POCOs under `CasinoShiz.Data/Data/Entities/`, each using `[MaxLength]` data annotations so EF emits correct Postgres column sizes.
 
 | Entity | Key | Indexes | Purpose |
 |---|---|---|---|
-| `UserState` | `TelegramUserId` | — | Coins, daily attempts, last-seen day (UTC+7) |
+| `UserState` | `TelegramUserId` | — | Coins, daily attempts, last-seen day (UTC+7), Version counter |
 | `ChatRegistration` | `ChatId` | — | Chats that receive channel broadcasts + game events |
 | `HorseBet` | `Id` (Guid) | `(RaceDate, UserId)` | Day-scoped bets; race winner resolves all |
-| `HorseResult` | `RaceDate` | — | One row per day; holds the winner + GIF bytes |
+| `HorseResult` | `RaceDate` | — | One row per day; holds the winner + last-frame PNG |
 | `FreespinCode` | `Code` (Guid) | `Active` | Code lifecycle: issued → redeemed (`Active=false`) |
 | `DisplayNameOverride` | `OriginalName` | — | Admin-set rename; keyed on *old* display name |
 | `PokerTable` | `InviteCode` (8 chars) | `Status` | Per-table state machine + deck |
 | `PokerSeat` | `(InviteCode, Position)` composite | `UserId` | One row per seated player |
+| `BlackjackHand` | `UserId` | — | At most one active hand per user |
+
+`UserState.Coins` and `UserState.Version` are configured with `SetAfterSaveBehavior(PropertySaveBehavior.Ignore)` — EF writes them on INSERT only. Post-insert, `EconomicsService` (Dapper) owns those columns.
 
 ### Migrations
 
-`Migrations/20260418000000_InitialCreate.cs` is the baseline migration matching the current model. `BotHostedService` runs `db.Database.MigrateAsync(cancellationToken)` on startup — new deployments get the schema; existing ones skip if the migration history row is already present.
+`CasinoShiz.Data/Migrations/20260420000000_InitialCreate.cs` is the consolidated baseline for Postgres; `ModelSnapshotBuilder.cs` is shared between the migration's `.Designer.cs` and `AppDbContextModelSnapshot.cs`. `BotHostedService` runs `db.Database.MigrateAsync(cancellationToken)` on startup — new deployments get the schema; existing ones skip migrations already recorded in `__EFMigrationsHistory`.
 
-**Caveat:** if you have an existing `busino.db` created by the old `EnsureCreated` path (no `__EFMigrationsHistory` table), `MigrateAsync` will try to create tables that already exist and fail. Fix options: (a) drop the DB and recreate, or (b) insert a row into `__EFMigrationsHistory` with `MigrationId = '20260418000000_InitialCreate'` to mark it applied. New installs are unaffected.
+Generate subsequent migrations from `src/CasinoShiz` (the `Microsoft.EntityFrameworkCore.Design` tooling lives on the web project):
 
-Subsequent migrations should be generated with `dotnet ef migrations add <Name>` (requires the matching ASP.NET Core 10 runtime to be installed locally). The baseline `InitialCreate` and its `AppDbContextModelSnapshot` were hand-authored because the tooling wasn't available in the dev environment at the time.
+```bash
+dotnet ef migrations add <Name> --project ../CasinoShiz.Data --startup-project .
+dotnet ef database update --project ../CasinoShiz.Data --startup-project .
+```
 
 ## Testing
 
-`tests/BusinoBot.Tests/BusinoBot.Tests.csproj` — xUnit project, 47 tests. Uses `DisableTransitiveFrameworkReferences=true` so the test host runs on plain .NET Core without requiring ASP.NET Core runtime (the main project is Web SDK; the transitive reference would otherwise demand it).
+`tests/CasinoShiz.Tests/` — xUnit project, 71 tests. Uses `DisableTransitiveFrameworkReferences=true` so the test host runs on plain .NET Core without requiring ASP.NET Core runtime (the web project is Web SDK; the transitive reference would otherwise demand it).
 
 Covered:
 
-- **`DicePrizeTests`** — `DecodeRolls` bit-packing, `GetMoreRollsAvailable` across current-day/new-day/exhausted/extras.
+- **`DicePrizeTests`** — `DecodeRolls` bit-packing, `GetMoreRollsAvailable` across current-day / new-day / exhausted / extras.
 - **`DiceServiceTests`** — `PlayAsync` with in-memory EF: forwarded, new user, not-enough-coins, attempts-exhausted, redeem mode, success path.
+- **`BlackjackServiceTests`** — start/hit/stand/double paths, natural blackjack, push, dealer hit-to-17, bust settlement.
+- **`BlackjackHandValueTests`** — ace-as-1 vs ace-as-11, soft totals, natural detection.
+- **`AdminServiceTests`** — cancel blackjack refund path.
+- **`HandEvaluatorTests`** — royal flush beats quads, full house beats flush, wheel straight, category mapping.
 - **`TaxServiceTests`** — gas tax (zero / large), bank tax (low / mid / high / cap).
 - **`Mulberry32Tests`** — deterministic sequences, different seeds, range invariants.
-- **`RussianPluralTests`** — nominative/genitive/plural forms across edge cases.
-- **`HandEvaluatorTests`** — royal flush beats quads, full house beats flush, wheel straight, category mapping.
+- **`RussianPluralTests`** — nominative / genitive / plural forms across edge cases.
 - **`UpdateRouterTests`** — every handler implements `IUpdateHandler`, attribute presence per handler, `/horserun` priority > `/horse`.
 
-Run: `dotnet test tests/BusinoBot.Tests/BusinoBot.Tests.csproj`.
+Run: `dotnet test` (or `dotnet test --filter "FullyQualifiedName~BlackjackServiceTests"` for a single class).
+
+Tests run against EF Core's `InMemoryDatabase`. `EconomicsService` detects this via `db.Database.IsRelational()` and falls back to direct entity mutation — Dapper + FOR UPDATE only engages against Postgres. Testcontainers-postgres is a planned upgrade so the locking path is exercised under test.
 
 ## Configuration
 
-`src/CasinoShiz/appsettings.json` is the source of truth; `appsettings.Development.json` and Docker `.env` override. Secrets `Bot:Token` and `Bot:Admins` must be set to run the bot.
+`src/CasinoShiz/appsettings.json` is the source of truth; `appsettings.Development.json` and Docker `.env` override. Secrets `Bot:Token` and `Bot:Admins` must be set to run the bot. `ConnectionStrings:Postgres` points at the Postgres instance.
 
 `Bot` section highlights:
 
 - `IsProduction` — `true` switches from long polling to webhook (`POST /{token}`).
-- `TrustedChannel` — channel whose posts `ChannelHandler` forwards to registered chats (default `@businonews`).
+- `TrustedChannel` — channel whose posts `ChannelHandler` forwards to registered chats (default `@cazinonews`).
 - `Poker*` — buy-in, blinds, max players (≤6), turn timeout (ms).
+- `Blackjack{Min,Max}Bet` — per-hand bet bounds.
 - `FreecodeProbability`, `AttemptsLimit`, `DiceCost` — dice tuning.
 - `DaysOfInactivityToHideInTop` — leaderboard visibility cutoff.
 - `CaptchaItems` — how many emoji items to present in a redeem captcha.
+- `AdminWebToken` — shared secret gating `/admin` pages.
 
 `ClickHouse` section: set `Enabled: false` to silence analytics locally. If enabled but unreachable, the reporter logs and drops events instead of blocking the request.
 
 ## Running
 
 ```bash
-cd BusinoBot
+cd CasinoShiz
 dotnet build
-dotnet run --project src/CasinoShiz   # polling mode
-dotnet test                            # 47 tests
+dotnet run --project src/CasinoShiz 
+dotnet test                
 ```
 
-Docker:
+Docker (brings up everything the bot needs):
 
 ```bash
-cd BusinoBot
-docker compose up --build              # brings up bot + clickhouse + grafana
+docker compose up --build              # postgres + clickhouse + bot + grafana
 ```
 
-The ClickHouse healthcheck uses `clickhouse-client --query 'SELECT 1'` (Alpine BusyBox `wget` doesn't handle the ping endpoint reliably).
+The compose file overrides `ConnectionStrings__Postgres` on the bot service so it resolves `Host=postgres` (the compose service name) rather than `localhost`. Postgres and ClickHouse have healthchecks; the bot waits for `service_healthy` on both.
 
-`/health` endpoint returns `ok` in any mode and is the Docker healthcheck target for the bot service.
+`/health` endpoint returns `ok` in any mode.
 
 ### Ports & URLs
 
@@ -332,15 +387,14 @@ Defaults, from `docker-compose.yml`:
 | Bot (ASP.NET) | 3000 | `http://localhost:3000` | Webhook + admin UI + `/health` |
 | Bot — webhook | 3000 | `POST http://localhost:3000/{botToken}` | Telegram pushes updates here when `IsProduction=true` |
 | Bot — admin UI | 3000 | `http://localhost:3000/admin?token=…` | Razor pages, token-gated |
-| Bot — health | 3000 | `http://localhost:3000/health` | Returns `ok` |
-| ClickHouse HTTP | 8123 | `http://localhost:8123` | Queries (`?query=SELECT…`) |
+| Postgres | 5432 | `postgres://cazino:cazino@localhost:5432/cazino` | Primary datastore |
+| ClickHouse HTTP | 8123 | `http://localhost:8123` | Analytics queries (`?query=SELECT…`) |
+| ClickHouse native | 9000 | — | Native protocol |
 | Grafana | 3001 | `http://localhost:3001` | Dashboards (default `admin`/`admin`) |
-
-`Bot:WebhookPort` in `appsettings.json` sets the in-container listen port; the host mapping comes from `docker-compose.yml`. When running the bot locally (`dotnet run`) against Docker ClickHouse, the app's `ClickHouse:Host` stays as `http://localhost:8123`; when the bot runs inside compose, point it at `http://clickhouse:8123` via `.env`.
 
 ### Analytics
 
-- **Grafana** — http://localhost:3001, credentials from `.env` (`GRAFANA_ADMIN_USER`/`GRAFANA_ADMIN_PASSWORD`, default `admin`/`admin`). The ClickHouse datasource is auto-provisioned; the `overview.json` dashboard in `grafana/dashboards/` loads on first boot.
+- **Grafana** — http://localhost:3001, credentials from `.env` (`GRAFANA_ADMIN_USER`/`GRAFANA_ADMIN_PASSWORD`, default `admin`/`admin`). The ClickHouse datasource is auto-provisioned from `grafana/provisioning/`.
 - **Raw ClickHouse** — `curl 'http://localhost:8123/?query=SELECT+*+FROM+analytics.events+LIMIT+10'` or `docker compose exec clickhouse clickhouse-client`.
 
 ## Bot commands
@@ -352,14 +406,15 @@ All UI is in Russian; command names are ASCII.
 | Command | Effect |
 |---|---|
 | `🎰` (native dice emoji) | Spin the slot machine — deducts `DiceCost` from balance, applies gas + bank tax, pays from prize table. |
-| `/balance` | Current coins + tier emoji (`NameDecorators`). |
+| `/balance` | Current coins + tier emoji. |
 | `/top` | Per-chat leaderboard; inactive users hidden after `DaysOfInactivityToHideInTop`. |
 | `/help` | Russian command reference. |
 | `/horse bet <1-N> <amount>` | Place a bet on today's race. |
 | `/horse info` | Current day's bets + koefs. |
 | `/horse result` | Today's winner image (if a race has run). |
 | `/redeem <uuid>` | Redeem a freespin code (**private chat only**, emoji captcha). |
-| `/poker …` | See `PokerCommandParser.cs` — create/join/start/fold/call/raise/check/leave. |
+| `/poker …` | See `PokerCommandParser.cs` — create / join / start / fold / call / raise / check / leave. |
+| `/blackjack <bet>` | Start a blackjack hand; callback buttons drive hit / stand / double. |
 
 ### Chat-owner-only (gated via Telegram `getChatMember`)
 
@@ -376,8 +431,10 @@ All UI is in Russian; command names are ASCII.
 | `/codegen [count]` | Generate freespin code(s) in a group. |
 | `/run usersync` | Sync user table → ClickHouse. |
 | `/run userinfo` | Reply to a message → returns that user's ID. |
-| `/run pay <id> <amount>` | Manual coin adjustment. |
+| `/run pay <id> <amount>` | Manual coin adjustment (via `EconomicsService.AdjustUncheckedAsync`). |
 | `/run getUser <id>` | JSON dump of a `UserState`. |
+| `/run cancel_blackjack <id>` | Refund and remove a stuck blackjack hand. |
+| `/run kick_poker <id>` | Remove a user from their poker table and refund their stack. |
 | `/rename <old> <new\|*>` | Display-name override; `*` clears it. |
 | `/renames` | List all active overrides. |
 
@@ -388,10 +445,11 @@ New users start with **100 coins** and **3 daily attempts**. Day rolls over at m
 - User-facing strings are Russian and live in `Helpers/Locales.cs`. Don't inline literals in handlers — add a formatter method.
 - Plural forms via `RussianPlural.Plural(n, ["монета","монеты","монет"])` — picks the right of three variants based on Russian grammar rules.
 - Seeded RNG: `Mulberry32` — used anywhere the outcome must be reproducible (captcha, horse speeds, poker shuffle).
-- No `Task.Delay` for scheduling — use an `IHostedService` sweeper so state survives restart (see `PokerTurnTimeoutService`).
+- No `Task.Delay` for scheduling — use an `IHostedService` sweeper so state survives restart (see `PokerTurnTimeoutService`, `BlackjackHandTimeoutService`).
 - Services return result records; handlers map them to messages. Only throw for programmer errors, not user input.
-- Single-writer SQLite with EF Core: one `SaveChangesAsync` per logical operation is the unit of work. `PokerService` adds a process-wide `SemaphoreSlim` on top.
-- Logging: source-generated `[LoggerMessage]` only. Each event gets a stable `EventId`. No string interpolation in log calls.
+- EF Core is for CRUD + models + migrations. Dapper is for hot paths where raw SQL matters — today, only `EconomicsService`; leaderboard and horse-bet queries are next on the list.
+- **Balance changes go through `EconomicsService` — always.** Never mutate `UserState.Coins` directly. Direct writes to `Coins` are silently dropped by EF (by design) so the compiler won't catch the mistake, only review will.
+- Logging: source-generated `[LoggerMessage]` only. Each event gets a stable name. No string interpolation in log calls.
+- Primary constructors are the default (e.g. `public sealed class Foo(Dep dep) : IBar`).
+- Services are `Scoped`; hosted services and `ClickHouseReporter` are `Singleton`; `ITelegramBotClient` and `NpgsqlDataSource` are `Singleton`.
 - Adding a route: decorate the handler class with an attribute from `RouteAttributes.cs`. No central registration.
-
-
