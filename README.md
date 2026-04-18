@@ -39,6 +39,10 @@ Built with ASP.NET Core (.NET 10), Telegram.Bot, EF Core + Dapper (Postgres), an
    ```
    Create `.env` with environment overrides. Docker setup includes ClickHouse and Grafana.
 
+
+## Admin 
+
+To open the admin panel go to `https://localhost:5001/admin` and login with your Telegram user ID (must be listed in `appsettings.json`).
 ## Project Structure
 
 ```
