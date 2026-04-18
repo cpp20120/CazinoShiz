@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <RootNamespace>BusinoBot.Tests</RootNamespace>
+    <RootNamespace>CasinoShiz.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

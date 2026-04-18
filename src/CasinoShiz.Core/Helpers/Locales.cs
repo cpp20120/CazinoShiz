@@ -191,4 +191,32 @@ public static class Locales
         Data.Entities.PokerPhase.Showdown => "Шоудаун",
         _ => "—",
     };
+
+    public static string BlackjackUsage(int minBet, int maxBet) =>
+        $"🃏 <b>Блэкджек</b>\n\n" +
+        $"/blackjack <i>ставка</i> — начать раздачу (от {minBet} до {maxBet}).\n" +
+        $"Кнопки: Ещё / Стоп / Удвоить.";
+
+    public static string BlackjackInvalidBet(int minBet, int maxBet) =>
+        $"Ставка должна быть от {minBet} до {maxBet} монет.";
+
+    public static string BlackjackNotEnoughCoins() => "Не хватает монет для этой ставки.";
+    public static string BlackjackHandInProgress() => "Раздача уже идёт — сначала доиграй её.";
+    public static string BlackjackNoActiveHand() => "Нет активной раздачи. /blackjack <i>ставка</i>";
+    public static string BlackjackCannotDouble() => "Удвоить можно только на первом действии.";
+
+    public static string BlackjackOutcome(Services.Blackjack.BlackjackOutcome outcome, int bet, int payout)
+    {
+        var net = payout - bet;
+        return outcome switch
+        {
+            Services.Blackjack.BlackjackOutcome.PlayerBlackjack => $"🎉 Блэкджек! Выигрыш: +{net}",
+            Services.Blackjack.BlackjackOutcome.PlayerWin => $"✅ Победа! Выигрыш: +{net}",
+            Services.Blackjack.BlackjackOutcome.DealerBust => $"💥 Дилер перебрал! Выигрыш: +{net}",
+            Services.Blackjack.BlackjackOutcome.PlayerBust => $"💀 Перебор. Потеря: -{bet}",
+            Services.Blackjack.BlackjackOutcome.DealerWin => $"😞 Дилер победил. Потеря: -{bet}",
+            Services.Blackjack.BlackjackOutcome.Push => "🤝 Ничья. Ставка возвращена.",
+            _ => "",
+        };
+    }
 }

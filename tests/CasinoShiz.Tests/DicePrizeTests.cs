@@ -3,7 +3,7 @@ using CasinoShiz.Data.Entities;
 using CasinoShiz.Services.Dice;
 using Xunit;
 
-namespace BusinoBot.Tests;
+namespace CasinoShiz.Tests;
 
 public class DicePrizeTests
 {

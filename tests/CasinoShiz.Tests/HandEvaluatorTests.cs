@@ -1,7 +1,7 @@
 using CasinoShiz.Services.Poker.Domain;
 using Xunit;
 
-namespace BusinoBot.Tests;
+namespace CasinoShiz.Tests;
 
 public class HandEvaluatorTests
 {

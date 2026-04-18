@@ -13,4 +13,7 @@ public class UserState
     public long LastDayUtc { get; set; }
     public int AttemptCount { get; set; }
     public int ExtraAttempts { get; set; }
+    public int BlackjackHandsPlayed { get; set; }
+
+    public long Version { get; set; }
 }

@@ -3,6 +3,7 @@ using CasinoShiz.Data;
 using CasinoShiz.Data.Entities;
 using CasinoShiz.Helpers;
 using CasinoShiz.Services.Analytics;
+using CasinoShiz.Services.Economics;
 using Microsoft.Extensions.Options;
 
 namespace CasinoShiz.Services.Dice;
@@ -10,7 +11,8 @@ namespace CasinoShiz.Services.Dice;
 public sealed class DiceService(
     AppDbContext db,
     IOptions<BotOptions> options,
-    ClickHouseReporter reporter)
+    ClickHouseReporter reporter,
+    EconomicsService economics)
 {
     private readonly BotOptions _opts = options.Value;
 
@@ -67,7 +69,7 @@ public sealed class DiceService(
         var tax = ComputeBankTax(user.Coins, daysWithoutRolls);
         var attemptsCount = isCurrentDay ? user.AttemptCount + 1 : 1;
 
-        user.Coins = user.Coins + prize - loss;
+        await economics.AdjustAsync(user, prize - loss, "dice.play", ct);
         user.LastDayUtc = currentDayMs;
         user.AttemptCount = attemptsCount;
         user.ExtraAttempts = isCurrentDay ? user.ExtraAttempts : 0;

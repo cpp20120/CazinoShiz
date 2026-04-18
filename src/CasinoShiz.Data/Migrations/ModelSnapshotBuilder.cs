@@ -9,32 +9,46 @@ internal static class ModelSnapshotBuilder
 {
     public static void Build(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity("CasinoShiz.Data.Entities.BlackjackHand", b =>
+        {
+            b.Property<long>("UserId").HasColumnType("bigint");
+            b.Property<int>("Bet").HasColumnType("integer");
+            b.Property<long>("ChatId").HasColumnType("bigint");
+            b.Property<long>("CreatedAt").HasColumnType("bigint");
+            b.Property<string>("DealerCards").IsRequired().HasMaxLength(64).HasColumnType("text");
+            b.Property<string>("DeckState").IsRequired().HasMaxLength(256).HasColumnType("text");
+            b.Property<string>("PlayerCards").IsRequired().HasMaxLength(64).HasColumnType("text");
+            b.Property<int?>("StateMessageId").HasColumnType("integer");
+            b.HasKey("UserId");
+            b.ToTable("BlackjackHands");
+        });
+
         modelBuilder.Entity("CasinoShiz.Data.Entities.ChatRegistration", b =>
         {
-            b.Property<long>("ChatId").HasColumnType("INTEGER");
-            b.Property<string>("Name").IsRequired().HasMaxLength(255).HasColumnType("TEXT");
-            b.Property<bool>("NotificationsEnabled").HasColumnType("INTEGER");
-            b.Property<string>("Username").HasMaxLength(32).HasColumnType("TEXT");
+            b.Property<long>("ChatId").HasColumnType("bigint");
+            b.Property<string>("Name").IsRequired().HasMaxLength(255).HasColumnType("text");
+            b.Property<bool>("NotificationsEnabled").HasColumnType("boolean");
+            b.Property<string>("Username").HasMaxLength(32).HasColumnType("text");
             b.HasKey("ChatId");
             b.ToTable("Chats");
         });
 
         modelBuilder.Entity("CasinoShiz.Data.Entities.DisplayNameOverride", b =>
         {
-            b.Property<string>("OriginalName").HasMaxLength(64).HasColumnType("TEXT");
-            b.Property<string>("NewName").IsRequired().HasMaxLength(64).HasColumnType("TEXT");
+            b.Property<string>("OriginalName").HasMaxLength(64).HasColumnType("text");
+            b.Property<string>("NewName").IsRequired().HasMaxLength(64).HasColumnType("text");
             b.HasKey("OriginalName");
             b.ToTable("DisplayNameOverrides");
         });
 
         modelBuilder.Entity("CasinoShiz.Data.Entities.FreespinCode", b =>
         {
-            b.Property<System.Guid>("Code").HasColumnType("TEXT");
-            b.Property<bool>("Active").HasColumnType("INTEGER");
-            b.Property<long?>("ChatId").HasColumnType("INTEGER");
-            b.Property<long>("IssuedAt").HasColumnType("INTEGER");
-            b.Property<long>("IssuedBy").HasColumnType("INTEGER");
-            b.Property<int?>("MessageId").HasColumnType("INTEGER");
+            b.Property<System.Guid>("Code").HasColumnType("uuid");
+            b.Property<bool>("Active").HasColumnType("boolean");
+            b.Property<long?>("ChatId").HasColumnType("bigint");
+            b.Property<long>("IssuedAt").HasColumnType("bigint");
+            b.Property<long>("IssuedBy").HasColumnType("bigint");
+            b.Property<int?>("MessageId").HasColumnType("integer");
             b.HasKey("Code");
             b.HasIndex("Active");
             b.ToTable("FreespinCodes");
@@ -42,11 +56,11 @@ internal static class ModelSnapshotBuilder
 
         modelBuilder.Entity("CasinoShiz.Data.Entities.HorseBet", b =>
         {
-            b.Property<System.Guid>("Id").HasColumnType("TEXT");
-            b.Property<int>("Amount").HasColumnType("INTEGER");
-            b.Property<int>("HorseId").HasColumnType("INTEGER");
-            b.Property<string>("RaceDate").IsRequired().HasMaxLength(10).HasColumnType("TEXT");
-            b.Property<long>("UserId").HasColumnType("INTEGER");
+            b.Property<System.Guid>("Id").HasColumnType("uuid");
+            b.Property<int>("Amount").HasColumnType("integer");
+            b.Property<int>("HorseId").HasColumnType("integer");
+            b.Property<string>("RaceDate").IsRequired().HasMaxLength(10).HasColumnType("text");
+            b.Property<long>("UserId").HasColumnType("bigint");
             b.HasKey("Id");
             b.HasIndex("RaceDate", "UserId");
             b.ToTable("HorseBets");
@@ -54,27 +68,27 @@ internal static class ModelSnapshotBuilder
 
         modelBuilder.Entity("CasinoShiz.Data.Entities.HorseResult", b =>
         {
-            b.Property<string>("RaceDate").HasMaxLength(10).HasColumnType("TEXT");
-            b.Property<byte[]>("ImageData").IsRequired().HasColumnType("BLOB");
-            b.Property<int>("Winner").HasColumnType("INTEGER");
+            b.Property<string>("RaceDate").HasMaxLength(10).HasColumnType("text");
+            b.Property<byte[]>("ImageData").IsRequired().HasColumnType("bytea");
+            b.Property<int>("Winner").HasColumnType("integer");
             b.HasKey("RaceDate");
             b.ToTable("HorseResults");
         });
 
         modelBuilder.Entity("CasinoShiz.Data.Entities.PokerSeat", b =>
         {
-            b.Property<string>("InviteCode").HasMaxLength(8).HasColumnType("TEXT");
-            b.Property<int>("Position").HasColumnType("INTEGER");
-            b.Property<long>("ChatId").HasColumnType("INTEGER");
-            b.Property<int>("CurrentBet").HasColumnType("INTEGER");
-            b.Property<string>("DisplayName").IsRequired().HasMaxLength(64).HasColumnType("TEXT");
-            b.Property<bool>("HasActedThisRound").HasColumnType("INTEGER");
-            b.Property<string>("HoleCards").IsRequired().HasMaxLength(8).HasColumnType("TEXT");
-            b.Property<long>("JoinedAt").HasColumnType("INTEGER");
-            b.Property<int>("Stack").HasColumnType("INTEGER");
-            b.Property<int?>("StateMessageId").HasColumnType("INTEGER");
-            b.Property<int>("Status").HasColumnType("INTEGER");
-            b.Property<long>("UserId").HasColumnType("INTEGER");
+            b.Property<string>("InviteCode").HasMaxLength(8).HasColumnType("text");
+            b.Property<int>("Position").HasColumnType("integer");
+            b.Property<long>("ChatId").HasColumnType("bigint");
+            b.Property<int>("CurrentBet").HasColumnType("integer");
+            b.Property<string>("DisplayName").IsRequired().HasMaxLength(64).HasColumnType("text");
+            b.Property<bool>("HasActedThisRound").HasColumnType("boolean");
+            b.Property<string>("HoleCards").IsRequired().HasMaxLength(8).HasColumnType("text");
+            b.Property<long>("JoinedAt").HasColumnType("bigint");
+            b.Property<int>("Stack").HasColumnType("integer");
+            b.Property<int?>("StateMessageId").HasColumnType("integer");
+            b.Property<int>("Status").HasColumnType("integer");
+            b.Property<long>("UserId").HasColumnType("bigint");
             b.HasKey("InviteCode", "Position");
             b.HasIndex("UserId");
             b.ToTable("PokerSeats");
@@ -82,21 +96,21 @@ internal static class ModelSnapshotBuilder
 
         modelBuilder.Entity("CasinoShiz.Data.Entities.PokerTable", b =>
         {
-            b.Property<string>("InviteCode").HasMaxLength(8).HasColumnType("TEXT");
-            b.Property<int>("BigBlind").HasColumnType("INTEGER");
-            b.Property<int>("ButtonSeat").HasColumnType("INTEGER");
-            b.Property<string>("CommunityCards").IsRequired().HasMaxLength(32).HasColumnType("TEXT");
-            b.Property<long>("CreatedAt").HasColumnType("INTEGER");
-            b.Property<int>("CurrentBet").HasColumnType("INTEGER");
-            b.Property<int>("CurrentSeat").HasColumnType("INTEGER");
-            b.Property<string>("DeckState").IsRequired().HasMaxLength(256).HasColumnType("TEXT");
-            b.Property<long>("HostUserId").HasColumnType("INTEGER");
-            b.Property<long>("LastActionAt").HasColumnType("INTEGER");
-            b.Property<int>("MinRaise").HasColumnType("INTEGER");
-            b.Property<int>("Phase").HasColumnType("INTEGER");
-            b.Property<int>("Pot").HasColumnType("INTEGER");
-            b.Property<int>("SmallBlind").HasColumnType("INTEGER");
-            b.Property<int>("Status").HasColumnType("INTEGER");
+            b.Property<string>("InviteCode").HasMaxLength(8).HasColumnType("text");
+            b.Property<int>("BigBlind").HasColumnType("integer");
+            b.Property<int>("ButtonSeat").HasColumnType("integer");
+            b.Property<string>("CommunityCards").IsRequired().HasMaxLength(32).HasColumnType("text");
+            b.Property<long>("CreatedAt").HasColumnType("bigint");
+            b.Property<int>("CurrentBet").HasColumnType("integer");
+            b.Property<int>("CurrentSeat").HasColumnType("integer");
+            b.Property<string>("DeckState").IsRequired().HasMaxLength(256).HasColumnType("text");
+            b.Property<long>("HostUserId").HasColumnType("bigint");
+            b.Property<long>("LastActionAt").HasColumnType("bigint");
+            b.Property<int>("MinRaise").HasColumnType("integer");
+            b.Property<int>("Phase").HasColumnType("integer");
+            b.Property<int>("Pot").HasColumnType("integer");
+            b.Property<int>("SmallBlind").HasColumnType("integer");
+            b.Property<int>("Status").HasColumnType("integer");
             b.HasKey("InviteCode");
             b.HasIndex("Status");
             b.ToTable("PokerTables");
@@ -104,12 +118,14 @@ internal static class ModelSnapshotBuilder
 
         modelBuilder.Entity("CasinoShiz.Data.Entities.UserState", b =>
         {
-            b.Property<long>("TelegramUserId").HasColumnType("INTEGER");
-            b.Property<int>("AttemptCount").HasColumnType("INTEGER");
-            b.Property<int>("Coins").HasColumnType("INTEGER");
-            b.Property<string>("DisplayName").IsRequired().HasMaxLength(64).HasColumnType("TEXT");
-            b.Property<int>("ExtraAttempts").HasColumnType("INTEGER");
-            b.Property<long>("LastDayUtc").HasColumnType("INTEGER");
+            b.Property<long>("TelegramUserId").HasColumnType("bigint");
+            b.Property<int>("AttemptCount").HasColumnType("integer");
+            b.Property<int>("BlackjackHandsPlayed").HasColumnType("integer");
+            b.Property<int>("Coins").HasColumnType("integer");
+            b.Property<string>("DisplayName").IsRequired().HasMaxLength(64).HasColumnType("text");
+            b.Property<int>("ExtraAttempts").HasColumnType("integer");
+            b.Property<long>("LastDayUtc").HasColumnType("bigint");
+            b.Property<long>("Version").HasColumnType("bigint");
             b.HasKey("TelegramUserId");
             b.ToTable("Users");
         });

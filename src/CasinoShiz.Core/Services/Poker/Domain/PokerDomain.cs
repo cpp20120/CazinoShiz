@@ -4,7 +4,7 @@ namespace CasinoShiz.Services.Poker.Domain;
 
 public static class PokerDomain
 {
-    public static void StartHand(PokerTable table, List<PokerSeat> allSeats, int seed)
+    public static void StartHand(PokerTable table, List<PokerSeat> allSeats)
     {
         var playable = allSeats.Where(s => s.Stack > 0).OrderBy(s => s.Position).ToList();
 
@@ -16,7 +16,7 @@ public static class PokerDomain
             s.Status = s.Stack > 0 ? PokerSeatStatus.Seated : PokerSeatStatus.SittingOut;
         }
 
-        var deck = Deck.BuildShuffled(seed);
+        var deck = Deck.BuildShuffled();
 
         foreach (var s in playable)
         {
@@ -298,7 +298,7 @@ public static class PokerDomain
         if (awardSingle != null)
         {
             awardSingle.Stack += table.Pot;
-            results.Add(new ShowdownEntry(awardSingle, default, table.Pot));
+            results.Add(new ShowdownEntry(awardSingle, null, table.Pot, awardSingle.HoleCards));
             table.Pot = 0;
         }
         else
@@ -327,7 +327,7 @@ public static class PokerDomain
                     if (remainder > 0) remainder--;
                     s.Stack += won;
                 }
-                results.Add(new ShowdownEntry(s, r, won));
+                results.Add(new ShowdownEntry(s, r, won, s.HoleCards));
             }
             table.Pot = 0;
         }

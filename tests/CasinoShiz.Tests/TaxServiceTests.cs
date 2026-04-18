@@ -1,7 +1,7 @@
 using CasinoShiz.Services;
 using Xunit;
 
-namespace BusinoBot.Tests;
+namespace CasinoShiz.Tests;
 
 public class TaxServiceTests
 {

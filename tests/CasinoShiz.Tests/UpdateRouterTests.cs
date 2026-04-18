@@ -2,7 +2,7 @@ using CasinoShiz.Services.Handlers;
 using CasinoShiz.Services.Pipeline;
 using Xunit;
 
-namespace BusinoBot.Tests;
+namespace CasinoShiz.Tests;
 
 public class UpdateRouterTests
 {

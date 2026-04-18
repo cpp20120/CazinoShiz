@@ -10,8 +10,7 @@ namespace CasinoShiz.Services.Redeem;
 public sealed class RedeemService(
     AppDbContext db,
     IOptions<BotOptions> options,
-    ClickHouseReporter reporter,
-    CaptchaService captcha)
+    ClickHouseReporter reporter)
 {
     private readonly BotOptions _opts = options.Value;
 

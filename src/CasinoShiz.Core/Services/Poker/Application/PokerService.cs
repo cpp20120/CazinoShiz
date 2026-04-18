@@ -3,6 +3,7 @@ using CasinoShiz.Data;
 using CasinoShiz.Data.Entities;
 using CasinoShiz.Helpers;
 using CasinoShiz.Services.Analytics;
+using CasinoShiz.Services.Economics;
 using CasinoShiz.Services.Poker.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -14,6 +15,7 @@ public sealed partial class PokerService(
     AppDbContext db,
     IOptions<BotOptions> options,
     ClickHouseReporter reporter,
+    EconomicsService economics,
     ILogger<PokerService> logger)
 {
     public static readonly SemaphoreSlim Gate = new(1, 1);
@@ -73,7 +75,7 @@ public sealed partial class PokerService(
                 ChatId = chatId,
                 JoinedAt = now,
             });
-            user.Coins -= _opts.PokerBuyIn;
+            await economics.DebitAsync(user, _opts.PokerBuyIn, "poker.create", ct);
             await db.SaveChangesAsync(ct);
 
             LogPokerCreateOkCodeCodeHostUseridBuyInBuyin(code, userId, _opts.PokerBuyIn);
@@ -121,7 +123,7 @@ public sealed partial class PokerService(
                 ChatId = chatId,
                 JoinedAt = now,
             };
-            user.Coins -= _opts.PokerBuyIn;
+            await economics.DebitAsync(user, _opts.PokerBuyIn, "poker.join", ct);
             db.PokerSeats.Add(seat);
             await db.SaveChangesAsync(ct);
 
@@ -147,8 +149,7 @@ public sealed partial class PokerService(
             var seats = await db.PokerSeats.Where(s => s.InviteCode == table.InviteCode).ToListAsync(ct);
             if (seats.Count(s => s.Stack > 0) < 2) return StartFail(PokerError.NeedTwo);
 
-            int seed = unchecked((int)(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() ^ table.InviteCode.GetHashCode()));
-            PokerDomain.StartHand(table, seats, seed);
+            PokerDomain.StartHand(table, seats);
             await db.SaveChangesAsync(ct);
 
             LogPokerHandStartCodeCodeButtonButtonUtgUtgPotPot(table.InviteCode, table.ButtonSeat, table.CurrentSeat, table.Pot);
@@ -229,7 +230,7 @@ public sealed partial class PokerService(
 
             var table = await db.PokerTables.FindAsync([seat.InviteCode], ct);
             var user = await db.Users.FindAsync([userId], ct);
-            if (user != null) user.Coins += seat.Stack;
+            if (user != null) await economics.CreditAsync(user, seat.Stack, "poker.leave", ct);
 
             if (table != null && table.Status == PokerTableStatus.HandActive && seat.Status == PokerSeatStatus.Seated)
             {
@@ -276,10 +277,15 @@ public sealed partial class PokerService(
 
     public async Task SetStateMessageIdAsync(long userId, int messageId, CancellationToken ct)
     {
-        var seat = await db.PokerSeats.FirstOrDefaultAsync(s => s.UserId == userId, ct);
-        if (seat == null) return;
-        seat.StateMessageId = messageId;
-        await db.SaveChangesAsync(ct);
+        await Gate.WaitAsync(ct);
+        try
+        {
+            var seat = await db.PokerSeats.FirstOrDefaultAsync(s => s.UserId == userId, ct);
+            if (seat == null) return;
+            seat.StateMessageId = messageId;
+            await db.SaveChangesAsync(ct);
+        }
+        finally { Gate.Release(); }
     }
 
     // ───────────────────────── orchestration ─────────────────────────

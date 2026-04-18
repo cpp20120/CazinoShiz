@@ -3,12 +3,13 @@ using CasinoShiz.Data;
 using CasinoShiz.Data.Entities;
 using CasinoShiz.Services.Analytics;
 using CasinoShiz.Services.Dice;
+using CasinoShiz.Services.Economics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
-namespace BusinoBot.Tests;
+namespace CasinoShiz.Tests;
 
 public class DiceServiceTests
 {
@@ -28,7 +29,8 @@ public class DiceServiceTests
         var reporter = new ClickHouseReporter(
             Options.Create(new ClickHouseOptions { Enabled = false }),
             NullLogger<ClickHouseReporter>.Instance);
-        var svc = new DiceService(db, Options.Create(bot), reporter);
+        var economics = new EconomicsService(db, NullLogger<EconomicsService>.Instance);
+        var svc = new DiceService(db, Options.Create(bot), reporter, economics);
         return (svc, db);
     }
 

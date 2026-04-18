@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace CasinoShiz.Migrations;
 
 [DbContext(typeof(AppDbContext))]
-[Migration("20260418000000_InitialCreate")]
+[Migration("20260420000000_InitialCreate")]
 partial class InitialCreate
 {
     protected override void BuildTargetModel(ModelBuilder modelBuilder)

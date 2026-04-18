@@ -23,6 +23,10 @@ public sealed class BotOptions
     public int PokerMaxPlayers { get; init; } = 6;
     public int PokerTurnTimeoutMs { get; init; } = 30_000;
 
+    public int BlackjackMinBet { get; init; } = 10;
+    public int BlackjackMaxBet { get; init; } = 500;
+    public int BlackjackHandTimeoutMs { get; init; } = 300_000;
+
     public const string CasinoDice = "🎰";
     public static readonly string[] Stickers = ["bar", "cherry", "lemon", "seven"];
     public static readonly int[] StakePrice = [1, 1, 2, 3];

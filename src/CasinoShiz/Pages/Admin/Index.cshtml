@@ -7,6 +7,17 @@
 <h1>Users</h1>
 
 <div class="card">
+    <h2 style="margin-top:0; font-size:16px;">Overview</h2>
+    <div class="row" style="gap:24px; flex-wrap:wrap;">
+        <div><span class="muted">Users</span><br/><strong>@Model.Stats.TotalUsers</strong></div>
+        <div><span class="muted">Poker tables</span><br/><strong>@Model.Stats.ActivePokerTables</strong></div>
+        <div><span class="muted">Poker players</span><br/><strong>@Model.Stats.ActivePokerPlayers</strong></div>
+        <div><span class="muted">Blackjack hands in play</span><br/><strong>@Model.Stats.ActiveBlackjackHands</strong></div>
+        <div><span class="muted">Blackjack hands played</span><br/><strong>@Model.Stats.TotalBlackjackHandsPlayed</strong></div>
+    </div>
+</div>
+
+<div class="card">
     <form class="row" hx-get="/admin/users/rows" hx-target="#user-rows" hx-trigger="input changed delay:300ms from:#search, submit" hx-push-url="false">
         <input id="search" type="search" name="q" value="@Model.Search" placeholder="Search by name or user id" style="flex: 1; min-width: 260px;" />
         <button type="submit">Search</button>

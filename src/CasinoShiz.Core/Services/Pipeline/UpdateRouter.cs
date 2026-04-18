@@ -32,6 +32,13 @@ public sealed partial class UpdateRouter(ILogger<UpdateRouter> logger)
         LogRouterMiss(ctx.Update.Id);
     }
 
+    public void LogRegisteredRoutes()
+    {
+        foreach (var route in Routes)
+            LogRouteRegistered(route.Attribute.Priority, route.Attribute.Name, route.HandlerType.Name);
+        LogRouteCount(Routes.Count);
+    }
+
     [LoggerMessage(EventId = 1100, Level = LogLevel.Debug,
         Message = "router.match route={Route} handler={Handler}")]
     partial void LogRouterMatch(string route, string handler);
@@ -39,4 +46,12 @@ public sealed partial class UpdateRouter(ILogger<UpdateRouter> logger)
     [LoggerMessage(EventId = 1101, Level = LogLevel.Warning,
         Message = "router.miss update_id={UpdateId}")]
     partial void LogRouterMiss(int updateId);
+
+    [LoggerMessage(EventId = 1102, Level = LogLevel.Information,
+        Message = "router.route priority={Priority} route={Route} handler={Handler}")]
+    partial void LogRouteRegistered(int priority, string route, string handler);
+
+    [LoggerMessage(EventId = 1103, Level = LogLevel.Information,
+        Message = "router.registered count={Count}")]
+    partial void LogRouteCount(int count);
 }

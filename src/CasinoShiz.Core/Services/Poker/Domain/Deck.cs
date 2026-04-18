@@ -1,4 +1,4 @@
-using CasinoShiz.Helpers;
+using System.Security.Cryptography;
 
 namespace CasinoShiz.Services.Poker.Domain;
 
@@ -7,16 +7,14 @@ public static class Deck
     private static readonly string[] Suits = ["S", "H", "D", "C"];
     private static readonly string[] Ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A"];
 
-    public static string BuildShuffled(int seed)
+    public static string BuildShuffled()
     {
         var deck = new List<string>(52);
         deck.AddRange(from s in Suits from r in Ranks select r + s);
 
-        var rng = new Mulberry32(seed);
         for (var i = deck.Count - 1; i > 0; i--)
         {
-            var j = (int)(rng.Next() * (i + 1));
-            if (j > i) j = i;
+            var j = RandomNumberGenerator.GetInt32(i + 1);
             (deck[i], deck[j]) = (deck[j], deck[i]);
         }
         return string.Join(" ", deck);

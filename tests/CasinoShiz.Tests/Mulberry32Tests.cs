@@ -1,7 +1,7 @@
 using CasinoShiz.Helpers;
 using Xunit;
 
-namespace BusinoBot.Tests;
+namespace CasinoShiz.Tests;
 
 public class Mulberry32Tests
 {

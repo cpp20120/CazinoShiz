@@ -26,4 +26,4 @@ public sealed record Transition(
     PokerPhase ToPhase,
     IReadOnlyList<ShowdownEntry>? Showdown = null);
 
-public sealed record ShowdownEntry(PokerSeat Seat, HandRank Rank, int Won);
+public sealed record ShowdownEntry(PokerSeat Seat, HandRank? Rank, int Won, string HoleCards);

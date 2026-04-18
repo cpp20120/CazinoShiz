@@ -1,5 +1,6 @@
 using CasinoShiz.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace CasinoShiz.Data;
 
@@ -13,6 +14,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<DisplayNameOverride> DisplayNameOverrides => Set<DisplayNameOverride>();
     public DbSet<PokerTable> PokerTables => Set<PokerTable>();
     public DbSet<PokerSeat> PokerSeats => Set<PokerSeat>();
+    public DbSet<BlackjackHand> BlackjackHands => Set<BlackjackHand>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -30,5 +32,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<PokerTable>()
             .HasIndex(t => t.Status);
+
+        modelBuilder.Entity<UserState>(b =>
+        {
+            b.Property(u => u.Coins)
+                .Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);
+            b.Property(u => u.Version)
+                .Metadata.SetAfterSaveBehavior(PropertySaveBehavior.Ignore);
+        });
     }
 }

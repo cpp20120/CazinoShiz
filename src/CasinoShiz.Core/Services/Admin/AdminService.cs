@@ -2,13 +2,17 @@ using CasinoShiz.Data;
 using CasinoShiz.Data.Entities;
 using CasinoShiz.Helpers;
 using CasinoShiz.Services.Analytics;
+using CasinoShiz.Services.Economics;
+using CasinoShiz.Services.Poker.Application;
 using Microsoft.EntityFrameworkCore;
 
 namespace CasinoShiz.Services.Admin;
 
 public sealed class AdminService(
     AppDbContext db,
-    ClickHouseReporter reporter)
+    ClickHouseReporter reporter,
+    PokerService poker,
+    EconomicsService economics)
 {
     public async Task<int> UserSyncAsync(long callerId, CancellationToken ct)
     {
@@ -42,10 +46,11 @@ public sealed class AdminService(
                 LastDayUtc = TimeHelper.GetCurrentDayMillis(),
             };
             db.Users.Add(user);
+            await db.SaveChangesAsync(ct);
         }
 
         var oldCoins = user.Coins;
-        user.Coins += amount;
+        await economics.AdjustUncheckedAsync(user, amount, "admin.pay", ct);
         await db.SaveChangesAsync(ct);
 
         reporter.SendEvent(new EventData
@@ -105,7 +110,56 @@ public sealed class AdminService(
         var seat = await db.PokerSeats.AsNoTracking()
             .FirstOrDefaultAsync(s => s.UserId == targetUserId, ct);
 
-        return new UserDetail(user, bets, codes, seat);
+        var blackjack = await db.BlackjackHands.AsNoTracking()
+            .FirstOrDefaultAsync(h => h.UserId == targetUserId, ct);
+
+        return new UserDetail(user, bets, codes, seat, blackjack);
+    }
+
+    public async Task<CancelResult> CancelBlackjackHandAsync(long callerId, long targetUserId, CancellationToken ct)
+    {
+        var hand = await db.BlackjackHands.FindAsync([targetUserId], ct);
+        if (hand == null) return new CancelResult(AdminCancelOp.Noop, 0);
+
+        var user = await db.Users.FindAsync([targetUserId], ct);
+        var refunded = hand.Bet;
+        if (user != null) await economics.CreditAsync(user, refunded, "admin.cancel_blackjack", ct);
+        db.BlackjackHands.Remove(hand);
+        await db.SaveChangesAsync(ct);
+
+        reporter.SendEvent(new EventData
+        {
+            EventType = "admin_command",
+            Payload = new { command = "cancel_blackjack", calleeId = callerId, forUserId = targetUserId, refunded },
+        });
+        return new CancelResult(AdminCancelOp.Done, refunded);
+    }
+
+    public async Task<PokerKickResult> KickFromPokerAsync(long callerId, long targetUserId, CancellationToken ct)
+    {
+        var stack = await db.PokerSeats.AsNoTracking()
+            .Where(s => s.UserId == targetUserId)
+            .Select(s => (int?)s.Stack)
+            .FirstOrDefaultAsync(ct);
+        if (stack == null) return new PokerKickResult(AdminCancelOp.Noop, 0, null);
+
+        var result = await poker.LeaveTableAsync(targetUserId, ct);
+        reporter.SendEvent(new EventData
+        {
+            EventType = "admin_command",
+            Payload = new { command = "kick_poker", calleeId = callerId, forUserId = targetUserId, refunded = stack.Value, error = result.Error.ToString() },
+        });
+        return new PokerKickResult(AdminCancelOp.Done, stack.Value, result.TableClosed ? null : result.Snapshot);
+    }
+
+    public async Task<OverviewStats> GetOverviewStatsAsync(CancellationToken ct)
+    {
+        var totalUsers = await db.Users.CountAsync(ct);
+        var pokerTables = await db.PokerTables.CountAsync(ct);
+        var pokerPlayers = await db.PokerSeats.CountAsync(ct);
+        var activeBj = await db.BlackjackHands.CountAsync(ct);
+        var totalBj = await db.Users.SumAsync(u => (long)u.BlackjackHandsPlayed, ct);
+        return new OverviewStats(totalUsers, pokerTables, pokerPlayers, activeBj, totalBj);
     }
 
     public void ReportNotAdmin(long userId)

@@ -1,4 +1,22 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: cazino
+      POSTGRES_USER: cazino
+      POSTGRES_PASSWORD: cazino
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cazino -d cazino"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
   clickhouse:
     image: clickhouse/clickhouse-server:24.8-alpine
     restart: unless-stopped
@@ -31,10 +49,14 @@ services:
       - "3000:3000"
     env_file:
       - .env
+    environment:
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=cazino;Username=cazino;Password=cazino"
     volumes:
       - ./data:/app/data
     depends_on:
       clickhouse:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     restart: unless-stopped
 

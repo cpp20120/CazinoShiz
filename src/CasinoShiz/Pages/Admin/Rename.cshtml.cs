@@ -6,7 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CasinoShiz.Pages.Admin;
 
-[IgnoreAntiforgeryToken]
 public class RenameModel(AdminService admin, AppDbContext db) : PageModel
 {
     public string Status { get; private set; } = "";

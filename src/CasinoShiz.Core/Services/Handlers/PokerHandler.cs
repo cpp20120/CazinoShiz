@@ -204,7 +204,7 @@ public sealed partial class PokerHandler(
         if (showdown != null)
         {
             string text = PokerStateRenderer.RenderShowdown(snapshot.Table, snapshot.Seats,
-                showdown.Select(e => (e.Seat, e.Rank, e.Won)));
+                showdown.Select(e => (e.Seat, e.Rank, e.Won, e.HoleCards)));
             foreach (var s in snapshot.Seats.Where(s => s.ChatId != 0))
             {
                 try { await bot.SendMessage(s.ChatId, text, parseMode: ParseMode.Html, cancellationToken: ct); }

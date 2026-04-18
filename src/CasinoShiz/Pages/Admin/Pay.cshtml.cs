@@ -7,7 +7,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CasinoShiz.Pages.Admin;
 
-[IgnoreAntiforgeryToken]
 public class PayModel(AdminService admin, AppDbContext db) : PageModel
 {
     public UserState? Target { get; private set; }

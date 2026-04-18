@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using CasinoShiz.Configuration;
 using CasinoShiz.Data;
 using CasinoShiz.Services;
@@ -6,6 +7,7 @@ using CasinoShiz.Services.Handlers;
 using CasinoShiz.Services.Pipeline;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Npgsql;
 using Telegram.Bot;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -13,8 +15,13 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<BotOptions>(builder.Configuration.GetSection(BotOptions.SectionName));
 builder.Services.Configure<ClickHouseOptions>(builder.Configuration.GetSection(ClickHouseOptions.SectionName));
 
-builder.Services.AddDbContext<AppDbContext>(opts =>
-    opts.UseSqlite(builder.Configuration.GetConnectionString("Sqlite") ?? "Data Source=busino.db")
+var pgConnectionString = builder.Configuration.GetConnectionString("Postgres")
+    ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required");
+
+builder.Services.AddSingleton(new NpgsqlDataSourceBuilder(pgConnectionString).Build());
+
+builder.Services.AddDbContext<AppDbContext>((sp, opts) =>
+    opts.UseNpgsql(sp.GetRequiredService<NpgsqlDataSource>())
         .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)));
 
 var botToken = builder.Configuration.GetSection(BotOptions.SectionName).GetValue<string>("Token")
@@ -38,15 +45,20 @@ builder.Services.AddScoped<CasinoShiz.Services.Dice.DiceService>();
 builder.Services.AddScoped<CasinoShiz.Services.Redeem.RedeemService>();
 builder.Services.AddScoped<CasinoShiz.Services.Leaderboard.LeaderboardService>();
 builder.Services.AddScoped<CasinoShiz.Services.Admin.AdminService>();
+builder.Services.AddScoped<CasinoShiz.Services.Blackjack.BlackjackService>();
+builder.Services.AddScoped<CasinoShiz.Services.Economics.EconomicsService>();
 builder.Services.AddScoped<PokerHandler>();
+builder.Services.AddScoped<BlackjackHandler>();
 
 builder.Services.AddScoped<LoggingMiddleware>();
 builder.Services.AddScoped<ExceptionMiddleware>();
+builder.Services.AddScoped<RateLimitMiddleware>();
 builder.Services.AddScoped<UpdateRouter>();
 builder.Services.AddScoped<UpdatePipeline>();
 
 builder.Services.AddHostedService<BotHostedService>();
 builder.Services.AddHostedService<PokerTurnTimeoutService>();
+builder.Services.AddHostedService<BlackjackHandTimeoutService>();
 
 builder.Services.AddRazorPages().AddRazorRuntimeCompilation();
 
@@ -67,23 +79,40 @@ app.Use(async (ctx, next) =>
             return;
         }
 
-        var provided = ctx.Request.Query["token"].ToString();
-        if (string.IsNullOrEmpty(provided))
-            provided = ctx.Request.Cookies["admin_token"] ?? "";
+        static bool TokensMatch(string a, string b)
+        {
+            var ab = System.Text.Encoding.UTF8.GetBytes(a);
+            var bb = System.Text.Encoding.UTF8.GetBytes(b);
+            return ab.Length == bb.Length && CryptographicOperations.FixedTimeEquals(ab, bb);
+        }
 
-        if (provided != expected)
+        var queryToken = ctx.Request.Query["token"].ToString();
+        if (!string.IsNullOrEmpty(queryToken))
+        {
+            if (!TokensMatch(queryToken, expected))
+            {
+                ctx.Response.StatusCode = 401;
+                await ctx.Response.WriteAsync("Unauthorized");
+                return;
+            }
+            ctx.Response.Cookies.Append("admin_token", expected, new CookieOptions
+            {
+                HttpOnly = true,
+                SameSite = SameSiteMode.Strict,
+                Secure = ctx.Request.IsHttps,
+                MaxAge = TimeSpan.FromDays(30),
+            });
+            ctx.Response.Redirect(ctx.Request.Path);
+            return;
+        }
+
+        var cookieToken = ctx.Request.Cookies["admin_token"] ?? "";
+        if (!TokensMatch(cookieToken, expected))
         {
             ctx.Response.StatusCode = 401;
             await ctx.Response.WriteAsync("Unauthorized");
             return;
         }
-
-        ctx.Response.Cookies.Append("admin_token", provided, new CookieOptions
-        {
-            HttpOnly = true,
-            SameSite = SameSiteMode.Strict,
-            MaxAge = TimeSpan.FromDays(30),
-        });
     }
     await next();
 });

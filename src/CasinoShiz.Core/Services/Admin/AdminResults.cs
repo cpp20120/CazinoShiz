@@ -1,4 +1,5 @@
 using CasinoShiz.Data.Entities;
+using CasinoShiz.Services.Poker.Application;
 
 namespace CasinoShiz.Services.Admin;
 
@@ -17,4 +18,16 @@ public sealed record UserDetail(
     UserState User,
     IReadOnlyList<HorseBet> RecentBets,
     IReadOnlyList<FreespinCode> IssuedCodes,
-    PokerSeat? PokerSeat);
+    PokerSeat? PokerSeat,
+    BlackjackHand? BlackjackHand);
+
+public sealed record OverviewStats(
+    int TotalUsers,
+    int ActivePokerTables,
+    int ActivePokerPlayers,
+    int ActiveBlackjackHands,
+    long TotalBlackjackHandsPlayed);
+
+public enum AdminCancelOp { Done, Noop }
+public sealed record CancelResult(AdminCancelOp Op, int Refunded);
+public sealed record PokerKickResult(AdminCancelOp Op, int Refunded, TableSnapshot? RemainingSnapshot);

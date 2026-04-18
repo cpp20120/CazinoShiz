@@ -4,6 +4,7 @@ using CasinoShiz.Data.Entities;
 using CasinoShiz.Generators;
 using CasinoShiz.Helpers;
 using CasinoShiz.Services.Analytics;
+using CasinoShiz.Services.Economics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using static CasinoShiz.Services.Horse.HorseResultHelpers;
@@ -14,6 +15,7 @@ public sealed partial class HorseService(
     AppDbContext db,
     IOptions<BotOptions> options,
     ClickHouseReporter reporter,
+    EconomicsService economics,
     ILogger<HorseService> logger)
 {
     public const int HorseCount = 4;
@@ -44,7 +46,7 @@ public sealed partial class HorseService(
             UserId = userId,
         };
 
-        user.Coins -= amount;
+        await economics.DebitAsync(user, amount, "horse.bet", ct);
         db.HorseBets.Add(bet);
         await db.SaveChangesAsync(ct);
 
@@ -121,7 +123,7 @@ public sealed partial class HorseService(
         foreach (var (uid, prize) in transactions.GroupBy(t => t.UserId).Select(g => (g.Key, g.Sum(x => x.Amount))))
         {
             var user = await db.Users.FindAsync([uid], ct);
-            if (user != null) user.Coins += prize;
+            if (user != null) await economics.CreditAsync(user, prize, "horse.payout", ct);
         }
         db.HorseBets.RemoveRange(bets);
         await db.SaveChangesAsync(ct);

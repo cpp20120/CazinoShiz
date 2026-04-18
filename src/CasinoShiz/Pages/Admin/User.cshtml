@@ -24,6 +24,7 @@ else
     <div class="card">
         <h2 style="margin-top:0; font-size:16px;">Adjust coins</h2>
         <form class="row" hx-post="/admin/user/@u.TelegramUserId/pay" hx-target="#user-stats" hx-swap="outerHTML">
+            @Html.AntiForgeryToken()
             <input type="number" name="amount" value="0" step="1" required style="width: 140px;" />
             <button type="submit">Pay / Charge</button>
             <span class="muted">Positive adds coins, negative deducts.</span>
@@ -33,6 +34,7 @@ else
     <div class="card">
         <h2 style="margin-top:0; font-size:16px;">Rename display name</h2>
         <form class="row" hx-post="/admin/user/@u.TelegramUserId/rename" hx-target="#rename-result" hx-swap="innerHTML">
+            @Html.AntiForgeryToken()
             <input type="text" name="newName" placeholder="New name (or * to clear)" required style="flex:1; min-width:200px;" />
             <button type="submit">Rename</button>
         </form>
@@ -88,6 +90,29 @@ else
         <div class="card">
             <h2 style="margin-top:0; font-size:16px;">Poker seat</h2>
             <p>Table <code>@seat.InviteCode</code> · seat @seat.Position · stack @seat.Stack · <span class="pill">@seat.Status</span></p>
+            <form method="post" action="/admin/user/@u.TelegramUserId/poker/kick"
+                  onsubmit="return confirm('Force leave table and refund stack of @seat.Stack coins?');">
+                @Html.AntiForgeryToken()
+                <button type="submit">Force leave (refund @seat.Stack)</button>
+            </form>
         </div>
     }
+
+    <div class="card">
+        <h2 style="margin-top:0; font-size:16px;">Blackjack</h2>
+        <p>Hands played: <strong>@u.BlackjackHandsPlayed</strong></p>
+        @if (Model.Detail.BlackjackHand is { } bj)
+        {
+            <p>Active hand: bet <strong>@bj.Bet</strong> · player <code>@bj.PlayerCards</code> · dealer <code>@bj.DealerCards</code></p>
+            <form method="post" action="/admin/user/@u.TelegramUserId/blackjack/cancel"
+                  onsubmit="return confirm('Cancel active hand and refund @bj.Bet coins?');">
+                @Html.AntiForgeryToken()
+                <button type="submit">Cancel hand (refund @bj.Bet)</button>
+            </form>
+        }
+        else
+        {
+            <p class="muted">No active hand.</p>
+        }
+    </div>
 }

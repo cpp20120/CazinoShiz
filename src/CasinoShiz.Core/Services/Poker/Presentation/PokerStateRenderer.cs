@@ -83,17 +83,18 @@ public static class PokerStateRenderer
         return sb.ToString().TrimEnd();
     }
 
-    public static string RenderShowdown(PokerTable table, IList<PokerSeat> seats, IEnumerable<(PokerSeat seat, HandRank rank, int won)> results)
+    public static string RenderShowdown(PokerTable table, IList<PokerSeat> seats, IEnumerable<(PokerSeat seat, HandRank? rank, int won, string holeCards)> results)
     {
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("🃏 <b>Шоудаун</b>");
         sb.AppendLine($"Общие: {RenderCards(table.CommunityCards, 5)}");
         sb.AppendLine();
 
-        foreach (var (seat, rank, won) in results)
+        foreach (var (seat, rank, won, holeCards) in results)
         {
-            var cards = string.IsNullOrEmpty(seat.HoleCards) ? "—" : RenderCards(seat.HoleCards);
-            var line = $"{seat.DisplayName} — {cards} · {HandEvaluator.CategoryNameRu(rank.Category)}";
+            var cards = string.IsNullOrEmpty(holeCards) ? "—" : RenderCards(holeCards);
+            var line = $"{seat.DisplayName} — <b>{cards}</b>";
+            if (rank.HasValue) line += $" · {HandEvaluator.CategoryNameRu(rank.Value.Category)}";
             if (won > 0) line += $" · <b>+{won}</b>";
             sb.AppendLine(line);
         }
