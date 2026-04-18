@@ -20,7 +20,9 @@ public sealed record UserDetail(
     IReadOnlyList<HorseBet> RecentBets,
     IReadOnlyList<FreespinCode> IssuedCodes,
     PokerSeat? PokerSeat,
-    BlackjackHand? BlackjackHand);
+    BlackjackHand? BlackjackHand,
+    DiceCubeBet? DiceCubeBet,
+    DartsBet? DartsBet);
 
 public sealed record OverviewStats(
     int TotalUsers,

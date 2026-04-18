@@ -110,7 +110,69 @@ public sealed class AdminService(
         var blackjack = await db.BlackjackHands.AsNoTracking()
             .FirstOrDefaultAsync(h => h.UserId == targetUserId, ct);
 
-        return new UserDetail(user, bets, codes, seat, blackjack);
+        var cube = await db.DiceCubeBets.AsNoTracking()
+            .FirstOrDefaultAsync(b => b.UserId == targetUserId, ct);
+
+        var darts = await db.DartsBets.AsNoTracking()
+            .FirstOrDefaultAsync(b => b.UserId == targetUserId, ct);
+
+        return new UserDetail(user, bets, codes, seat, blackjack, cube, darts);
+    }
+
+    public async Task<CancelResult> CancelDiceCubeBetAsync(long callerId, long targetUserId, CancellationToken ct)
+    {
+        var bet = await db.DiceCubeBets.FirstOrDefaultAsync(b => b.UserId == targetUserId, ct);
+        if (bet == null) return new CancelResult(AdminCancelOp.Noop, 0);
+
+        var user = await db.Users.FindAsync([targetUserId], ct);
+        var refunded = bet.Amount;
+        if (user != null) await economics.CreditAsync(user, refunded, "admin.cancel_dicecube", ct);
+        db.DiceCubeBets.Remove(bet);
+        await db.SaveChangesAsync(ct);
+
+        reporter.SendEvent(new EventData
+        {
+            EventType = "admin_command",
+            Payload = new { command = "cancel_dicecube", calleeId = callerId, forUserId = targetUserId, refunded },
+        });
+        return new CancelResult(AdminCancelOp.Done, refunded);
+    }
+
+    public async Task<CancelResult> CancelDartsBetAsync(long callerId, long targetUserId, CancellationToken ct)
+    {
+        var bet = await db.DartsBets.FirstOrDefaultAsync(b => b.UserId == targetUserId, ct);
+        if (bet == null) return new CancelResult(AdminCancelOp.Noop, 0);
+
+        var user = await db.Users.FindAsync([targetUserId], ct);
+        var refunded = bet.Amount;
+        if (user != null) await economics.CreditAsync(user, refunded, "admin.cancel_darts", ct);
+        db.DartsBets.Remove(bet);
+        await db.SaveChangesAsync(ct);
+
+        reporter.SendEvent(new EventData
+        {
+            EventType = "admin_command",
+            Payload = new { command = "cancel_darts", calleeId = callerId, forUserId = targetUserId, refunded },
+        });
+        return new CancelResult(AdminCancelOp.Done, refunded);
+    }
+
+    public async Task<CancelResult> ResetSlotAttemptsAsync(long callerId, long targetUserId, CancellationToken ct)
+    {
+        var user = await db.Users.FindAsync([targetUserId], ct);
+        if (user == null) return new CancelResult(AdminCancelOp.Noop, 0);
+
+        var cleared = user.AttemptCount;
+        user.AttemptCount = 0;
+        user.ExtraAttempts = 0;
+        await db.SaveChangesAsync(ct);
+
+        reporter.SendEvent(new EventData
+        {
+            EventType = "admin_command",
+            Payload = new { command = "reset_attempts", calleeId = callerId, forUserId = targetUserId, cleared },
+        });
+        return new CancelResult(AdminCancelOp.Done, cleared);
     }
 
     public async Task<CancelResult> CancelBlackjackHandAsync(long callerId, long targetUserId, CancellationToken ct)

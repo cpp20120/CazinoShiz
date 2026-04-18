@@ -99,6 +99,57 @@ else
     }
 
     <div class="card">
+        <h2 style="margin-top:0; font-size:16px;">Slot attempts (today)</h2>
+        <p>Used: <strong>@u.AttemptCount</strong> · Extra: <strong>@u.ExtraAttempts</strong></p>
+        @if (u.AttemptCount > 0 || u.ExtraAttempts > 0)
+        {
+            <form method="post" action="/admin/user/@u.TelegramUserId/attempts/reset"
+                  onsubmit="return confirm('Reset slot attempts to 0?');">
+                @Html.AntiForgeryToken()
+                <button type="submit">Reset attempts</button>
+            </form>
+        }
+        else
+        {
+            <p class="muted">Nothing to reset.</p>
+        }
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0; font-size:16px;">Dice cube 🎲</h2>
+        @if (Model.Detail.DiceCubeBet is { } cube)
+        {
+            <p>Pending bet: <strong>@cube.Amount</strong> in chat <code>@cube.ChatId</code></p>
+            <form method="post" action="/admin/user/@u.TelegramUserId/dicecube/cancel"
+                  onsubmit="return confirm('Refund @cube.Amount and drop pending cube bet?');">
+                @Html.AntiForgeryToken()
+                <button type="submit">Cancel bet (refund @cube.Amount)</button>
+            </form>
+        }
+        else
+        {
+            <p class="muted">No pending bet.</p>
+        }
+    </div>
+
+    <div class="card">
+        <h2 style="margin-top:0; font-size:16px;">Darts 🎯</h2>
+        @if (Model.Detail.DartsBet is { } darts)
+        {
+            <p>Pending bet: <strong>@darts.Amount</strong> in chat <code>@darts.ChatId</code></p>
+            <form method="post" action="/admin/user/@u.TelegramUserId/darts/cancel"
+                  onsubmit="return confirm('Refund @darts.Amount and drop pending darts bet?');">
+                @Html.AntiForgeryToken()
+                <button type="submit">Cancel bet (refund @darts.Amount)</button>
+            </form>
+        }
+        else
+        {
+            <p class="muted">No pending bet.</p>
+        }
+    </div>
+
+    <div class="card">
         <h2 style="margin-top:0; font-size:16px;">Blackjack</h2>
         <p>Hands played: <strong>@u.BlackjackHandsPlayed</strong></p>
         @if (Model.Detail.BlackjackHand is { } bj)
