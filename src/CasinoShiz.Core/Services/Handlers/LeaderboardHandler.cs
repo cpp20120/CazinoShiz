@@ -42,7 +42,7 @@ public sealed class LeaderboardHandler(
             replyParameters: new ReplyParameters { MessageId = msg.MessageId }, cancellationToken: ct);
 
     private static Task HandleHelp(ITelegramBotClient bot, Message msg, CancellationToken ct) =>
-        bot.SendMessage(msg.Chat.Id, Locales.Help(),
+        bot.SendMessage(msg.Chat.Id, Locales.Help(), parseMode: ParseMode.Html,
             replyParameters: new ReplyParameters { MessageId = msg.MessageId }, cancellationToken: ct);
 
     private async Task HandleTop(ITelegramBotClient bot, Message msg, CancellationToken ct)

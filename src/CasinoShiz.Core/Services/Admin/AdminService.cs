@@ -195,7 +195,9 @@ public sealed class AdminService(
                 : Locales.HorseRaceLoserDm(outcome.Winner + 1, p.TotalBet);
             try
             {
-                await bot.SendMessage(p.UserId, text, parseMode: ParseMode.Html, cancellationToken: ct);
+                await using var gifStream = new MemoryStream(outcome.GifBytes);
+                await bot.SendAnimation(p.UserId, InputFile.FromStream(gifStream, "horses.gif"),
+                    caption: text, parseMode: ParseMode.Html, cancellationToken: ct);
                 notified++;
             }
             catch { /* user may have never DMed the bot — skip silently */ }
