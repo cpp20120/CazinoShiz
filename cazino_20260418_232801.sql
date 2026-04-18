@@ -369,17 +369,6 @@ N7M48	0	925337014	cppshizoid	925337014	0	t	0	\N	1776527965954
 
 
 --
--- Data for Name: Users; Type: TABLE DATA; Schema: public; Owner: cazino
---
-
-COPY public."Users" ("TelegramUserId", "DisplayName", "Coins", "LastDayUtc", "AttemptCount", "ExtraAttempts", "BlackjackHandsPlayed", "Version") FROM stdin;
-1176353195	D1orn	100	1776445200000	0	0	0	2
-788961289	Random_user28	191	1776445200000	0	0	0	8
-925337014	cppshizoid	997	1776445200000	3	0	1	23
-\.
-
-
---
 -- Data for Name: __EFMigrationsHistory; Type: TABLE DATA; Schema: public; Owner: cazino
 --
 
