@@ -135,7 +135,10 @@ public sealed partial class PokerHandler(
     {
         var r = await service.LeaveTableAsync(userId, ct);
         if (r.Error != PokerError.None) { await SendError(bot, chatId, r.Error, ct); return; }
-        await bot.SendMessage(chatId, Locales.PokerLeft(), cancellationToken: ct);
+        var leftText = r.TableClosed
+            ? $"{Locales.PokerLeft()}\n{Locales.PokerTableClosed()}"
+            : Locales.PokerLeft();
+        await bot.SendMessage(chatId, leftText, cancellationToken: ct);
         if (r.Snapshot != null && !r.TableClosed) await BroadcastAsync(bot, r.Snapshot, ct);
     }
 
@@ -208,7 +211,7 @@ public sealed partial class PokerHandler(
             foreach (var s in snapshot.Seats.Where(s => s.ChatId != 0))
             {
                 try { await bot.SendMessage(s.ChatId, text, parseMode: ParseMode.Html, cancellationToken: ct); }
-                catch (Exception ex) { LogPokerShowdownSendFailedUserU(s.UserId, ex); }
+                catch (Exception ex) { LogPokerShowdownSendFailed(s.UserId, ex); }
             }
         }
 
@@ -241,7 +244,7 @@ public sealed partial class PokerHandler(
         }
         catch (Exception ex)
         {
-            LogPokerStateSendFailedUserU(viewer.UserId, ex);
+            LogPokerStateSendFailed(viewer.UserId, ex);
         }
     }
 
@@ -289,8 +292,8 @@ public sealed partial class PokerHandler(
     }
 
     [LoggerMessage(LogLevel.Debug, "poker.showdown.send_failed user={U}")]
-    partial void LogPokerShowdownSendFailedUserU(long u, Exception exception);
+    partial void LogPokerShowdownSendFailed(long u, Exception exception);
 
     [LoggerMessage(LogLevel.Debug, "poker.state.send_failed user={U}")]
-    partial void LogPokerStateSendFailedUserU(long u, Exception exception);
+    partial void LogPokerStateSendFailed(long u, Exception exception);
 }

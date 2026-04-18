@@ -44,7 +44,7 @@ public sealed partial class BotHostedService(
 
         if (_options.IsProduction)
         {
-            LogStartingBotInWebhookModeOnPortPort(_options.WebhookPort);
+            LogStartingBotInWebhookMode(_options.WebhookPort);
         }
         else
         {
@@ -136,7 +136,7 @@ public sealed partial class BotHostedService(
     }
 
     [LoggerMessage(LogLevel.Information, "Starting bot in webhook mode on port {Port}")]
-    partial void LogStartingBotInWebhookModeOnPortPort(int port);
+    partial void LogStartingBotInWebhookMode(int port);
 
     [LoggerMessage(LogLevel.Information, "Starting bot in polling mode")]
     partial void LogStartingBotInPollingMode();

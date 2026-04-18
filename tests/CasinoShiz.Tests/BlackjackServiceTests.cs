@@ -52,6 +52,17 @@ public class BlackjackServiceTests
     }
 
     [Fact]
+    public async Task StartAsync_betAboveMax_returnsInvalidBet()
+    {
+        var (svc, db) = Build();
+        db.Users.Add(new UserState { TelegramUserId = 1, DisplayName = "u", Coins = 1000 });
+        await db.SaveChangesAsync();
+
+        var r = await svc.StartAsync(1, "u", 0, bet: 1000, ct: default);
+        Assert.Equal(BlackjackError.InvalidBet, r.Error);
+    }
+
+    [Fact]
     public async Task StartAsync_notEnoughCoins_returnsError()
     {
         var (svc, db) = Build();

@@ -25,15 +25,15 @@ public sealed partial class HorseService(
     {
         if (horseId < 1 || horseId > HorseCount)
         {
-            LogHorseBetRejectedUserUseridReasonInvalidHorseHorseHorse(userId, horseId);
+            LogHorseBetInvalidHorse(userId, horseId);
             return BetFail(HorseError.InvalidHorseId);
         }
 
-        var user = await EnsureUserAsync(userId, displayName, ct);
+        var user = await economics.GetOrCreateUserAsync(userId, displayName, ct);
 
         if (amount <= 0 || amount > user.Coins)
         {
-            LogHorseBetRejectedUserUseridReasonInvalidAmountAmountAmountBalanceCoins(userId, amount, user.Coins);
+            LogHorseBetInvalidAmount(userId, amount, user.Coins);
             return BetFail(HorseError.InvalidAmount, horseId, user.Coins);
         }
 
@@ -50,7 +50,7 @@ public sealed partial class HorseService(
         db.HorseBets.Add(bet);
         await db.SaveChangesAsync(ct);
 
-        LogHorseBetOkUserUseridHorseHorseAmountAmountRaceDateDate(userId, horseId, amount, bet.RaceDate);
+        LogHorseBetPlaced(userId, horseId, amount, bet.RaceDate);
         reporter.SendEvent(new EventData
         {
             EventType = "horse_bet",
@@ -83,7 +83,7 @@ public sealed partial class HorseService(
     {
         if (!_opts.Admins.Contains(callerUserId))
         {
-            LogHorseRunRejectedUserUseridReasonNotAdmin(callerUserId);
+            LogHorseRunDenied(callerUserId);
             return RaceFail(HorseError.NotAdmin);
         }
 
@@ -128,7 +128,7 @@ public sealed partial class HorseService(
         db.HorseBets.RemoveRange(bets);
         await db.SaveChangesAsync(ct);
 
-        LogHorseRunOkWinnerWinnerBetsBetsPayoutsPayoutsPotPot(winner + 1, bets.Count, transactions.Count, bets.Sum(b => b.Amount));
+        LogHorseRaceFinished(winner + 1, bets.Count, transactions.Count, bets.Sum(b => b.Amount));
         reporter.SendEvent(new EventData
         {
             EventType = "horse_run",
@@ -161,36 +161,18 @@ public sealed partial class HorseService(
             .ToList();
     }
 
-    private async Task<UserState> EnsureUserAsync(long userId, string displayName, CancellationToken ct)
-    {
-        var user = await db.Users.FindAsync([userId], ct);
-        if (user == null)
-        {
-            user = new UserState
-            {
-                TelegramUserId = userId,
-                DisplayName = displayName,
-                Coins = 100,
-                LastDayUtc = TimeHelper.GetCurrentDayMillis(),
-            };
-            db.Users.Add(user);
-            await db.SaveChangesAsync(ct);
-        }
-        return user;
-    }
-
     [LoggerMessage(LogLevel.Information, "horse.bet.rejected user={UserId} reason=invalid_horse horse={Horse}")]
-    partial void LogHorseBetRejectedUserUseridReasonInvalidHorseHorseHorse(long userId, int horse);
+    partial void LogHorseBetInvalidHorse(long userId, int horse);
 
     [LoggerMessage(LogLevel.Information, "horse.bet.rejected user={UserId} reason=invalid_amount amount={Amount} balance={Coins}")]
-    partial void LogHorseBetRejectedUserUseridReasonInvalidAmountAmountAmountBalanceCoins(long userId, int amount, int coins);
+    partial void LogHorseBetInvalidAmount(long userId, int amount, int coins);
 
     [LoggerMessage(LogLevel.Information, "horse.bet.ok user={UserId} horse={Horse} amount={Amount} race_date={Date}")]
-    partial void LogHorseBetOkUserUseridHorseHorseAmountAmountRaceDateDate(long userId, int horse, int amount, string date);
+    partial void LogHorseBetPlaced(long userId, int horse, int amount, string date);
 
     [LoggerMessage(LogLevel.Warning, "horse.run.rejected user={UserId} reason=not_admin")]
-    partial void LogHorseRunRejectedUserUseridReasonNotAdmin(long userId);
+    partial void LogHorseRunDenied(long userId);
 
     [LoggerMessage(LogLevel.Information, "horse.run.ok winner={Winner} bets={Bets} payouts={Payouts} pot={Pot}")]
-    partial void LogHorseRunOkWinnerWinnerBetsBetsPayoutsPayoutsPotPot(int winner, int bets, int payouts, int pot);
+    partial void LogHorseRaceFinished(int winner, int bets, int payouts, int pot);
 }

@@ -15,6 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<PokerTable> PokerTables => Set<PokerTable>();
     public DbSet<PokerSeat> PokerSeats => Set<PokerSeat>();
     public DbSet<BlackjackHand> BlackjackHands => Set<BlackjackHand>();
+    public DbSet<DiceCubeBet> DiceCubeBets => Set<DiceCubeBet>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,6 +33,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         modelBuilder.Entity<PokerTable>()
             .HasIndex(t => t.Status);
+
+        modelBuilder.Entity<DiceCubeBet>()
+            .HasKey(b => new { b.UserId, b.ChatId });
 
         modelBuilder.Entity<UserState>(b =>
         {

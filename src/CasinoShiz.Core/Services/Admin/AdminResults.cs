@@ -26,7 +26,14 @@ public sealed record OverviewStats(
     int ActivePokerTables,
     int ActivePokerPlayers,
     int ActiveBlackjackHands,
-    long TotalBlackjackHandsPlayed);
+    long TotalBlackjackHandsPlayed,
+    int HorseBetsToday,
+    int HorsePotToday,
+    int HorseRacesRun,
+    int DiceAttemptsToday,
+    int ActiveFreespinCodes,
+    int CubePendingBets,
+    int CubePendingPot);
 
 public enum AdminCancelOp { Done, Noop }
 public sealed record CancelResult(AdminCancelOp Op, int Refunded);

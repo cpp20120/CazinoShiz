@@ -18,6 +18,19 @@
 </div>
 
 <div class="card">
+    <h2 style="margin-top:0; font-size:16px;">Games today</h2>
+    <div class="row" style="gap:24px; flex-wrap:wrap;">
+        <div><span class="muted">Horse bets pending</span><br/><strong>@Model.Stats.HorseBetsToday</strong></div>
+        <div><span class="muted">Horse pot</span><br/><strong>@Model.Stats.HorsePotToday</strong></div>
+        <div><span class="muted">Horse races run</span><br/><strong>@Model.Stats.HorseRacesRun</strong></div>
+        <div><span class="muted">Dice attempts today</span><br/><strong>@Model.Stats.DiceAttemptsToday</strong></div>
+        <div><span class="muted">Cube bets pending</span><br/><strong>@Model.Stats.CubePendingBets</strong></div>
+        <div><span class="muted">Cube pot</span><br/><strong>@Model.Stats.CubePendingPot</strong></div>
+        <div><span class="muted">Active freespin codes</span><br/><strong>@Model.Stats.ActiveFreespinCodes</strong></div>
+    </div>
+</div>
+
+<div class="card">
     <form class="row" hx-get="/admin/users/rows" hx-target="#user-rows" hx-trigger="input changed delay:300ms from:#search, submit" hx-push-url="false">
         <input id="search" type="search" name="q" value="@Model.Search" placeholder="Search by name or user id" style="flex: 1; min-width: 260px;" />
         <button type="submit">Search</button>

@@ -38,16 +38,16 @@ public sealed partial class PokerService(
         await Gate.WaitAsync(ct);
         try
         {
-            var user = await EnsureUserAsync(userId, displayName, ct);
+            var user = await economics.GetOrCreateUserAsync(userId, displayName, ct);
             if (user.Coins < _opts.PokerBuyIn)
             {
-                LogPokerCreateRejectedUserUseridReasonNotEnoughCoinsBalanceCoins(userId, user.Coins);
+                LogPokerCreateNotEnoughCoins(userId, user.Coins);
                 return Fail(PokerError.NotEnoughCoins);
             }
 
             if (await db.PokerSeats.AnyAsync(s => s.UserId == userId, ct))
             {
-                LogPokerCreateRejectedUserUseridReasonAlreadySeated(userId);
+                LogPokerCreateAlreadySeated(userId);
                 return Fail(PokerError.AlreadySeated);
             }
 
@@ -78,7 +78,7 @@ public sealed partial class PokerService(
             await economics.DebitAsync(user, _opts.PokerBuyIn, "poker.create", ct);
             await db.SaveChangesAsync(ct);
 
-            LogPokerCreateOkCodeCodeHostUseridBuyInBuyin(code, userId, _opts.PokerBuyIn);
+            LogPokerCreated(code, userId, _opts.PokerBuyIn);
             reporter.SendEvent(new EventData
             {
                 EventType = "poker_create",
@@ -96,7 +96,7 @@ public sealed partial class PokerService(
         await Gate.WaitAsync(ct);
         try
         {
-            var user = await EnsureUserAsync(userId, displayName, ct);
+            var user = await economics.GetOrCreateUserAsync(userId, displayName, ct);
             if (user.Coins < _opts.PokerBuyIn) return JoinFail(PokerError.NotEnoughCoins);
             if (await db.PokerSeats.AnyAsync(s => s.UserId == userId, ct)) return JoinFail(PokerError.AlreadySeated);
 
@@ -128,7 +128,12 @@ public sealed partial class PokerService(
             await db.SaveChangesAsync(ct);
 
             seats.Add(seat);
-            LogPokerJoinOkCodeCodeUserUseridSeatPosSeatedN(code, userId, position, seats.Count);
+            LogPokerJoined(code, userId, position, seats.Count);
+            reporter.SendEvent(new EventData
+            {
+                EventType = "poker_join",
+                Payload = new { user_id = userId, invite_code = code, seat = position, seated = seats.Count, buy_in = _opts.PokerBuyIn }
+            });
             return new JoinResult(PokerError.None, new TableSnapshot(table, seats), seats.Count, _opts.PokerMaxPlayers);
         }
         finally { Gate.Release(); }
@@ -152,7 +157,7 @@ public sealed partial class PokerService(
             PokerDomain.StartHand(table, seats);
             await db.SaveChangesAsync(ct);
 
-            LogPokerHandStartCodeCodeButtonButtonUtgUtgPotPot(table.InviteCode, table.ButtonSeat, table.CurrentSeat, table.Pot);
+            LogPokerHandStarted(table.InviteCode, table.ButtonSeat, table.CurrentSeat, table.Pot);
             reporter.SendEvent(new EventData
             {
                 EventType = "poker_hand_start",
@@ -187,7 +192,12 @@ public sealed partial class PokerService(
             seat.HasActedThisRound = true;
             table.LastActionAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            LogPokerActionCodeCodeUserUseridActionActionAmountAmountPotPot(table.InviteCode, userId, verb, amount, table.Pot);
+            LogPokerAction(table.InviteCode, userId, verb, amount, table.Pot);
+            reporter.SendEvent(new EventData
+            {
+                EventType = "poker_action",
+                Payload = new { invite_code = table.InviteCode, user_id = userId, action = verb, amount, pot = table.Pot }
+            });
 
             return await ResolveAfterActionAsync(table, seats, ct);
         }
@@ -212,7 +222,12 @@ public sealed partial class PokerService(
             table.LastActionAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
             var autoKind = decision.Kind == PokerActionKind.Check ? AutoAction.Check : AutoAction.Fold;
-            LogPokerAutoCodeCodeUserUseridActionAction(inviteCode, current.UserId, autoKind);
+            LogPokerAutoAction(inviteCode, current.UserId, autoKind);
+            reporter.SendEvent(new EventData
+            {
+                EventType = "poker_auto",
+                Payload = new { invite_code = inviteCode, user_id = current.UserId, action = autoKind.ToString() }
+            });
 
             var result = await ResolveAfterActionAsync(table, seats, ct);
             return result with { AutoActorName = current.DisplayName, AutoKind = autoKind };
@@ -244,7 +259,12 @@ public sealed partial class PokerService(
                 db.PokerSeats.Remove(seat);
                 await db.SaveChangesAsync(ct);
 
-                LogPokerLeaveMidhandCodeCodeUserUserid(table.InviteCode, userId);
+                LogPokerLeaveMidhand(table.InviteCode, userId);
+                reporter.SendEvent(new EventData
+                {
+                    EventType = "poker_leave",
+                    Payload = new { invite_code = table.InviteCode, user_id = userId, refunded = 0, mid_hand = true }
+                });
                 var remaining = allSeats.Where(s => s.UserId != userId).ToList();
                 return new LeaveResult(PokerError.None, after.Snapshot ?? new TableSnapshot(table, remaining), false);
             }
@@ -269,7 +289,12 @@ public sealed partial class PokerService(
                 snapshot = new TableSnapshot(table, remaining);
             }
 
-            LogPokerLeaveOkCodeCodeUserUseridClosedClosed(table?.InviteCode ?? "-", userId, closed);
+            LogPokerLeft(table?.InviteCode ?? "-", userId, closed);
+            reporter.SendEvent(new EventData
+            {
+                EventType = "poker_leave",
+                Payload = new { invite_code = table?.InviteCode, user_id = userId, refunded = seat.Stack, table_closed = closed }
+            });
             return new LeaveResult(PokerError.None, snapshot, closed);
         }
         finally { Gate.Release(); }
@@ -308,7 +333,7 @@ public sealed partial class PokerService(
                     TransitionKind.HandEndedRunout => "runout",
                     _ => "showdown",
                 };
-                LogPokerHandEndCodeCodeReasonReasonPotPot(table.InviteCode, reason, showdown.Sum(e => e.Won));
+                LogPokerHandEnded(table.InviteCode, reason, showdown.Sum(e => e.Won));
                 reporter.SendEvent(new EventData
                 {
                     EventType = "poker_hand_end",
@@ -323,7 +348,7 @@ public sealed partial class PokerService(
             }
 
             case TransitionKind.PhaseAdvanced:
-                LogPokerPhaseCodeCodeFromTo(table.InviteCode, transition.FromPhase, transition.ToPhase);
+                LogPokerPhase(table.InviteCode, transition.FromPhase, transition.ToPhase);
                 return new ActionResult(PokerError.None, new TableSnapshot(table, seats), HandTransition.PhaseAdvanced, null, null, null);
 
             default:
@@ -338,24 +363,6 @@ public sealed partial class PokerService(
         ValidationResult.RaiseTooLarge => PokerError.RaiseTooLarge,
         _ => PokerError.InvalidAction,
     };
-
-    private async Task<UserState> EnsureUserAsync(long userId, string displayName, CancellationToken ct)
-    {
-        var user = await db.Users.FindAsync([userId], ct);
-        if (user == null)
-        {
-            user = new UserState
-            {
-                TelegramUserId = userId,
-                DisplayName = displayName,
-                Coins = 100,
-                LastDayUtc = TimeHelper.GetCurrentDayMillis(),
-            };
-            db.Users.Add(user);
-            await db.SaveChangesAsync(ct);
-        }
-        return user;
-    }
 
     private async Task<string> GenerateUniqueCodeAsync(CancellationToken ct)
     {
@@ -373,35 +380,35 @@ public sealed partial class PokerService(
     }
 
     [LoggerMessage(LogLevel.Information, "poker.create.rejected user={UserId} reason=not_enough_coins balance={Coins}")]
-    partial void LogPokerCreateRejectedUserUseridReasonNotEnoughCoinsBalanceCoins(long userId, int coins);
+    partial void LogPokerCreateNotEnoughCoins(long userId, int coins);
 
     [LoggerMessage(LogLevel.Information, "poker.create.rejected user={UserId} reason=already_seated")]
-    partial void LogPokerCreateRejectedUserUseridReasonAlreadySeated(long userId);
+    partial void LogPokerCreateAlreadySeated(long userId);
 
     [LoggerMessage(LogLevel.Information, "poker.create.ok code={Code} host={UserId} buy_in={BuyIn}")]
-    partial void LogPokerCreateOkCodeCodeHostUseridBuyInBuyin(string code, long userId, int buyIn);
+    partial void LogPokerCreated(string code, long userId, int buyIn);
 
     [LoggerMessage(LogLevel.Information, "poker.join.ok code={Code} user={UserId} seat={Pos} seated={N}")]
-    partial void LogPokerJoinOkCodeCodeUserUseridSeatPosSeatedN(string code, long userId, int pos, int n);
+    partial void LogPokerJoined(string code, long userId, int pos, int n);
 
     [LoggerMessage(LogLevel.Information, "poker.hand.start code={Code} button={Button} utg={Utg} pot={Pot}")]
-    partial void LogPokerHandStartCodeCodeButtonButtonUtgUtgPotPot(string code, int button, int utg, int pot);
+    partial void LogPokerHandStarted(string code, int button, int utg, int pot);
 
     [LoggerMessage(LogLevel.Information, "poker.action code={Code} user={UserId} action={Action} amount={Amount} pot={Pot}")]
-    partial void LogPokerActionCodeCodeUserUseridActionActionAmountAmountPotPot(string code, long userId, string action, int amount, int pot);
+    partial void LogPokerAction(string code, long userId, string action, int amount, int pot);
 
     [LoggerMessage(LogLevel.Information, "poker.auto code={Code} user={UserId} action={Action}")]
-    partial void LogPokerAutoCodeCodeUserUseridActionAction(string code, long userId, AutoAction action);
+    partial void LogPokerAutoAction(string code, long userId, AutoAction action);
 
     [LoggerMessage(LogLevel.Information, "poker.leave.midhand code={Code} user={UserId}")]
-    partial void LogPokerLeaveMidhandCodeCodeUserUserid(string code, long userId);
+    partial void LogPokerLeaveMidhand(string code, long userId);
 
     [LoggerMessage(LogLevel.Information, "poker.leave.ok code={Code} user={UserId} closed={Closed}")]
-    partial void LogPokerLeaveOkCodeCodeUserUseridClosedClosed(string code, long userId, bool closed);
+    partial void LogPokerLeft(string code, long userId, bool closed);
 
     [LoggerMessage(LogLevel.Information, "poker.hand.end code={Code} reason={Reason} pot={Pot}")]
-    partial void LogPokerHandEndCodeCodeReasonReasonPotPot(string code, string reason, int pot);
+    partial void LogPokerHandEnded(string code, string reason, int pot);
 
     [LoggerMessage(LogLevel.Information, "poker.phase code={Code} {From}->{To}")]
-    partial void LogPokerPhaseCodeCodeFromTo(string code, PokerPhase from, PokerPhase to);
+    partial void LogPokerPhase(string code, PokerPhase from, PokerPhase to);
 }

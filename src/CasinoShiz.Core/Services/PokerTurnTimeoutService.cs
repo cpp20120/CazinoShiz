@@ -51,13 +51,13 @@ public sealed partial class PokerTurnTimeoutService(
                 var result = await service.RunAutoActionAsync(code, ct);
                 if (result != null)
                 {
-                    LogPokerTimeoutFiredCodeCodeTransitionT(code, result.Transition);
+                    LogPokerTimeoutFired(code, result.Transition);
                     await handler.BroadcastAutoActionAsync(bot, result, ct);
                 }
             }
             catch (Exception ex)
             {
-                LogPokerTimeoutActionFailedCodeCode(code, ex);
+                LogPokerTimeoutActionFailed(code, ex);
             }
         }
     }
@@ -66,8 +66,8 @@ public sealed partial class PokerTurnTimeoutService(
     partial void LogPokerTimeoutSweepFailed(Exception exception);
 
     [LoggerMessage(LogLevel.Information, "poker.timeout.fired code={Code} transition={T}")]
-    partial void LogPokerTimeoutFiredCodeCodeTransitionT(string code, HandTransition T);
+    partial void LogPokerTimeoutFired(string code, HandTransition T);
 
     [LoggerMessage(LogLevel.Warning, "poker.timeout.action_failed code={Code}")]
-    partial void LogPokerTimeoutActionFailedCodeCode(string code, Exception exception);
+    partial void LogPokerTimeoutActionFailed(string code, Exception exception);
 }

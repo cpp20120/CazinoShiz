@@ -41,6 +41,13 @@ public sealed partial class BlackjackHandler(
         var parts = msg.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length < 2 || !int.TryParse(parts[1], out var bet))
         {
+            var (existing, existingMsgId) = await service.GetSnapshotAsync(userId, ct);
+            if (existing != null)
+            {
+                await SendOrEditStateAsync(bot, userId, chatId,
+                    new BlackjackResult(BlackjackError.None, existing, existingMsgId), ct);
+                return;
+            }
             await bot.SendMessage(chatId, Locales.BlackjackUsage(_opts.BlackjackMinBet, _opts.BlackjackMaxBet),
                 parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ct);
             return;

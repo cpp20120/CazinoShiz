@@ -1,6 +1,7 @@
 using System.Data.Common;
 using CasinoShiz.Data;
 using CasinoShiz.Data.Entities;
+using CasinoShiz.Helpers;
 using Dapper;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -9,10 +10,30 @@ namespace CasinoShiz.Services.Economics;
 
 public sealed partial class EconomicsService(AppDbContext db, ILogger<EconomicsService> logger)
 {
+    public const int StartingCoins = 100;
+
     private sealed class BalanceRow
     {
         public int Coins { get; set; }
         public long Version { get; set; }
+    }
+
+    public async Task<UserState> GetOrCreateUserAsync(long userId, string displayName, CancellationToken ct = default)
+    {
+        var existing = await db.Users.FindAsync([userId], ct);
+        if (existing != null) return existing;
+
+        var user = new UserState
+        {
+            TelegramUserId = userId,
+            DisplayName = displayName,
+            Coins = StartingCoins,
+            LastDayUtc = TimeHelper.GetCurrentDayMillis(),
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync(ct);
+        LogUserSeeded(userId, displayName);
+        return user;
     }
 
     public async Task CreditAsync(UserState user, int amount, string reason, CancellationToken ct = default)
@@ -133,4 +154,7 @@ public sealed partial class EconomicsService(AppDbContext db, ILogger<EconomicsS
 
     [LoggerMessage(LogLevel.Information, "economics.adjust_unchecked user={UserId} delta={Delta} balance={Balance} reason={Reason}")]
     partial void LogAdjustUnchecked(long userId, int delta, int balance, string reason);
+
+    [LoggerMessage(LogLevel.Information, "economics.user_seeded user={UserId} name={DisplayName}")]
+    partial void LogUserSeeded(long userId, string displayName);
 }

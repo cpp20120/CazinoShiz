@@ -31,7 +31,7 @@ public sealed class DiceService(
         }
 
         var rolls = DecodeRolls(diceValue);
-        var user = await EnsureUserAsync(userId, displayName, ct);
+        var user = await economics.GetOrCreateUserAsync(userId, displayName, ct);
 
         var currentDayMs = TimeHelper.GetCurrentDayMillis();
         var isCurrentDay = currentDayMs == user.LastDayUtc;
@@ -70,6 +70,8 @@ public sealed class DiceService(
         var attemptsCount = isCurrentDay ? user.AttemptCount + 1 : 1;
 
         await economics.AdjustAsync(user, prize - loss, "dice.play", ct);
+        if (tax != 0)
+            await economics.AdjustUncheckedAsync(user, -tax, "dice.bank_tax", ct);
         user.LastDayUtc = currentDayMs;
         user.AttemptCount = attemptsCount;
         user.ExtraAttempts = isCurrentDay ? user.ExtraAttempts : 0;
@@ -114,7 +116,7 @@ public sealed class DiceService(
 
         return new DicePlayResult(
             DiceOutcome.Played, prize, loss, user.Coins, totalAttempts, moreRolls,
-            tax, daysWithoutRolls, issued?.Code);
+            tax, daysWithoutRolls, issued?.Code, isExtraAttempt ? 0 : gas);
     }
 
     public async Task AttachFreespinMessageAsync(Guid codeGuid, int messageId, CancellationToken ct)
@@ -201,22 +203,4 @@ public sealed class DiceService(
         return tax;
     }
 
-    private async Task<UserState> EnsureUserAsync(long userId, string displayName, CancellationToken ct)
-    {
-        var user = await db.Users.FindAsync([userId], ct);
-        if (user != null) return user;
-
-        user = new UserState
-        {
-            TelegramUserId = userId,
-            DisplayName = displayName,
-            Coins = 100,
-            LastDayUtc = TimeHelper.GetCurrentDayMillis(),
-            AttemptCount = 0,
-            ExtraAttempts = 0,
-        };
-        db.Users.Add(user);
-        await db.SaveChangesAsync(ct);
-        return user;
-    }
 }

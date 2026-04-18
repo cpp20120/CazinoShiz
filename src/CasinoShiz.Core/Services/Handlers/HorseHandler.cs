@@ -1,6 +1,7 @@
 using CasinoShiz.Helpers;
 using CasinoShiz.Services.Horse;
 using CasinoShiz.Services.Pipeline;
+using Microsoft.Extensions.Hosting;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -11,6 +12,7 @@ namespace CasinoShiz.Services.Handlers;
 [Command("/horserun")]
 public sealed partial class HorseHandler(
     HorseService service,
+    IHostApplicationLifetime lifetime,
     ILogger<HorseHandler> logger) : IUpdateHandler
 {
     public async Task HandleAsync(ITelegramBotClient bot, Update update, CancellationToken ct)
@@ -89,20 +91,26 @@ public sealed partial class HorseHandler(
         await using var gifStream = new MemoryStream(outcome.GifBytes);
         await bot.SendAnimation(chatId, InputFile.FromStream(gifStream, "horses.gif"), cancellationToken: ct);
 
+        // Announce winners 20s after the GIF drops. The caller's `ct` is tied to the
+        // per-update scope (webhook request or polling iteration) and can be cancelled
+        // before the delay elapses — use the host lifetime token so it survives the
+        // scope but still cancels cleanly on shutdown.
+        var announceCt = lifetime.ApplicationStopping;
         _ = Task.Run(async () =>
         {
             try
             {
-                await Task.Delay(20_000, ct);
+                await Task.Delay(20_000, announceCt);
                 var text = outcome.Transactions.Count > 0
                     ? string.Join("\n", new[] { "<b>Поздравляем победителей!</b>\n" }
                         .Concat(outcome.Transactions.Select((tx, i) =>
                             $"<a href=\"tg://user?id={tx.UserId}\">Победитель {i + 1}</a>: <b>+{tx.Amount}</b>")))
                     : "<b>Сегодня никому не удалось победить :(</b>";
-                await bot.SendMessage(chatId, text, parseMode: ParseMode.Html, cancellationToken: ct);
+                await bot.SendMessage(chatId, text, parseMode: ParseMode.Html, cancellationToken: announceCt);
             }
+            catch (OperationCanceledException) { /* app shutting down */ }
             catch (Exception ex) { LogHorseRunAnnounceFailed(ex); }
-        }, ct);
+        }, announceCt);
     }
 
     private async Task HandleResultAsync(ITelegramBotClient bot, Message msg, CancellationToken ct)

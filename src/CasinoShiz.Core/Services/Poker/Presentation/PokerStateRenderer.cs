@@ -48,6 +48,8 @@ public static class PokerStateRenderer
         };
         sb.AppendLine($"Общие: {community}");
         sb.AppendLine($"Банк: <b>{table.Pot}</b> · Ставка: <b>{table.CurrentBet}</b>");
+        if (table.Status is PokerTableStatus.Seating or PokerTableStatus.HandComplete)
+            sb.AppendLine($"<i>{Locales.PokerWaitingForStart()}</i>");
         sb.AppendLine();
 
         var sorted = seats.OrderBy(s => s.Position).ToList();

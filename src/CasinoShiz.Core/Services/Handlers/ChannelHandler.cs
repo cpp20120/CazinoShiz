@@ -36,7 +36,7 @@ public sealed partial class ChannelHandler(
             }
             catch (Exception ex)
             {
-                LogFailedToLeaveChannelChatid(post.Chat.Id, ex);
+                LogFailedToLeaveChannel(post.Chat.Id, ex);
                 reporter.SendEvent(new EventData
                 {
                     EventType = "leave_channel",
@@ -74,5 +74,5 @@ public sealed partial class ChannelHandler(
     }
 
     [LoggerMessage(LogLevel.Error, "Failed to leave channel {ChatId}")]
-    partial void LogFailedToLeaveChannelChatid(long chatId, Exception exception);
+    partial void LogFailedToLeaveChannel(long chatId, Exception exception);
 }

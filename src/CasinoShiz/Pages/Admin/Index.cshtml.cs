@@ -7,7 +7,7 @@ public class IndexModel(AdminService admin) : PageModel
 {
     public string? Search { get; private set; }
     public UserListResult Result { get; private set; } = new([], 0, 0, 50);
-    public OverviewStats Stats { get; private set; } = new(0, 0, 0, 0, 0);
+    public OverviewStats Stats { get; private set; } = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
     public async Task OnGetAsync(string? q, CancellationToken ct)
     {

@@ -35,7 +35,7 @@ public sealed partial class ClickHouseReporter : IDisposable
         }
         catch (Exception ex)
         {
-            LogFailedToInitializeClickhouseReporterAnalyticsWillBeDisabled(ex);
+            LogClickhouseInitFailed(ex);
             _connection = null;
         }
     }
@@ -110,7 +110,7 @@ public sealed partial class ClickHouseReporter : IDisposable
         }
         catch (Exception ex)
         {
-            LogFailedToFlushClickhouseBufferReturningEvents(ex);
+            LogClickhouseFlushFailed(ex);
             lock (_lock)
             {
                 _buffer.InsertRange(0, eventsToSend);
@@ -138,7 +138,7 @@ public sealed partial class ClickHouseReporter : IDisposable
                 SETTINGS index_granularity = 8192
                 """;
             await cmd.ExecuteNonQueryAsync();
-            LogClickhouseTableTableIsReady(_options.Table);
+            LogClickhouseTableReady(_options.Table);
         }
         catch (Exception ex)
         {
@@ -157,13 +157,13 @@ public sealed partial class ClickHouseReporter : IDisposable
     partial void LogClickhouseReporterIsDisabled();
 
     [LoggerMessage(LogLevel.Error, "Failed to initialize ClickHouse reporter, analytics will be disabled")]
-    partial void LogFailedToInitializeClickhouseReporterAnalyticsWillBeDisabled(Exception exception);
+    partial void LogClickhouseInitFailed(Exception exception);
 
     [LoggerMessage(LogLevel.Error, "Failed to flush ClickHouse buffer, returning events")]
-    partial void LogFailedToFlushClickhouseBufferReturningEvents(Exception exception);
+    partial void LogClickhouseFlushFailed(Exception exception);
 
     [LoggerMessage(LogLevel.Information, "ClickHouse table {Table} is ready")]
-    partial void LogClickhouseTableTableIsReady(string table);
+    partial void LogClickhouseTableReady(string table);
 
     [LoggerMessage(LogLevel.Error, "Failed to create ClickHouse table")]
     partial void LogFailedToCreateClickhouseTable(Exception exception);

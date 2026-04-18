@@ -35,23 +35,9 @@ public sealed class AdminService(
 
     public async Task<PayResult> PayAsync(long callerId, long targetUserId, int amount, CancellationToken ct)
     {
-        var user = await db.Users.FindAsync([targetUserId], ct);
-        if (user == null)
-        {
-            user = new UserState
-            {
-                TelegramUserId = targetUserId,
-                DisplayName = $"User ID: {targetUserId}",
-                Coins = 100,
-                LastDayUtc = TimeHelper.GetCurrentDayMillis(),
-            };
-            db.Users.Add(user);
-            await db.SaveChangesAsync(ct);
-        }
-
+        var user = await economics.GetOrCreateUserAsync(targetUserId, $"User ID: {targetUserId}", ct);
         var oldCoins = user.Coins;
         await economics.AdjustUncheckedAsync(user, amount, "admin.pay", ct);
-        await db.SaveChangesAsync(ct);
 
         reporter.SendEvent(new EventData
         {
@@ -154,12 +140,36 @@ public sealed class AdminService(
 
     public async Task<OverviewStats> GetOverviewStatsAsync(CancellationToken ct)
     {
+        var raceDate = TimeHelper.GetRaceDate();
+        var currentDayMs = TimeHelper.GetCurrentDayMillis();
+
         var totalUsers = await db.Users.CountAsync(ct);
         var pokerTables = await db.PokerTables.CountAsync(ct);
         var pokerPlayers = await db.PokerSeats.CountAsync(ct);
         var activeBj = await db.BlackjackHands.CountAsync(ct);
         var totalBj = await db.Users.SumAsync(u => (long)u.BlackjackHandsPlayed, ct);
-        return new OverviewStats(totalUsers, pokerTables, pokerPlayers, activeBj, totalBj);
+
+        var todayBets = await db.HorseBets.Where(b => b.RaceDate == raceDate)
+            .Select(b => new { b.Amount }).ToListAsync(ct);
+        var horseBetsToday = todayBets.Count;
+        var horsePotToday = todayBets.Sum(x => x.Amount);
+        var horseRacesRun = await db.HorseResults.CountAsync(ct);
+
+        var diceAttemptsToday = await db.Users
+            .Where(u => u.LastDayUtc == currentDayMs)
+            .SumAsync(u => (int?)u.AttemptCount, ct) ?? 0;
+
+        var activeCodes = await db.FreespinCodes.CountAsync(c => c.Active, ct);
+
+        var cubeBets = await db.DiceCubeBets.Select(b => b.Amount).ToListAsync(ct);
+        var cubePendingBets = cubeBets.Count;
+        var cubePendingPot = cubeBets.Sum();
+
+        return new OverviewStats(
+            totalUsers, pokerTables, pokerPlayers, activeBj, totalBj,
+            horseBetsToday, horsePotToday, horseRacesRun,
+            diceAttemptsToday, activeCodes,
+            cubePendingBets, cubePendingPot);
     }
 
     public void ReportNotAdmin(long userId)

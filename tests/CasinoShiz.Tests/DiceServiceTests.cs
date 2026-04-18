@@ -126,4 +126,29 @@ public class DiceServiceTests
         var user = await db.Users.FindAsync(7L);
         Assert.Equal(1, user!.AttemptCount);
     }
+
+    [Fact]
+    public async Task PlayAsync_IdleWithLargeBalance_DeductsBankTax()
+    {
+        var (svc, db) = Build();
+        db.Users.Add(new UserState
+        {
+            TelegramUserId = 9, DisplayName = "idle", Coins = 10_000,
+            LastDayUtc = CasinoShiz.Helpers.TimeHelper.GetDateFromMillis(0).ToUnixTimeMilliseconds(),
+            AttemptCount = 0, ExtraAttempts = 0,
+        });
+        await db.SaveChangesAsync();
+
+        var balanceBefore = 10_000;
+        var result = await svc.PlayAsync(9, "idle", diceValue: 1, chatId: 100,
+            isForwarded: false, isPrivateChat: true, ct: default);
+
+        Assert.Equal(DiceOutcome.Played, result.Outcome);
+        Assert.True(result.Tax > 0, "bank tax should be positive on idle large balance");
+
+        var user = await db.Users.FindAsync(9L);
+        // Balance must reflect: +prize -loss -tax
+        var expected = balanceBefore + result.Prize - result.Loss - result.Tax;
+        Assert.Equal(expected, user!.Coins);
+    }
 }

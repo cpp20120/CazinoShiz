@@ -56,6 +56,7 @@ public sealed partial class DiceHandler(
             result.MoreRolls > 0
                 ? $"(у Вас ещё {Plural(result.MoreRolls, ["попытка", "попытки", "попыток"], true)})"
                 : "(у Вас больше не осталось попыток)",
+            result.Gas > 0 ? Locales.GasReminder(result.Gas) : "",
             result.Tax > 0 ? Locales.BankTax(result.Tax, result.DaysWithoutRolls) : "",
         };
 

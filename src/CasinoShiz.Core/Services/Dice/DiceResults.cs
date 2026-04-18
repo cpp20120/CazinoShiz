@@ -17,4 +17,5 @@ public sealed record DicePlayResult(
     int MoreRolls = 0,
     int Tax = 0,
     int DaysWithoutRolls = 0,
-    Guid? FreespinCode = null);
+    Guid? FreespinCode = null,
+    int Gas = 0);
