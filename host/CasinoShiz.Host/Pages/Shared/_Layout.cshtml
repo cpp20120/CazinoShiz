@@ -1,0 +1,91 @@
+@{
+    var title = ViewData["Title"] as string ?? "Admin";
+}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@title · CasinoShiz Admin</title>
+    <style>
+        :root { color-scheme: dark; }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        header {
+            background: #1e293b;
+            border-bottom: 1px solid #334155;
+            padding: 12px 24px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+        nav a {
+            color: #cbd5e1;
+            text-decoration: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+        }
+        nav a:hover { background: #334155; }
+        nav a.active { background: #2563eb; color: white; }
+        main { padding: 24px; max-width: 1200px; margin: 0 auto; }
+        h2 { margin-top: 0; }
+        table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 8px; overflow: hidden; }
+        th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #334155; }
+        th { background: #0f172a; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover { background: #293548; }
+        input, select, button {
+            font: inherit;
+            padding: 6px 10px;
+            border: 1px solid #475569;
+            border-radius: 4px;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        button { background: #2563eb; border-color: #2563eb; color: white; cursor: pointer; font-weight: 500; }
+        button:hover { background: #1d4ed8; }
+        button.ghost { background: transparent; border-color: #475569; color: #cbd5e1; }
+        button.ghost:hover { background: #334155; }
+        button.danger { background: #dc2626; border-color: #dc2626; }
+        form.inline { display: inline-flex; gap: 6px; align-items: center; margin: 0; }
+        .card { background: #1e293b; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+        .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .stat { background: #1e293b; border-radius: 8px; padding: 16px; }
+        .stat .label { font-size: 11px; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; }
+        .stat .value { font-size: 28px; font-weight: 600; margin-top: 4px; }
+        .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; background: #334155; }
+        .pill.ok { background: #14532d; color: #86efac; }
+        .pill.warn { background: #78350f; color: #fbbf24; }
+        .flash { background: #14532d; color: #86efac; padding: 10px 14px; border-radius: 6px; margin-bottom: 12px; }
+        .flash.error { background: #7f1d1d; color: #fca5a5; }
+        code { background: #0f172a; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+        pre { background: #0f172a; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 11px; margin: 0; }
+        a { color: #60a5fa; }
+        .muted { color: #94a3b8; font-size: 12px; }
+        img.horse-gif { max-width: 100%; border-radius: 6px; margin-top: 10px; background: #0f172a; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🎰 CasinoShiz</h1>
+        <nav>
+            <a href="/admin" class="@(Context.Request.Path.Equals("/admin") ? "active" : "")">Dashboard</a>
+            <a href="/admin/users" class="@(Context.Request.Path.StartsWithSegments("/admin/users") ? "active" : "")">Users</a>
+            <a href="/admin/bets" class="@(Context.Request.Path.StartsWithSegments("/admin/bets") ? "active" : "")">Bets</a>
+            <a href="/admin/history" class="@(Context.Request.Path.StartsWithSegments("/admin/history") ? "active" : "")">History</a>
+            <a href="/admin/horse" class="@(Context.Request.Path.StartsWithSegments("/admin/horse") ? "active" : "")">Horse</a>
+            <a href="/admin/events" class="@(Context.Request.Path.StartsWithSegments("/admin/events") ? "active" : "")">Events</a>
+        </nav>
+    </header>
+    <main>
+        @RenderBody()
+    </main>
+</body>
+</html>

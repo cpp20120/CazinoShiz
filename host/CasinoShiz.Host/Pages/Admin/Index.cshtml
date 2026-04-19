@@ -1,0 +1,49 @@
+@page "/admin"
+@model CasinoShiz.Host.Pages.Admin.IndexModel
+@{ ViewData["Title"] = "Dashboard"; }
+
+<h2>Dashboard</h2>
+
+<div class="cards">
+    <div class="stat"><div class="label">Users</div><div class="value">@Model.UserCount</div></div>
+    <div class="stat"><div class="label">Total coins</div><div class="value">@Model.TotalCoins</div></div>
+    <div class="stat"><div class="label">Pending bets</div><div class="value">@Model.PendingBets</div></div>
+    <div class="stat"><div class="label">Domain events</div><div class="value">@Model.EventCount</div></div>
+</div>
+
+<div class="card">
+    <h3>Modules loaded</h3>
+    <table>
+        <thead><tr><th>Id</th><th>Name</th><th>Version</th></tr></thead>
+        <tbody>
+            @foreach (var m in Model.Modules.OrderBy(m => m.Id))
+            {
+                <tr>
+                    <td><code>@m.Id</code></td>
+                    <td>@m.DisplayName</td>
+                    <td>@m.Version</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h3>Events by module</h3>
+    @if (Model.EventsByModule.Count == 0)
+    {
+        <p class="muted">No domain events recorded yet.</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>Module</th><th>Events</th></tr></thead>
+            <tbody>
+                @foreach (var x in Model.EventsByModule)
+                {
+                    <tr><td><code>@x.Module</code></td><td>@x.Count</td></tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>

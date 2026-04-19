@@ -1,0 +1,78 @@
+@page "/admin/horse"
+@model CasinoShiz.Host.Pages.Admin.HorseModel
+@{ ViewData["Title"] = "Horse"; }
+
+<h2>Horse racing</h2>
+
+@if (!string.IsNullOrEmpty(Model.Flash))
+{
+    <div class="flash @(Model.FlashError ? "error" : "")">@Model.Flash</div>
+}
+
+<div class="card">
+    <h3>Today · <code>@Model.TodayRaceDate</code></h3>
+    <p>Bets placed today: <b>@Model.BetsToday</b> / min to run: @Model.MinBets</p>
+
+    @if (Model.Koefs.Count > 0)
+    {
+        <table>
+            <thead><tr><th>Horse</th><th>Koef</th></tr></thead>
+            <tbody>
+                @foreach (var (horseId, k) in Model.Koefs.OrderBy(x => x.Key))
+                {
+                    <tr><td>🐎 #@(horseId + 1)</td><td>×@k.ToString("F3")</td></tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    <form method="post" asp-page-handler="Run" style="margin-top: 12px">
+        <button type="submit" @(Model.BetsToday < Model.MinBets ? "disabled" : "")>
+            Run today's race
+        </button>
+        @if (Model.ConfiguredAdmins.Count == 0)
+        {
+            <span class="muted" style="margin-left: 10px">⚠ No Games:horse:Admins configured.</span>
+        }
+        else
+        {
+            <span class="muted" style="margin-left: 10px">Will run as user @Model.ConfiguredAdmins[0]</span>
+        }
+    </form>
+
+    @if (Model.DatesWithGif.Contains(Model.TodayRaceDate))
+    {
+        <img class="horse-gif" src="/admin/horse/image?date=@Model.TodayRaceDate&kind=gif" alt="Race animation" />
+    }
+</div>
+
+<div class="card">
+    <h3>Past races</h3>
+    @if (Model.Past.Count == 0)
+    {
+        <p class="muted">No past races.</p>
+    }
+    else
+    {
+        <table>
+            <thead><tr><th>Date</th><th>Winner</th><th>Frame</th></tr></thead>
+            <tbody>
+                @foreach (var r in Model.Past)
+                {
+                    <tr>
+                        <td><code>@r.RaceDate</code></td>
+                        <td>🐎 #@(r.Winner + 1)</td>
+                        <td>
+                            @if (Model.DatesWithGif.Contains(r.RaceDate))
+                            {
+                                <a href="/admin/horse/image?date=@r.RaceDate&kind=gif">GIF</a>
+                                <span class="muted"> · </span>
+                            }
+                            <a href="/admin/horse/image?date=@r.RaceDate&kind=png">last frame</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>

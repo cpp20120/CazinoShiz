@@ -1,0 +1,66 @@
+@page "/admin/bets"
+@model CasinoShiz.Host.Pages.Admin.BetsModel
+@{ ViewData["Title"] = "Bets"; }
+
+<h2>Pending bets</h2>
+
+<div class="cards">
+    @foreach (var kv in Model.Counts.OrderByDescending(x => x.Value))
+    {
+        <div class="stat">
+            <div class="label">@kv.Key</div>
+            <div class="value">@kv.Value</div>
+        </div>
+    }
+    <div class="stat">
+        <div class="label">Total coins at stake</div>
+        <div class="value">@Model.TotalAmount</div>
+    </div>
+</div>
+
+<div class="card">
+    <form method="get" class="inline">
+        <label>Game:</label>
+        <select name="game" onchange="this.form.submit()">
+            <option value="">(all)</option>
+            @foreach (var g in new[] { "darts", "dicecube", "basketball", "bowling", "blackjack", "horse" })
+            {
+                <option value="@g" selected="@(Model.Game == g)">@g</option>
+            }
+        </select>
+        <noscript><button type="submit">Filter</button></noscript>
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>When</th>
+                <th>Game</th>
+                <th>User</th>
+                <th>Amount</th>
+                <th>Chat</th>
+                <th>Note</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var b in Model.Rows)
+            {
+                <tr>
+                    <td class="muted">@b.CreatedAt.UtcDateTime.ToString("MM-dd HH:mm:ss")</td>
+                    <td><span class="pill">@b.Game</span></td>
+                    <td><code>@b.UserId</code></td>
+                    <td><b>@b.Amount</b></td>
+                    <td class="muted">@(b.ChatId == 0 ? "—" : b.ChatId.ToString())</td>
+                    <td class="muted">@b.Note</td>
+                </tr>
+            }
+            @if (Model.Rows.Count == 0)
+            {
+                <tr><td colspan="6" class="muted">No pending bets.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+<p class="muted">Showing up to 500 most recent pending bets across all games.</p>

@@ -1,0 +1,96 @@
+@page "/admin/history"
+@model CasinoShiz.Host.Pages.Admin.HistoryModel
+@{ ViewData["Title"] = "History"; }
+
+<h2>Game history</h2>
+
+<div class="cards">
+    <div class="stat">
+        <div class="label">Rounds shown</div>
+        <div class="value">@Model.Rows.Count</div>
+    </div>
+    <div class="stat">
+        <div class="label">Wins</div>
+        <div class="value">@Model.Wins</div>
+    </div>
+    <div class="stat">
+        <div class="label">Losses</div>
+        <div class="value">@Model.Losses</div>
+    </div>
+    <div class="stat">
+        <div class="label">Coins wagered</div>
+        <div class="value">@Model.CoinsIn</div>
+    </div>
+    <div class="stat">
+        <div class="label">Coins paid out</div>
+        <div class="value">@Model.CoinsOut</div>
+    </div>
+    <div class="stat">
+        <div class="label">House net</div>
+        <div class="value">@(Model.CoinsIn - Model.CoinsOut)</div>
+    </div>
+</div>
+
+<div class="card">
+    <form method="get" class="inline">
+        <label>Game:</label>
+        <select name="game">
+            <option value="">(all)</option>
+            @foreach (var g in new[] { "darts", "dicecube", "basketball", "bowling", "dice", "horse" })
+            {
+                <option value="@g" selected="@(Model.Game == g)">@g</option>
+            }
+        </select>
+        <label>User id:</label>
+        <input name="user" value="@Model.UserFilter" placeholder="telegram user id" />
+        <button type="submit">Filter</button>
+        @if (!string.IsNullOrEmpty(Model.Game) || !string.IsNullOrEmpty(Model.UserFilter))
+        {
+            <a href="/admin/history" class="muted" style="margin-left: 8px">clear</a>
+        }
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>When</th>
+                <th>Game</th>
+                <th>User</th>
+                <th>Face</th>
+                <th>Bet</th>
+                <th>×</th>
+                <th>Payout</th>
+                <th>Net</th>
+                <th>Type</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in Model.Rows)
+            {
+                var net = r.Payout - r.Bet;
+                <tr>
+                    <td class="muted">@r.OccurredAt.UtcDateTime.ToString("MM-dd HH:mm:ss")</td>
+                    <td><span class="pill">@r.Game</span></td>
+                    <td><code>@r.UserId</code></td>
+                    <td>@(r.Face?.ToString() ?? "—")</td>
+                    <td>@r.Bet</td>
+                    <td>@(r.Multiplier.HasValue ? "×" + r.Multiplier : "")</td>
+                    <td>@r.Payout</td>
+                    <td>
+                        @if (net > 0) { <span class="pill ok">+@net</span> }
+                        else if (net < 0) { <span class="pill warn">@net</span> }
+                        else { <span class="muted">0</span> }
+                    </td>
+                    <td class="muted"><code>@r.EventType</code></td>
+                </tr>
+            }
+            @if (Model.Rows.Count == 0)
+            {
+                <tr><td colspan="9" class="muted">No history for this filter.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+<p class="muted">Showing up to 500 most recent game rounds. Event log is populated for every bet/throw going forward — old events from before this deploy are not backfilled.</p>

@@ -1,0 +1,63 @@
+@page "/admin/users"
+@model CasinoShiz.Host.Pages.Admin.UsersModel
+@{ ViewData["Title"] = "Users"; }
+
+<h2>Users</h2>
+
+@if (!string.IsNullOrEmpty(Model.Flash))
+{
+    <div class="flash @(Model.FlashError ? "error" : "")">@Model.Flash</div>
+}
+
+<div class="card">
+    <form method="get" class="inline">
+        <input type="text" name="q" value="@Model.Q" placeholder="Search by name or Telegram id…" style="min-width: 300px" />
+        <button type="submit">Search</button>
+        @if (!string.IsNullOrEmpty(Model.Q))
+        {
+            <a href="/admin/users" class="muted">clear</a>
+        }
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Telegram ID</th>
+                <th>Name</th>
+                <th>Coins</th>
+                <th>Updated</th>
+                <th style="width: 50%">Adjust</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var u in Model.Users)
+            {
+                <tr>
+                    <td><code>@u.UserId</code></td>
+                    <td>@u.DisplayName</td>
+                    <td><b>@u.Coins</b></td>
+                    <td class="muted">@u.UpdatedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>
+                        <form method="post" asp-page-handler="Set" class="inline">
+                            <input type="hidden" name="userId" value="@u.UserId" />
+                            <input type="number" name="coins" value="@u.Coins" style="width: 100px" required />
+                            <button type="submit">Set</button>
+                        </form>
+                        <form method="post" asp-page-handler="Adjust" class="inline" style="margin-left: 10px">
+                            <input type="hidden" name="userId" value="@u.UserId" />
+                            <input type="number" name="delta" value="1000" style="width: 90px" required />
+                            <button type="submit" class="ghost">+/-</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+            @if (Model.Users.Count == 0)
+            {
+                <tr><td colspan="5" class="muted">No users found.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+<p class="muted">Showing up to 500 rows. <b>Set</b> = replace coin value exactly. <b>+/-</b> = add delta (negative allowed).</p>

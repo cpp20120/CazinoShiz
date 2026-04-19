@@ -1,0 +1,48 @@
+@page "/admin/events"
+@model CasinoShiz.Host.Pages.Admin.EventsModel
+@{ ViewData["Title"] = "Events"; }
+
+<h2>Domain events</h2>
+
+<div class="card">
+    <form method="get" class="inline">
+        <label>Module:</label>
+        <select name="module" onchange="this.form.submit()">
+            <option value="">(all)</option>
+            @foreach (var m in Model.Modules)
+            {
+                <option value="@m" selected="@(Model.Module == m)">@m</option>
+            }
+        </select>
+        <noscript><button type="submit">Filter</button></noscript>
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 60px">#</th>
+                <th>When</th>
+                <th>Type</th>
+                <th style="width: 60%">Payload</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var e in Model.Rows)
+            {
+                <tr>
+                    <td class="muted">@e.Id</td>
+                    <td class="muted">@e.OccurredAt.UtcDateTime.ToString("MM-dd HH:mm:ss")</td>
+                    <td><code>@e.EventType</code></td>
+                    <td><pre>@e.PayloadJson</pre></td>
+                </tr>
+            }
+            @if (Model.Rows.Count == 0)
+            {
+                <tr><td colspan="4" class="muted">No events for this filter.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+<p class="muted">Showing up to 200 most recent events.</p>
