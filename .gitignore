@@ -10,3 +10,5 @@ data/
 .claude
 .idea
 *.DotSettings.user
+src/
+experiments/
