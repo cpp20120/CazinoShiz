@@ -50,7 +50,7 @@ services:
     env_file:
       - .env
     environment:
-      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=cazino;Username=cazino;Password=cazino"
+      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=cazino;Username=cazino;Password=cazino"
     volumes:
       - ./data:/app/data
     depends_on:

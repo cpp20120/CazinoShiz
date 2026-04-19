@@ -1,5 +1,16 @@
-using CasinoShiz.Services.Handlers;
-using CasinoShiz.Services.Pipeline;
+using BotFramework.Sdk;
+using Games.Admin;
+using Games.Basketball;
+using Games.Blackjack;
+using Games.Bowling;
+using Games.Darts;
+using Games.Dice;
+using Games.DiceCube;
+using Games.Horse;
+using Games.Leaderboard;
+using Games.Poker;
+using Games.Redeem;
+using Games.SecretHitler;
 using Xunit;
 
 namespace CasinoShiz.Tests;
@@ -11,21 +22,29 @@ public class UpdateRouterTests
     {
         var handlerTypes = new[]
         {
-            typeof(DiceHandler), typeof(HorseHandler), typeof(PokerHandler),
-            typeof(RedeemHandler), typeof(AdminHandler), typeof(LeaderboardHandler),
-            typeof(ChatHandler), typeof(ChannelHandler),
+            typeof(DiceHandler), typeof(DiceCubeHandler), typeof(DartsHandler),
+            typeof(BasketballHandler), typeof(BowlingHandler),
+            typeof(BlackjackHandler), typeof(HorseHandler), typeof(PokerHandler),
+            typeof(SecretHitlerHandler), typeof(RedeemHandler),
+            typeof(LeaderboardHandler), typeof(AdminHandler),
         };
         foreach (var t in handlerTypes)
             Assert.True(typeof(IUpdateHandler).IsAssignableFrom(t), $"{t.Name} missing IUpdateHandler");
     }
 
     [Theory]
-    [InlineData(typeof(ChannelHandler), typeof(ChannelPostAttribute))]
     [InlineData(typeof(DiceHandler), typeof(MessageDiceAttribute))]
+    [InlineData(typeof(BasketballHandler), typeof(MessageDiceAttribute))]
+    [InlineData(typeof(BasketballHandler), typeof(CommandAttribute))]
+    [InlineData(typeof(BowlingHandler), typeof(MessageDiceAttribute))]
+    [InlineData(typeof(BowlingHandler), typeof(CommandAttribute))]
     [InlineData(typeof(PokerHandler), typeof(CommandAttribute))]
     [InlineData(typeof(PokerHandler), typeof(CallbackPrefixAttribute))]
     [InlineData(typeof(HorseHandler), typeof(CommandAttribute))]
-    [InlineData(typeof(RedeemHandler), typeof(CallbackFallbackAttribute))]
+    [InlineData(typeof(RedeemHandler), typeof(CommandAttribute))]
+    [InlineData(typeof(RedeemHandler), typeof(CallbackPrefixAttribute))]
+    [InlineData(typeof(AdminHandler), typeof(CommandAttribute))]
+    [InlineData(typeof(LeaderboardHandler), typeof(CommandAttribute))]
     public void HandlerType_HasExpectedRouteAttribute(System.Type handler, System.Type attr)
     {
         var found = System.Attribute.GetCustomAttributes(handler, attr);

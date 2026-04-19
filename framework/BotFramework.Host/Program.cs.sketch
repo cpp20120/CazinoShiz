@@ -1,0 +1,203 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Program — Host composition root. This is what the consumer of the framework
+// writes. Minimal by design: reference the module assemblies, list them, run.
+//
+// The intent: making a new bot distribution = new csproj, new Program.cs, pick
+// which modules to include. "Casino bot" ships poker + blackjack + slots;
+// "Party games bot" ships SecretHitler + Mafia. Same framework, different mix.
+//
+// Notice Program.cs does NOT know anything about Poker or SecretHitler beyond
+// their type names. No Poker-specific DI lines, no SH-specific config binding.
+// Modules declare what they need; the Host orchestrates.
+// ─────────────────────────────────────────────────────────────────────────────
+
+using BotFramework.Host;
+using BotFramework.Host.Middleware;
+using BotFramework.Sdk;
+using Games.Dice;
+using Games.Poker;
+using Games.SecretHitler;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// 1. Register all modules this Host distribution ships.
+IModule[] modules =
+[
+    new DiceModule(),
+    new PokerModule(),
+    new SecretHitlerModule(),
+    // new BlackjackModule(),   — swap modules per distribution
+];
+
+// 2. Host-level services that every module depends on.
+//    Layered: L1 infrastructure (db, telegram, snapshot store) → L2 platform
+//    (command bus, event bus, metrics, flags, health) → L3 domain sits in
+//    modules → L4 presentation uses the platform contracts.
+builder.Services
+    // L1 — infrastructure
+    .AddSingleton<IEconomicsService, EconomicsService>()
+    .AddSingleton<IAnalyticsService, ClickHouseAnalyticsService>()
+    .AddSingleton<ILocalizer, Localizer>()
+    .AddSingleton<IEventStore, PostgresEventStore>()
+    .AddSingleton(typeof(ISnapshotStore<>), typeof(PostgresSnapshotStore<>))
+    .AddSingleton<IDbConnectionFactory, NpgsqlConnectionFactory>()
+    .AddSingleton<ITelegramBotClient>(sp => new TelegramBotClient(
+        sp.GetRequiredService<IConfiguration>()["Bot:Token"]!))
+    // L2 — platform services modules dispatch through
+    .AddSingleton<ICommandBus, CommandBus>()
+    .AddSingleton<IDomainEventBus, InProcessEventBus>()
+    .AddSingleton<EventDispatcher>()
+    .AddSingleton<ModuleMigrationRunner>()
+    .AddSingleton<HealthEndpoint>()
+    .AddSingleton<IMetrics, NoOpMetrics>()                // swap for Prometheus in real deploy
+    .AddSingleton<IFeatureFlags, StaticFeatureFlags>()    // swap for Flagsmith/GrowthBook
+    .AddSingleton<IRateLimitPolicy, TokenBucketRateLimitPolicy>()
+    // Host-owned middleware — order matters: logging outermost, metrics next,
+    // rate-limit closest to the handler so only admitted calls get timed.
+    .AddSingleton<ICommandMiddleware, LoggingMiddleware>()
+    .AddSingleton<ICommandMiddleware, MetricsMiddleware>()
+    .AddSingleton<ICommandMiddleware, RateLimitMiddleware>();
+
+// 3. Let each module register its own services, aggregates, handlers,
+//    projections, admin pages, background jobs. ModuleLoader also collects
+//    each module's IModuleMigrations so the migration runner can apply them
+//    at startup.
+var moduleServices = new ModuleServiceCollectionAdapter(builder.Services, builder.Configuration);
+var loaded = ModuleLoader.LoadAll(modules, moduleServices);
+
+// 4. Host-owned infrastructure that consumes module contributions.
+builder.Services
+    .AddSingleton(loaded)
+    .AddSingleton<UpdateRouter>()
+    .AddSingleton<AdminMount>()
+    .AddHostedService<BotHostedService>()              // polling OR webhook driver
+    .AddHostedService<AnalyticsFlushService>()
+    .AddHostedService<BackgroundJobRunner>();          // hosts module IBackgroundJob instances
+
+var app = builder.Build();
+
+// 5. Webhook endpoint in production; polling path is handled by BotHostedService.
+app.MapPost("/{botToken}", async (string botToken, HttpRequest req, UpdateRouter router, CancellationToken ct) =>
+{
+    var update = await System.Text.Json.JsonSerializer.DeserializeAsync<Update>(req.Body, cancellationToken: ct);
+    if (update is not null) await router.DispatchAsync(update, ct);
+    return Results.Ok();
+});
+
+// 5b. Admin dispatch. AdminWebToken middleware (not shown) runs before this.
+app.MapGet("/admin/{moduleId}/{*route}", async (
+    string moduleId, string? route, HttpContext ctx, AdminMount admin, CancellationToken ct) =>
+{
+    var query = ctx.Request.Query.ToDictionary(q => q.Key, q => q.Value.ToString());
+    var resp = await admin.DispatchAsync(moduleId, route ?? "", query, ctx.RequestServices, ct);
+    ctx.Response.StatusCode = resp.StatusCode;
+    await ctx.Response.WriteAsync(resp.Html, ct);
+});
+
+// 5c. Health endpoints. Split live / ready so Kubernetes can restart a hung
+//     process without yanking it out of the load balancer during startup.
+app.MapGet("/health", async (HealthEndpoint h, CancellationToken ct) =>
+{
+    var r = await h.RunAsync(kindFilter: null, ct);
+    return Results.Json(r, statusCode: r.Healthy ? 200 : 503);
+});
+app.MapGet("/health/live", async (HealthEndpoint h, CancellationToken ct) =>
+{
+    var r = await h.RunAsync(HealthCheckKind.Liveness, ct);
+    return Results.Json(r, statusCode: r.Healthy ? 200 : 503);
+});
+app.MapGet("/health/ready", async (HealthEndpoint h, CancellationToken ct) =>
+{
+    var r = await h.RunAsync(HealthCheckKind.Readiness, ct);
+    return Results.Json(r, statusCode: r.Healthy ? 200 : 503);
+});
+
+// 6. One-shot startup work — ORDER MATTERS. Schema before anything touches it.
+app.Lifetime.ApplicationStarted.Register(async () =>
+{
+    // 6a. Apply per-module migrations. Runs first so projections, repositories,
+    //     and background jobs find their tables when they start querying.
+    var runner = app.Services.GetRequiredService<ModuleMigrationRunner>();
+    await runner.ApplyAllAsync(CancellationToken.None);
+
+    // 6b. Publish locales to the shared resolver.
+    var localizer = app.Services.GetRequiredService<ILocalizer>();
+    localizer.LoadFromModules(loaded.LocalesByCulture);
+
+    // 6c. Aggregate every module's bot commands and publish once.
+    var bot = app.Services.GetRequiredService<ITelegramBotClient>();
+    await bot.SetMyCommandsAsync(loaded.BotCommands);
+});
+
+// 7. Clean shutdown — let modules wind down background work.
+app.Lifetime.ApplicationStopping.Register(async () =>
+{
+    foreach (var module in loaded.Modules)
+        await module.ShutdownAsync(CancellationToken.None);
+});
+
+app.Run();
+
+// Placeholders — concrete implementations live in the Host assembly.
+namespace BotFramework.Host
+{
+    public sealed class ModuleServiceCollectionAdapter(IServiceCollection _, IConfiguration __) : IModuleServiceCollection
+    {
+        public IModuleServiceCollection BindOptions<TOptions>(string configSection) where TOptions : class => this;
+        public IModuleServiceCollection AddScoped<TService, TImpl>() where TImpl : class, TService => this;
+        public IModuleServiceCollection AddSingleton<TService, TImpl>() where TImpl : class, TService => this;
+        public IModuleServiceCollection RegisterAggregate<TAggregate>(PersistenceStrategy strategy) where TAggregate : IAggregateRoot => this;
+        public IModuleServiceCollection AddHandler<THandler>() where THandler : class => this;
+        public IModuleServiceCollection AddProjection<TProjection>() where TProjection : class, IProjection => this;
+        public IModuleServiceCollection AddAdminPage<TPage>() where TPage : class, IAdminPage => this;
+        public IModuleServiceCollection AddBackgroundJob<TJob>() where TJob : class, IBackgroundJob => this;
+
+        // Phase-4 additions — CQRS / cross-module events / health. In the real
+        // adapter each of these resolves to _.AddSingleton(...) against the
+        // wrapped IServiceCollection plus a registration record the Host uses
+        // to build the ICommandBus handler table / IDomainEventBus subscription
+        // map / IHealthCheck aggregate.
+        public IModuleServiceCollection AddCommandHandler<TCommand, THandler>()
+            where TCommand : ICommand
+            where THandler : class, ICommandHandler<TCommand> => this;
+
+        public IModuleServiceCollection AddCommandMiddleware<TMiddleware>()
+            where TMiddleware : class, ICommandMiddleware => this;
+
+        public IModuleServiceCollection AddDomainEventSubscription<TSubscriber>(string eventTypePattern)
+            where TSubscriber : class, IDomainEventSubscriber => this;
+
+        public IModuleServiceCollection AddHealthCheck<TCheck>()
+            where TCheck : class, IHealthCheck => this;
+    }
+
+    public sealed class EconomicsService : IEconomicsService { /* talks to users_balances via Dapper */ }
+    public sealed class ClickHouseAnalyticsService : IAnalyticsService { /* batches + flushes */ }
+    public sealed class Localizer : ILocalizer { public void LoadFromModules(object _) { } }
+    public sealed class NpgsqlConnectionFactory : IDbConnectionFactory { }
+    public sealed class BotHostedService { }
+    public sealed class AnalyticsFlushService { }
+    public sealed class BackgroundJobRunner { }
+    public interface ITelegramBotClient { Task SetMyCommandsAsync(IReadOnlyList<BotCommand> commands); }
+    public sealed class TelegramBotClient(string token) : ITelegramBotClient { public Task SetMyCommandsAsync(IReadOnlyList<BotCommand> c) => Task.CompletedTask; }
+
+    // Platform-service stubs for Phase 4. Production host swaps each for a
+    // concrete adapter (Prometheus, Flagsmith/GrowthBook, Redis token bucket).
+    public sealed class NoOpMetrics : IMetrics
+    {
+        public void CounterInc(string n, IReadOnlyDictionary<string, string>? t = null, double a = 1) { }
+        public void HistogramObserve(string n, double v, IReadOnlyDictionary<string, string>? t = null) { }
+        public void GaugeSet(string n, double v, IReadOnlyDictionary<string, string>? t = null) { }
+    }
+    public sealed class StaticFeatureFlags : IFeatureFlags
+    {
+        public bool IsEnabled(string flag, FeatureFlagContext? ctx = null) => false;
+        public string Variant(string flag, string defaultVariant, FeatureFlagContext? ctx = null) => defaultVariant;
+    }
+    public sealed class TokenBucketRateLimitPolicy : Middleware.IRateLimitPolicy
+    {
+        // Stub: real impl keeps a per-key bucket with time-based refill.
+        public Task<bool> TryAcquireAsync(Middleware.RateLimitKey key, CancellationToken ct) =>
+            Task.FromResult(true);
+    }
+}

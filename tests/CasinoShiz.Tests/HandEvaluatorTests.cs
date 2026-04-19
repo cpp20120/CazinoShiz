@@ -1,4 +1,4 @@
-using CasinoShiz.Services.Poker.Domain;
+using Games.Poker.Domain;
 using Xunit;
 
 namespace CasinoShiz.Tests;

@@ -1,5 +1,7 @@
 bin/
 obj/
+bin
+objg
 *.db
 *.db-shm
 *.db-wal

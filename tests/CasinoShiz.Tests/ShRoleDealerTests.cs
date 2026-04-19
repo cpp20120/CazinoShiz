@@ -1,5 +1,5 @@
-using CasinoShiz.Data.Entities;
-using CasinoShiz.Services.SecretHitler.Domain;
+using Games.SecretHitler;
+using Games.SecretHitler.Domain;
 using Xunit;
 
 namespace CasinoShiz.Tests;

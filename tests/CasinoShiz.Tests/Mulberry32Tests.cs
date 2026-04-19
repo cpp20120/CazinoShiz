@@ -1,4 +1,4 @@
-using CasinoShiz.Helpers;
+using BotFramework.Host.Services.Random;
 using Xunit;
 
 namespace CasinoShiz.Tests;

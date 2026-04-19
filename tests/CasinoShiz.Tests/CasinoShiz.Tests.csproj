@@ -13,13 +13,23 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
     <PackageReference Include="xunit" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.*" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0-*" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.0-*" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\CasinoShiz.Core\CasinoShiz.Core.csproj" />
-    <ProjectReference Include="..\..\src\CasinoShiz.Data\CasinoShiz.Data.csproj" />
+    <ProjectReference Include="..\..\framework\BotFramework.Sdk\BotFramework.Sdk.csproj" />
+    <ProjectReference Include="..\..\framework\BotFramework.Host\BotFramework.Host.csproj" />
+    <ProjectReference Include="..\..\games\Games.Blackjack\Games.Blackjack.csproj" />
+    <ProjectReference Include="..\..\games\Games.Horse\Games.Horse.csproj" />
+    <ProjectReference Include="..\..\games\Games.Poker\Games.Poker.csproj" />
+    <ProjectReference Include="..\..\games\Games.SecretHitler\Games.SecretHitler.csproj" />
+    <ProjectReference Include="..\..\games\Games.Dice\Games.Dice.csproj" />
+    <ProjectReference Include="..\..\games\Games.DiceCube\Games.DiceCube.csproj" />
+    <ProjectReference Include="..\..\games\Games.Darts\Games.Darts.csproj" />
+    <ProjectReference Include="..\..\games\Games.Basketball\Games.Basketball.csproj" />
+    <ProjectReference Include="..\..\games\Games.Bowling\Games.Bowling.csproj" />
+    <ProjectReference Include="..\..\games\Games.Redeem\Games.Redeem.csproj" />
+    <ProjectReference Include="..\..\games\Games.Leaderboard\Games.Leaderboard.csproj" />
+    <ProjectReference Include="..\..\games\Games.Admin\Games.Admin.csproj" />
   </ItemGroup>
 
 </Project>

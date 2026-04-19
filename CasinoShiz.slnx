@@ -1,6 +1,25 @@
 <Solution>
-  <Folder Name="/src/">
-    <Project Path="src\CasinoShiz\CasinoShiz.csproj" />
+  <Folder Name="/framework/">
+    <Project Path="framework\BotFramework.Sdk\BotFramework.Sdk.csproj" />
+    <Project Path="framework\BotFramework.Sdk.Testing\BotFramework.Sdk.Testing.csproj" />
+    <Project Path="framework\BotFramework.Host\BotFramework.Host.csproj" />
+  </Folder>
+  <Folder Name="/games/">
+    <Project Path="games\Games.Dice\Games.Dice.csproj" />
+    <Project Path="games\Games.DiceCube\Games.DiceCube.csproj" />
+    <Project Path="games\Games.Darts\Games.Darts.csproj" />
+    <Project Path="games\Games.Basketball\Games.Basketball.csproj" />
+    <Project Path="games\Games.Bowling\Games.Bowling.csproj" />
+    <Project Path="games\Games.Blackjack\Games.Blackjack.csproj" />
+    <Project Path="games\Games.Horse\Games.Horse.csproj" />
+    <Project Path="games\Games.Poker\Games.Poker.csproj" />
+    <Project Path="games\Games.SecretHitler\Games.SecretHitler.csproj" />
+    <Project Path="games\Games.Redeem\Games.Redeem.csproj" />
+    <Project Path="games\Games.Leaderboard\Games.Leaderboard.csproj" />
+    <Project Path="games\Games.Admin\Games.Admin.csproj" />
+  </Folder>
+  <Folder Name="/host/">
+    <Project Path="host\CasinoShiz.Host\CasinoShiz.Host.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests\CasinoShiz.Tests\CasinoShiz.Tests.csproj" />
