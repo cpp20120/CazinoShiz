@@ -556,3 +556,217 @@ On startup, `BotHostedService` calls `SetMyCommands` with a curated list that sh
 - Primary constructors are the default (e.g. `public sealed class Foo(Dep dep) : IBar`).
 - Services are `Scoped`; hosted services and `ClickHouseReporter` are `Singleton`; `ITelegramBotClient` and `NpgsqlDataSource` are `Singleton`.
 - Adding a route: decorate the handler class with an attribute from `RouteAttributes.cs`. No central registration.
+
+## Database schema
+
+All persistence is **PostgreSQL + Dapper** (no EF Core). Each module owns its tables and declares them via `IModuleMigrations.GetMigrations()`. `ModuleMigrationRunner` applies them at startup and tracks applied migrations in `__module_migrations`.
+
+### Framework tables (`BotFramework.Host`)
+
+#### `users`
+Shared user account and balance store. `coins` and `version` are written only by `EconomicsService` (Dapper `FOR UPDATE`) — never by direct ORM saves.
+
+| Column | Type | Notes |
+|---|---|---|
+| `telegram_user_id` | BIGINT | PRIMARY KEY |
+| `display_name` | TEXT NOT NULL | |
+| `coins` | INTEGER NOT NULL DEFAULT 0 | owned by `EconomicsService` only |
+| `version` | BIGINT NOT NULL DEFAULT 0 | bumped on every balance mutation |
+| `created_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+| `updated_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+
+#### `module_events`
+Event store for event-sourced aggregates. Unique constraint on `(stream_id, version)`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | BIGSERIAL | PRIMARY KEY |
+| `stream_id` | TEXT NOT NULL | |
+| `version` | BIGINT NOT NULL | |
+| `event_type` | TEXT NOT NULL | |
+| `payload` | JSONB NOT NULL | |
+| `occurred_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+
+#### `module_snapshots`
+Snapshot cache for fast aggregate reconstruction.
+
+| Column | Type | Notes |
+|---|---|---|
+| `stream_id` | TEXT | PRIMARY KEY |
+| `aggregate` | TEXT NOT NULL | |
+| `version` | BIGINT NOT NULL | |
+| `state` | JSONB NOT NULL | |
+| `taken_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+
+#### `event_log`
+Global append-only audit log.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | BIGSERIAL | PRIMARY KEY |
+| `event_type` | TEXT NOT NULL | |
+| `payload` | JSONB NOT NULL | |
+| `occurred_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+
+---
+
+### Game tables
+
+#### `dice_rolls` (module: `dice`)
+Audit log of slot machine outcomes.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID | PRIMARY KEY |
+| `user_id` | BIGINT NOT NULL | |
+| `dice_value` | SMALLINT NOT NULL | 1–64, bits encode the three reels |
+| `prize` | INTEGER NOT NULL | |
+| `loss` | INTEGER NOT NULL | |
+| `rolled_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+
+#### `dicecube_bets` / `darts_bets` / `basketball_bets` / `bowling_bets`
+Pending bet state for two-step dice games (🎲 🎯 🏀 🎳). Identical shape for all four:
+
+| Column | Type | Notes |
+|---|---|---|
+| `user_id` | BIGINT NOT NULL | composite PK |
+| `chat_id` | BIGINT NOT NULL | composite PK |
+| `amount` | INTEGER NOT NULL | |
+| `created_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+
+Row is consumed and deleted when the dice roll arrives.
+
+#### `blackjack_hands` (module: `blackjack`)
+At most one active hand per user.
+
+| Column | Type | Notes |
+|---|---|---|
+| `user_id` | BIGINT | PRIMARY KEY |
+| `chat_id` | BIGINT NOT NULL | |
+| `bet` | INTEGER NOT NULL | |
+| `player_cards` | TEXT NOT NULL | space-separated card codes |
+| `dealer_cards` | TEXT NOT NULL | |
+| `deck_state` | TEXT NOT NULL | remaining deck as card string |
+| `state_message_id` | INTEGER NULL | DM message edited in place |
+| `created_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+
+#### `poker_tables` (module: `poker`)
+
+| Column | Type | Notes |
+|---|---|---|
+| `invite_code` | VARCHAR(8) | PRIMARY KEY |
+| `host_user_id` | BIGINT NOT NULL | |
+| `status` | INTEGER NOT NULL | Lobby/HandActive/Paused/Closed |
+| `phase` | INTEGER NOT NULL | PreFlop/Flop/Turn/River/Showdown |
+| `small_blind` | INTEGER NOT NULL | |
+| `big_blind` | INTEGER NOT NULL | |
+| `pot` | INTEGER NOT NULL | |
+| `community_cards` | VARCHAR(32) NOT NULL DEFAULT '' | |
+| `deck_state` | VARCHAR(256) NOT NULL DEFAULT '' | |
+| `button_seat` | INTEGER NOT NULL | |
+| `current_seat` | INTEGER NOT NULL | |
+| `current_bet` | INTEGER NOT NULL | |
+| `min_raise` | INTEGER NOT NULL | |
+| `last_action_at` | BIGINT NOT NULL | Unix ms — used by timeout sweeper |
+| `created_at` | BIGINT NOT NULL | |
+
+Indexed on `(status, last_action_at)`.
+
+#### `poker_seats` (module: `poker`)
+
+| Column | Type | Notes |
+|---|---|---|
+| `invite_code` | VARCHAR(8) NOT NULL | composite PK |
+| `position` | INTEGER NOT NULL | composite PK |
+| `user_id` | BIGINT NOT NULL | |
+| `display_name` | VARCHAR(64) NOT NULL DEFAULT '' | |
+| `stack` | INTEGER NOT NULL | current chips |
+| `hole_cards` | VARCHAR(8) NOT NULL DEFAULT '' | |
+| `status` | INTEGER NOT NULL | Active/Folded/AllIn/SatOut |
+| `current_bet` | INTEGER NOT NULL | chips committed this round |
+| `has_acted_round` | BOOLEAN NOT NULL DEFAULT false | |
+| `chat_id` | BIGINT NOT NULL | |
+| `state_message_id` | INTEGER NULL | private DM message edited in place |
+| `joined_at` | BIGINT NOT NULL | |
+
+#### `secret_hitler_games` (module: `sh`)
+
+| Column | Type | Notes |
+|---|---|---|
+| `invite_code` | VARCHAR(8) | PRIMARY KEY |
+| `host_user_id` | BIGINT NOT NULL | |
+| `chat_id` | BIGINT NOT NULL | |
+| `status` | INTEGER NOT NULL | Lobby/Active/Completed/Closed |
+| `phase` | INTEGER NOT NULL | Nomination/Election/LegislativePresident/LegislativeChancellor/… |
+| `liberal_policies` | INTEGER NOT NULL DEFAULT 0 | win at 5 |
+| `fascist_policies` | INTEGER NOT NULL DEFAULT 0 | win at 6 |
+| `election_tracker` | INTEGER NOT NULL DEFAULT 0 | resets on successful election |
+| `current_president_position` | INTEGER NOT NULL DEFAULT 0 | |
+| `nominated_chancellor_position` | INTEGER NOT NULL DEFAULT -1 | -1 = none |
+| `last_elected_president_position` | INTEGER NOT NULL DEFAULT -1 | term-limit tracking |
+| `last_elected_chancellor_position` | INTEGER NOT NULL DEFAULT -1 | |
+| `deck_state` | VARCHAR(32) NOT NULL DEFAULT '' | `L`/`F` string |
+| `discard_state` | VARCHAR(32) NOT NULL DEFAULT '' | |
+| `president_draw` | VARCHAR(8) NOT NULL DEFAULT '' | 3 drawn policies |
+| `chancellor_received` | VARCHAR(8) NOT NULL DEFAULT '' | 2 passed to chancellor |
+| `winner` | INTEGER NOT NULL DEFAULT 0 | None/Liberal/Fascist |
+| `win_reason` | INTEGER NOT NULL DEFAULT 0 | |
+| `buy_in` | INTEGER NOT NULL DEFAULT 0 | |
+| `pot` | INTEGER NOT NULL DEFAULT 0 | |
+| `created_at` | BIGINT NOT NULL | |
+| `last_action_at` | BIGINT NOT NULL | |
+
+Indexed on `(status, last_action_at)`.
+
+#### `secret_hitler_players` (module: `sh`)
+
+| Column | Type | Notes |
+|---|---|---|
+| `invite_code` | VARCHAR(8) NOT NULL | composite PK |
+| `position` | INTEGER NOT NULL | composite PK |
+| `user_id` | BIGINT NOT NULL | |
+| `display_name` | VARCHAR(64) NOT NULL DEFAULT '' | |
+| `chat_id` | BIGINT NOT NULL | |
+| `role` | INTEGER NOT NULL DEFAULT 0 | Liberal/Fascist/Hitler |
+| `is_alive` | BOOLEAN NOT NULL DEFAULT true | |
+| `last_vote` | INTEGER NOT NULL DEFAULT 0 | None/Ja/Nein |
+| `state_message_id` | INTEGER NULL | private DM message |
+| `joined_at` | BIGINT NOT NULL | |
+
+#### `horse_bets` (module: `horse`)
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID | PRIMARY KEY |
+| `race_date` | TEXT NOT NULL | `MM-dd-yyyy` in UTC+7 |
+| `user_id` | BIGINT NOT NULL | |
+| `horse_id` | INTEGER NOT NULL | |
+| `amount` | INTEGER NOT NULL | |
+| `created_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+
+#### `horse_results` (module: `horse`)
+
+| Column | Type | Notes |
+|---|---|---|
+| `race_date` | TEXT | PRIMARY KEY |
+| `winner` | INTEGER NOT NULL | winning horse_id |
+| `image_data` | BYTEA NOT NULL | GIF of the race |
+| `created_at` | TIMESTAMPTZ NOT NULL DEFAULT now() | |
+
+#### `redeem_codes` (module: `redeem`)
+
+| Column | Type | Notes |
+|---|---|---|
+| `code` | UUID | PRIMARY KEY |
+| `active` | BOOLEAN NOT NULL DEFAULT true | false once redeemed |
+| `issued_by` | BIGINT NOT NULL | admin user id |
+| `issued_at` | BIGINT NOT NULL | Unix ms |
+| `redeemed_by` | BIGINT NULL | |
+| `redeemed_at` | BIGINT NULL | |
+
+#### `display_name_overrides` (module: `admin`)
+
+| Column | Type | Notes |
+|---|---|---|
+| `original_name` | TEXT | PRIMARY KEY |
+| `new_name` | TEXT NOT NULL | |
