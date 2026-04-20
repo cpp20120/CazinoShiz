@@ -22,26 +22,24 @@ public static class BlackjackRenderer
             string.Format(localizer.Get("blackjack", "render.player"), playerCards, snap.PlayerTotal),
         };
 
-        if (snap.Outcome.HasValue)
+        if (!snap.Outcome.HasValue) return string.Join("\n", lines);
+        var net = snap.Payout - snap.Bet;
+        var outcomeKey = snap.Outcome.Value switch
         {
-            var net = snap.Payout - snap.Bet;
-            var outcomeKey = snap.Outcome.Value switch
-            {
-                BlackjackOutcome.PlayerBlackjack => "outcome.player_blackjack",
-                BlackjackOutcome.PlayerWin => "outcome.player_win",
-                BlackjackOutcome.DealerBust => "outcome.dealer_bust",
-                BlackjackOutcome.PlayerBust => "outcome.player_bust",
-                BlackjackOutcome.DealerWin => "outcome.dealer_win",
-                BlackjackOutcome.Push => "outcome.push",
-                _ => "",
-            };
-            var outcomeText = outcomeKey.Length == 0
-                ? ""
-                : string.Format(localizer.Get("blackjack", outcomeKey), net, snap.Bet);
-            lines.Add("");
-            if (!string.IsNullOrEmpty(outcomeText)) lines.Add(outcomeText);
-            lines.Add(string.Format(localizer.Get("blackjack", "render.balance"), snap.PlayerCoins));
-        }
+            BlackjackOutcome.PlayerBlackjack => "outcome.player_blackjack",
+            BlackjackOutcome.PlayerWin => "outcome.player_win",
+            BlackjackOutcome.DealerBust => "outcome.dealer_bust",
+            BlackjackOutcome.PlayerBust => "outcome.player_bust",
+            BlackjackOutcome.DealerWin => "outcome.dealer_win",
+            BlackjackOutcome.Push => "outcome.push",
+            _ => "",
+        };
+        var outcomeText = outcomeKey.Length == 0
+            ? ""
+            : string.Format(localizer.Get("blackjack", outcomeKey), net, snap.Bet);
+        lines.Add("");
+        if (!string.IsNullOrEmpty(outcomeText)) lines.Add(outcomeText);
+        lines.Add(string.Format(localizer.Get("blackjack", "render.balance"), snap.PlayerCoins));
 
         return string.Join("\n", lines);
     }

@@ -11,6 +11,7 @@
 // hand row, credits any payout, and publishes BlackjackHandCompleted.
 // ─────────────────────────────────────────────────────────────────────────────
 
+using System.Collections.Concurrent;
 using BotFramework.Host;
 using BotFramework.Sdk;
 using Games.Blackjack.Domain;
@@ -35,6 +36,9 @@ public sealed class BlackjackService(
     IDomainEventBus events,
     IOptions<BlackjackOptions> options) : IBlackjackService
 {
+    private static readonly ConcurrentDictionary<long, SemaphoreSlim> _gates = new();
+    private static SemaphoreSlim GetGate(long userId) => _gates.GetOrAdd(userId, _ => new SemaphoreSlim(1, 1));
+
     private readonly BlackjackOptions _opts = options.Value;
 
     public async Task<BlackjackResult> StartAsync(long userId, string displayName, long chatId, int bet, CancellationToken ct)
@@ -42,93 +46,122 @@ public sealed class BlackjackService(
         if (bet < _opts.MinBet || bet > _opts.MaxBet)
             return new BlackjackResult(BlackjackError.InvalidBet, null);
 
-        var existing = await hands.FindAsync(userId, ct);
-        if (existing != null)
-            return new BlackjackResult(BlackjackError.HandInProgress, null);
-
-        await economics.EnsureUserAsync(userId, displayName, ct);
-        if (!await economics.TryDebitAsync(userId, bet, "blackjack.start", ct))
+        var gate = GetGate(userId);
+        await gate.WaitAsync(ct);
+        try
         {
-            analytics.Track("blackjack", "not_enough_coins", new Dictionary<string, object?>
+            var existing = await hands.FindAsync(userId, ct);
+            if (existing != null)
+                return new BlackjackResult(BlackjackError.HandInProgress, null);
+
+            await economics.EnsureUserAsync(userId, displayName, ct);
+            if (!await economics.TryDebitAsync(userId, bet, "blackjack.start", ct))
+            {
+                analytics.Track("blackjack", "not_enough_coins", new Dictionary<string, object?>
+                {
+                    ["user_id"] = userId, ["chat_id"] = chatId, ["bet"] = bet,
+                });
+                return new BlackjackResult(BlackjackError.NotEnoughCoins, null);
+            }
+
+            var deck = Deck.BuildShuffled();
+            var player = Deck.Draw(ref deck, 2);
+            var dealer = Deck.Draw(ref deck, 2);
+
+            var hand = new BlackjackHandRow(
+                UserId: userId,
+                ChatId: chatId,
+                Bet: bet,
+                PlayerCards: string.Join(" ", player),
+                DealerCards: string.Join(" ", dealer),
+                DeckState: deck,
+                StateMessageId: null,
+                CreatedAt: DateTimeOffset.UtcNow);
+
+            analytics.Track("blackjack", "start", new Dictionary<string, object?>
             {
                 ["user_id"] = userId, ["chat_id"] = chatId, ["bet"] = bet,
             });
-            return new BlackjackResult(BlackjackError.NotEnoughCoins, null);
+
+            if (BlackjackHandValue.IsNaturalBlackjack(player))
+                return await SettleAsync(hand, doubled: false, persisted: false, ct);
+
+            if (!await hands.InsertAsync(hand, ct))
+            {
+                await economics.CreditAsync(userId, bet, "blackjack.start.refund", ct);
+                return new BlackjackResult(BlackjackError.HandInProgress, null);
+            }
+
+            var balance = await economics.GetBalanceAsync(userId, ct);
+            return new BlackjackResult(BlackjackError.None, BuildSnapshot(hand, balance, revealed: false), hand.StateMessageId);
         }
-
-        var deck = Deck.BuildShuffled();
-        var player = Deck.Draw(ref deck, 2);
-        var dealer = Deck.Draw(ref deck, 2);
-
-        var hand = new BlackjackHandRow(
-            UserId: userId,
-            ChatId: chatId,
-            Bet: bet,
-            PlayerCards: string.Join(" ", player),
-            DealerCards: string.Join(" ", dealer),
-            DeckState: deck,
-            StateMessageId: null,
-            CreatedAt: DateTimeOffset.UtcNow);
-
-        analytics.Track("blackjack", "start", new Dictionary<string, object?>
-        {
-            ["user_id"] = userId, ["chat_id"] = chatId, ["bet"] = bet,
-        });
-
-        if (BlackjackHandValue.IsNaturalBlackjack(player))
-            return await SettleAsync(hand, doubled: false, persisted: false, ct);
-
-        await hands.InsertAsync(hand, ct);
-        var balance = await economics.GetBalanceAsync(userId, ct);
-        return new BlackjackResult(BlackjackError.None, BuildSnapshot(hand, balance, revealed: false), hand.StateMessageId);
+        finally { gate.Release(); }
     }
 
     public async Task<BlackjackResult> HitAsync(long userId, CancellationToken ct)
     {
-        var hand = await hands.FindAsync(userId, ct);
-        if (hand == null) return new BlackjackResult(BlackjackError.NoActiveHand, null);
+        var gate = GetGate(userId);
+        await gate.WaitAsync(ct);
+        try
+        {
+            var hand = await hands.FindAsync(userId, ct);
+            if (hand == null) return new BlackjackResult(BlackjackError.NoActiveHand, null);
 
-        var deck = hand.DeckState;
-        var drawn = Deck.Draw(ref deck, 1);
-        var player = Deck.Parse(hand.PlayerCards).Append(drawn[0]).ToArray();
-        var updated = hand with { PlayerCards = string.Join(" ", player), DeckState = deck };
+            var deck = hand.DeckState;
+            var drawn = Deck.Draw(ref deck, 1);
+            var player = Deck.Parse(hand.PlayerCards).Append(drawn[0]).ToArray();
+            var updated = hand with { PlayerCards = string.Join(" ", player), DeckState = deck };
 
-        if (BlackjackHandValue.Compute(player) > 21)
-            return await SettleAsync(updated, doubled: false, persisted: true, ct);
+            if (BlackjackHandValue.Compute(player) > 21)
+                return await SettleAsync(updated, doubled: false, persisted: true, ct);
 
-        await hands.UpdateAsync(updated, ct);
-        var balance = await economics.GetBalanceAsync(userId, ct);
-        return new BlackjackResult(BlackjackError.None, BuildSnapshot(updated, balance, revealed: false), updated.StateMessageId);
+            await hands.UpdateAsync(updated, ct);
+            var balance = await economics.GetBalanceAsync(userId, ct);
+            return new BlackjackResult(BlackjackError.None, BuildSnapshot(updated, balance, revealed: false), updated.StateMessageId);
+        }
+        finally { gate.Release(); }
     }
 
     public async Task<BlackjackResult> StandAsync(long userId, CancellationToken ct)
     {
-        var hand = await hands.FindAsync(userId, ct);
-        if (hand == null) return new BlackjackResult(BlackjackError.NoActiveHand, null);
-        return await SettleAsync(hand, doubled: false, persisted: true, ct);
+        var gate = GetGate(userId);
+        await gate.WaitAsync(ct);
+        try
+        {
+            var hand = await hands.FindAsync(userId, ct);
+            if (hand == null) return new BlackjackResult(BlackjackError.NoActiveHand, null);
+            return await SettleAsync(hand, doubled: false, persisted: true, ct);
+        }
+        finally { gate.Release(); }
     }
 
     public async Task<BlackjackResult> DoubleAsync(long userId, CancellationToken ct)
     {
-        var hand = await hands.FindAsync(userId, ct);
-        if (hand == null) return new BlackjackResult(BlackjackError.NoActiveHand, null);
-
-        var player = Deck.Parse(hand.PlayerCards);
-        if (player.Length != 2) return new BlackjackResult(BlackjackError.CannotDouble, null);
-
-        if (!await economics.TryDebitAsync(userId, hand.Bet, "blackjack.double", ct))
-            return new BlackjackResult(BlackjackError.NotEnoughCoins, null);
-
-        var deck = hand.DeckState;
-        var drawn = Deck.Draw(ref deck, 1);
-        var updated = hand with
+        var gate = GetGate(userId);
+        await gate.WaitAsync(ct);
+        try
         {
-            Bet = hand.Bet * 2,
-            PlayerCards = string.Join(" ", player.Append(drawn[0])),
-            DeckState = deck,
-        };
+            var hand = await hands.FindAsync(userId, ct);
+            if (hand == null) return new BlackjackResult(BlackjackError.NoActiveHand, null);
 
-        return await SettleAsync(updated, doubled: true, persisted: true, ct);
+            var player = Deck.Parse(hand.PlayerCards);
+            if (player.Length != 2) return new BlackjackResult(BlackjackError.CannotDouble, null);
+
+            if (!await economics.TryDebitAsync(userId, hand.Bet, "blackjack.double", ct))
+                return new BlackjackResult(BlackjackError.NotEnoughCoins, null);
+
+            var deck = hand.DeckState;
+            var drawn = Deck.Draw(ref deck, 1);
+            var updated = hand with
+            {
+                Bet = hand.Bet * 2,
+                PlayerCards = string.Join(" ", player.Append(drawn[0])),
+                DeckState = deck,
+            };
+
+            return await SettleAsync(updated, doubled: true, persisted: true, ct);
+        }
+        finally { gate.Release(); }
     }
 
     public async Task<(BlackjackSnapshot? snapshot, int? stateMessageId)> GetSnapshotAsync(long userId, CancellationToken ct)

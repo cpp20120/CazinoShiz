@@ -9,11 +9,12 @@
 //   • Domain events (PokerHandStarted / PokerHandEnded) are published on the
 //     IDomainEventBus for cross-module subscribers.
 //
-// Concurrency: a static SemaphoreSlim serializes every mutating call across
-// tables. Same compromise as the monolith — fine for a single-host process,
-// would need per-table locks or optimistic concurrency to scale horizontally.
+// Concurrency: per-table SemaphoreSlim gates (keyed by invite code) so
+// different tables in different group chats don't block each other.
+// Table-creating operations gate by "u:{userId}" until a code is assigned.
 // ─────────────────────────────────────────────────────────────────────────────
 
+using System.Collections.Concurrent;
 using BotFramework.Host;
 using BotFramework.Sdk;
 using Games.Poker.Domain;
@@ -44,7 +45,9 @@ public sealed partial class PokerService(
     IOptions<PokerOptions> options,
     ILogger<PokerService> logger) : IPokerService
 {
-    public static readonly SemaphoreSlim Gate = new(1, 1);
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _gates = new();
+    private static SemaphoreSlim GetGate(string key) => _gates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+
     private readonly PokerOptions _opts = options.Value;
 
     public async Task<(TableSnapshot? Snapshot, PokerSeat? MySeat)> FindMyTableAsync(long userId, CancellationToken ct)
@@ -59,7 +62,8 @@ public sealed partial class PokerService(
 
     public async Task<CreateResult> CreateTableAsync(long userId, string displayName, long chatId, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var gate = GetGate($"u:{userId}");
+        await gate.WaitAsync(ct);
         try
         {
             await economics.EnsureUserAsync(userId, displayName, ct);
@@ -118,13 +122,14 @@ public sealed partial class PokerService(
 
             return new CreateResult(PokerError.None, code, _opts.BuyIn);
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task<JoinResult> JoinTableAsync(long userId, string displayName, long chatId, string code, CancellationToken ct)
     {
         code = code.ToUpperInvariant();
-        await Gate.WaitAsync(ct);
+        var gate = GetGate(code);
+        await gate.WaitAsync(ct);
         try
         {
             await economics.EnsureUserAsync(userId, displayName, ct);
@@ -173,12 +178,16 @@ public sealed partial class PokerService(
 
             return new JoinResult(PokerError.None, new TableSnapshot(table, list), list.Count, _opts.MaxPlayers);
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task<StartResult> StartHandAsync(long userId, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var precheck = await seats.FindByUserAsync(userId, ct);
+        if (precheck == null) return StartFail(PokerError.NoTable);
+
+        var gate = GetGate(precheck.InviteCode);
+        await gate.WaitAsync(ct);
         try
         {
             var mySeat = await seats.FindByUserAsync(userId, ct);
@@ -208,12 +217,16 @@ public sealed partial class PokerService(
 
             return new StartResult(PokerError.None, new TableSnapshot(table, list));
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task<ActionResult> ApplyPlayerActionAsync(long userId, string verb, int amount, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var precheck = await seats.FindByUserAsync(userId, ct);
+        if (precheck == null) return ActionFail(PokerError.NoTable);
+
+        var gate = GetGate(precheck.InviteCode);
+        await gate.WaitAsync(ct);
         try
         {
             var seat = await seats.FindByUserAsync(userId, ct);
@@ -248,12 +261,13 @@ public sealed partial class PokerService(
 
             return await ResolveAfterActionAsync(table, list, ct);
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task<ActionResult?> RunAutoActionAsync(string inviteCode, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var gate = GetGate(inviteCode);
+        await gate.WaitAsync(ct);
         try
         {
             var table = await tables.FindAsync(inviteCode, ct);
@@ -280,12 +294,16 @@ public sealed partial class PokerService(
             var result = await ResolveAfterActionAsync(table, list, ct);
             return result with { AutoActorName = current.DisplayName, AutoKind = autoKind };
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task<LeaveResult> LeaveTableAsync(long userId, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var precheck = await seats.FindByUserAsync(userId, ct);
+        if (precheck == null) return LeaveFail(PokerError.NoTable);
+
+        var gate = GetGate(precheck.InviteCode);
+        await gate.WaitAsync(ct);
         try
         {
             var seat = await seats.FindByUserAsync(userId, ct);
@@ -348,17 +366,18 @@ public sealed partial class PokerService(
             });
             return new LeaveResult(PokerError.None, snapshot, closed);
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task SetStateMessageIdAsync(long userId, int messageId, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var gate = GetGate($"u:{userId}");
+        await gate.WaitAsync(ct);
         try
         {
             await seats.UpsertStateMessageAsync(userId, messageId, ct);
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public Task<IReadOnlyList<string>> ListStuckCodesAsync(long cutoffMs, CancellationToken ct) =>

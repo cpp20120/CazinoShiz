@@ -2,6 +2,7 @@ using Games.Basketball;
 using Games.Bowling;
 using Games.Darts;
 using Games.DiceCube;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace CasinoShiz.Tests;
@@ -24,7 +25,7 @@ public class DiceCubeMultiplierTests
     public async Task PlaceBetAsync_InvalidAmount_ReturnsFail()
     {
         var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(),
-            new InMemoryDiceCubeBetStore(), new NullEventBus());
+            new InMemoryDiceCubeBetStore(), new NullEventBus(), Options.Create(new DiceCubeOptions()));
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: 0, default);
         Assert.Equal(CubeBetError.InvalidAmount, result.Error);
     }
@@ -34,7 +35,7 @@ public class DiceCubeMultiplierTests
     {
         var econ = new FakeEconomicsService { StartingBalance = 10 };
         var svc = new DiceCubeService(econ, new NullAnalyticsService(),
-            new InMemoryDiceCubeBetStore(), new NullEventBus());
+            new InMemoryDiceCubeBetStore(), new NullEventBus(), Options.Create(new DiceCubeOptions()));
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         Assert.Equal(CubeBetError.NotEnoughCoins, result.Error);
     }
@@ -44,7 +45,7 @@ public class DiceCubeMultiplierTests
     {
         var store = new InMemoryDiceCubeBetStore();
         var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(),
-            store, new NullEventBus());
+            store, new NullEventBus(), Options.Create(new DiceCubeOptions()));
         await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         Assert.Equal(CubeBetError.AlreadyPending, result.Error);
@@ -54,7 +55,7 @@ public class DiceCubeMultiplierTests
     public async Task RollAsync_NoBet_ReturnsNoBet()
     {
         var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(),
-            new InMemoryDiceCubeBetStore(), new NullEventBus());
+            new InMemoryDiceCubeBetStore(), new NullEventBus(), Options.Create(new DiceCubeOptions()));
         var result = await svc.RollAsync(1, "u", 100, face: 6, default);
         Assert.Equal(CubeRollOutcome.NoBet, result.Outcome);
     }
@@ -64,7 +65,7 @@ public class DiceCubeMultiplierTests
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryDiceCubeBetStore();
-        var svc = new DiceCubeService(econ, new NullAnalyticsService(), store, new NullEventBus());
+        var svc = new DiceCubeService(econ, new NullAnalyticsService(), store, new NullEventBus(), Options.Create(new DiceCubeOptions()));
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.RollAsync(1, "u", 100, face: 6, default);
         Assert.Equal(CubeRollOutcome.Rolled, result.Outcome);
@@ -77,7 +78,7 @@ public class DiceCubeMultiplierTests
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryDiceCubeBetStore();
-        var svc = new DiceCubeService(econ, new NullAnalyticsService(), store, new NullEventBus());
+        var svc = new DiceCubeService(econ, new NullAnalyticsService(), store, new NullEventBus(), Options.Create(new DiceCubeOptions()));
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.RollAsync(1, "u", 100, face: 1, default);
         Assert.Equal(CubeRollOutcome.Rolled, result.Outcome);
@@ -103,7 +104,7 @@ public class BasketballMultiplierTests
     public async Task PlaceBetAsync_NegativeAmount_ReturnsFail()
     {
         var svc = new BasketballService(new FakeEconomicsService(), new NullAnalyticsService(),
-            new InMemoryBasketballBetStore(), new NullEventBus());
+            new InMemoryBasketballBetStore(), new NullEventBus(), Options.Create(new BasketballOptions()));
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: -5, default);
         Assert.Equal(BasketballBetError.InvalidAmount, result.Error);
     }
@@ -113,7 +114,7 @@ public class BasketballMultiplierTests
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryBasketballBetStore();
-        var svc = new BasketballService(econ, new NullAnalyticsService(), store, new NullEventBus());
+        var svc = new BasketballService(econ, new NullAnalyticsService(), store, new NullEventBus(), Options.Create(new BasketballOptions()));
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.ThrowAsync(1, "u", 100, face: 5, default);
         Assert.Equal(BasketballThrowOutcome.Thrown, result.Outcome);
@@ -126,7 +127,7 @@ public class BasketballMultiplierTests
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryBasketballBetStore();
-        var svc = new BasketballService(econ, new NullAnalyticsService(), store, new NullEventBus());
+        var svc = new BasketballService(econ, new NullAnalyticsService(), store, new NullEventBus(), Options.Create(new BasketballOptions()));
         await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         var result = await svc.ThrowAsync(1, "u", 100, face: 2, default);
         Assert.Equal(0, result.Payout);
@@ -191,7 +192,7 @@ public class DartsMultiplierTests
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryDartsBetStore();
-        var svc = new DartsService(econ, new NullAnalyticsService(), store, new NullEventBus());
+        var svc = new DartsService(econ, new NullAnalyticsService(), store, new NullEventBus(), Options.Create(new DartsOptions()));
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.ThrowAsync(1, "u", 100, face: 6, default);
         Assert.Equal(DartsThrowOutcome.Thrown, result.Outcome);
@@ -202,7 +203,7 @@ public class DartsMultiplierTests
     public async Task ThrowAsync_NoBet_ReturnsNoBet()
     {
         var svc = new DartsService(new FakeEconomicsService(), new NullAnalyticsService(),
-            new InMemoryDartsBetStore(), new NullEventBus());
+            new InMemoryDartsBetStore(), new NullEventBus(), Options.Create(new DartsOptions()));
         var result = await svc.ThrowAsync(1, "u", 100, face: 6, default);
         Assert.Equal(DartsThrowOutcome.NoBet, result.Outcome);
     }

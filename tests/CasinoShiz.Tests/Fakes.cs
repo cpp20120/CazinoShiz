@@ -75,10 +75,11 @@ sealed class InMemoryBlackjackHandStore : IBlackjackHandStore
     public Task<BlackjackHandRow?> FindAsync(long userId, CancellationToken ct) =>
         Task.FromResult(_hands.GetValueOrDefault(userId));
 
-    public Task InsertAsync(BlackjackHandRow hand, CancellationToken ct)
+    public Task<bool> InsertAsync(BlackjackHandRow hand, CancellationToken ct)
     {
+        if (_hands.ContainsKey(hand.UserId)) return Task.FromResult(false);
         _hands[hand.UserId] = hand;
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
     public Task UpdateAsync(BlackjackHandRow hand, CancellationToken ct)
@@ -111,10 +112,11 @@ sealed class InMemoryBasketballBetStore : IBasketballBetStore
     public Task<BasketballBet?> FindAsync(long userId, long chatId, CancellationToken ct) =>
         Task.FromResult(_bets.GetValueOrDefault((userId, chatId)));
 
-    public Task InsertAsync(BasketballBet bet, CancellationToken ct)
+    public Task<bool> InsertAsync(BasketballBet bet, CancellationToken ct)
     {
+        if (_bets.ContainsKey((bet.UserId, bet.ChatId))) return Task.FromResult(false);
         _bets[(bet.UserId, bet.ChatId)] = bet;
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
     public Task DeleteAsync(long userId, long chatId, CancellationToken ct)
@@ -151,10 +153,11 @@ sealed class InMemoryDartsBetStore : IDartsBetStore
     public Task<DartsBet?> FindAsync(long userId, long chatId, CancellationToken ct) =>
         Task.FromResult(_bets.GetValueOrDefault((userId, chatId)));
 
-    public Task InsertAsync(DartsBet bet, CancellationToken ct)
+    public Task<bool> InsertAsync(DartsBet bet, CancellationToken ct)
     {
+        if (_bets.ContainsKey((bet.UserId, bet.ChatId))) return Task.FromResult(false);
         _bets[(bet.UserId, bet.ChatId)] = bet;
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
     public Task DeleteAsync(long userId, long chatId, CancellationToken ct)
@@ -171,10 +174,11 @@ sealed class InMemoryDiceCubeBetStore : IDiceCubeBetStore
     public Task<DiceCubeBet?> FindAsync(long userId, long chatId, CancellationToken ct) =>
         Task.FromResult(_bets.GetValueOrDefault((userId, chatId)));
 
-    public Task InsertAsync(DiceCubeBet bet, CancellationToken ct)
+    public Task<bool> InsertAsync(DiceCubeBet bet, CancellationToken ct)
     {
+        if (_bets.ContainsKey((bet.UserId, bet.ChatId))) return Task.FromResult(false);
         _bets[(bet.UserId, bet.ChatId)] = bet;
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
     public Task DeleteAsync(long userId, long chatId, CancellationToken ct)
@@ -214,6 +218,13 @@ sealed class InMemoryHorseResultStore : IHorseResultStore
     public Task UpsertAsync(HorseResultRow result, CancellationToken ct)
     {
         _results[result.RaceDate] = result;
+        return Task.CompletedTask;
+    }
+
+    public Task SaveFileIdAsync(string raceDate, string fileId, CancellationToken ct)
+    {
+        if (_results.TryGetValue(raceDate, out var r))
+            _results[raceDate] = r with { FileId = fileId };
         return Task.CompletedTask;
     }
 }

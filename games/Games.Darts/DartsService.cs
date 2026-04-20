@@ -6,6 +6,7 @@
 
 using BotFramework.Host;
 using BotFramework.Sdk;
+using Microsoft.Extensions.Options;
 
 namespace Games.Darts;
 
@@ -19,8 +20,10 @@ public sealed class DartsService(
     IEconomicsService economics,
     IAnalyticsService analytics,
     IDartsBetStore bets,
-    IDomainEventBus events) : IDartsService
+    IDomainEventBus events,
+    IOptions<DartsOptions> options) : IDartsService
 {
+    private readonly int _maxBet = options.Value.MaxBet;
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
         [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 3, [6] = 6,
@@ -28,7 +31,7 @@ public sealed class DartsService(
 
     public async Task<DartsBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)
     {
-        if (amount <= 0) return DartsBetResult.Fail(DartsBetError.InvalidAmount);
+        if (amount <= 0 || amount > _maxBet) return DartsBetResult.Fail(DartsBetError.InvalidAmount);
 
         await economics.EnsureUserAsync(userId, displayName, ct);
         var balance = await economics.GetBalanceAsync(userId, ct);
@@ -40,7 +43,11 @@ public sealed class DartsService(
         if (!await economics.TryDebitAsync(userId, amount, "darts.bet", ct))
             return DartsBetResult.Fail(DartsBetError.NotEnoughCoins, balance);
 
-        await bets.InsertAsync(new DartsBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct);
+        if (!await bets.InsertAsync(new DartsBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
+        {
+            await economics.CreditAsync(userId, amount, "darts.bet.refund", ct);
+            return DartsBetResult.Fail(DartsBetError.AlreadyPending, balance);
+        }
 
         analytics.Track("darts", "bet", new Dictionary<string, object?>
         {

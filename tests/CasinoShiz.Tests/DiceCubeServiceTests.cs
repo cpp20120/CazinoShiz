@@ -1,4 +1,5 @@
 using Games.DiceCube;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace CasinoShiz.Tests;
@@ -12,7 +13,8 @@ public class DiceCubeServiceTests
             economics ?? new FakeEconomicsService(),
             new NullAnalyticsService(),
             bets ?? new InMemoryDiceCubeBetStore(),
-            new NullEventBus());
+            new NullEventBus(),
+            Options.Create(new DiceCubeOptions()));
 
     [Fact]
     public async Task PlaceBetAsync_ZeroAmount_ReturnsInvalidAmount()
@@ -240,7 +242,7 @@ public class DiceCubeServiceTests
     {
         var bus = new NullEventBus();
         var bets = new InMemoryDiceCubeBetStore();
-        var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(), bets, bus);
+        var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(), bets, bus, Options.Create(new DiceCubeOptions()));
         await svc.PlaceBetAsync(1, "u", 100, 50, default);
         await svc.RollAsync(1, "u", 100, 4, default);
         Assert.Single(bus.Published);

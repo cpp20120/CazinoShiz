@@ -77,7 +77,7 @@ public sealed partial class ClickHouseAnalyticsService(
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         _flushTimer?.Dispose();
-        _loopCts?.Cancel();
+        await _loopCts?.CancelAsync()!;
         if (_flushLoop != null)
         {
             try { await _flushLoop; }

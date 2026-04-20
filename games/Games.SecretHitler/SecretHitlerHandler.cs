@@ -289,7 +289,7 @@ public sealed partial class SecretHitlerHandler(
 
     private async Task SendError(UpdateContext ctx, long chatId, ShError error)
     {
-        string text = error switch
+        var text = error switch
         {
             ShError.NotEnoughCoins => string.Format(Loc("err.not_enough_coins"), _opts.BuyIn),
             ShError.AlreadyInGame => Loc("err.already_in_game"),

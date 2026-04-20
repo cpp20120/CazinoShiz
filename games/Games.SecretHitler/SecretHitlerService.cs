@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using BotFramework.Host;
 using BotFramework.Sdk;
 using Games.SecretHitler.Domain;
@@ -29,7 +30,9 @@ public sealed partial class SecretHitlerService(
     IOptions<SecretHitlerOptions> options,
     ILogger<SecretHitlerService> logger) : ISecretHitlerService
 {
-    public static readonly SemaphoreSlim Gate = new(1, 1);
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _gates = new();
+    private static SemaphoreSlim GetGate(string key) => _gates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+
     private readonly SecretHitlerOptions _opts = options.Value;
 
     public async Task<(ShGameSnapshot? Snapshot, SecretHitlerPlayer? Me)> FindMyGameAsync(long userId, CancellationToken ct)
@@ -44,7 +47,8 @@ public sealed partial class SecretHitlerService(
 
     public async Task<ShCreateResult> CreateGameAsync(long userId, string displayName, long chatId, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var gate = GetGate($"u:{userId}");
+        await gate.WaitAsync(ct);
         try
         {
             var buyIn = _opts.BuyIn;
@@ -96,13 +100,14 @@ public sealed partial class SecretHitlerService(
 
             return new ShCreateResult(ShError.None, code, buyIn);
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task<ShJoinResult> JoinGameAsync(long userId, string displayName, long chatId, string code, CancellationToken ct)
     {
         code = code.ToUpperInvariant();
-        await Gate.WaitAsync(ct);
+        var gate = GetGate(code);
+        await gate.WaitAsync(ct);
         try
         {
             var buyIn = _opts.BuyIn;
@@ -156,12 +161,16 @@ public sealed partial class SecretHitlerService(
 
             return new ShJoinResult(ShError.None, new ShGameSnapshot(game, list), list.Count, ShRoleDealer.MaxPlayers);
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task<ShStartResult> StartGameAsync(long userId, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var precheck = await players.FindByUserAsync(userId, ct);
+        if (precheck == null) return StartFail(ShError.NotInGame);
+
+        var gate = GetGate(precheck.InviteCode);
+        await gate.WaitAsync(ct);
         try
         {
             var me = await players.FindByUserAsync(userId, ct);
@@ -191,12 +200,16 @@ public sealed partial class SecretHitlerService(
 
             return new ShStartResult(ShError.None, new ShGameSnapshot(game, list));
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task<ShNominateResult> NominateAsync(long userId, int chancellorPosition, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var precheck = await players.FindByUserAsync(userId, ct);
+        if (precheck == null) return NominateFail(ShError.NotInGame);
+
+        var gate = GetGate(precheck.InviteCode);
+        await gate.WaitAsync(ct);
         try
         {
             var me = await players.FindByUserAsync(userId, ct);
@@ -223,12 +236,16 @@ public sealed partial class SecretHitlerService(
             });
             return new ShNominateResult(ShError.None, new ShGameSnapshot(game, list));
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task<ShVoteResult> VoteAsync(long userId, ShVote vote, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var precheck = await players.FindByUserAsync(userId, ct);
+        if (precheck == null) return VoteFail(ShError.NotInGame);
+
+        var gate = GetGate(precheck.InviteCode);
+        await gate.WaitAsync(ct);
         try
         {
             var me = await players.FindByUserAsync(userId, ct);
@@ -267,12 +284,16 @@ public sealed partial class SecretHitlerService(
 
             return new ShVoteResult(ShError.None, new ShGameSnapshot(game, list), after);
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task<ShDiscardResult> PresidentDiscardAsync(long userId, int discardIndex, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var precheck = await players.FindByUserAsync(userId, ct);
+        if (precheck == null) return DiscardFail(ShError.NotInGame);
+
+        var gate = GetGate(precheck.InviteCode);
+        await gate.WaitAsync(ct);
         try
         {
             var me = await players.FindByUserAsync(userId, ct);
@@ -299,12 +320,16 @@ public sealed partial class SecretHitlerService(
             });
             return new ShDiscardResult(ShError.None, new ShGameSnapshot(game, list));
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task<ShEnactResult> ChancellorEnactAsync(long userId, int enactIndex, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var precheck = await players.FindByUserAsync(userId, ct);
+        if (precheck == null) return EnactFail(ShError.NotInGame);
+
+        var gate = GetGate(precheck.InviteCode);
+        await gate.WaitAsync(ct);
         try
         {
             var me = await players.FindByUserAsync(userId, ct);
@@ -344,12 +369,16 @@ public sealed partial class SecretHitlerService(
 
             return new ShEnactResult(ShError.None, new ShGameSnapshot(game, list), after);
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task<ShLeaveResult> LeaveAsync(long userId, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var precheck = await players.FindByUserAsync(userId, ct);
+        if (precheck == null) return LeaveFail(ShError.NotInGame);
+
+        var gate = GetGate(precheck.InviteCode);
+        await gate.WaitAsync(ct);
         try
         {
             var me = await players.FindByUserAsync(userId, ct);
@@ -387,17 +416,18 @@ public sealed partial class SecretHitlerService(
             });
             return new ShLeaveResult(ShError.None, closed ? null : new ShGameSnapshot(game, remaining), closed);
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     public async Task SetStateMessageIdAsync(long userId, int messageId, CancellationToken ct)
     {
-        await Gate.WaitAsync(ct);
+        var gate = GetGate($"u:{userId}");
+        await gate.WaitAsync(ct);
         try
         {
             await players.UpsertStateMessageAsync(userId, messageId, ct);
         }
-        finally { Gate.Release(); }
+        finally { gate.Release(); }
     }
 
     private async Task<IReadOnlyList<(long UserId, int Amount)>> SettlePotAsync(

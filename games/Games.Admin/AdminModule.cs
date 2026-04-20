@@ -21,7 +21,7 @@ public sealed class AdminModule : IModule
 
     public IReadOnlyList<LocaleBundle> GetLocales() =>
     [
-        new LocaleBundle("ru", new Dictionary<string, string>
+        new("ru", new Dictionary<string, string>
         {
             ["display_name"] = "Admin",
 

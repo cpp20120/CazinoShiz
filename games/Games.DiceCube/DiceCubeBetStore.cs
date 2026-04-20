@@ -12,7 +12,7 @@ namespace Games.DiceCube;
 public interface IDiceCubeBetStore
 {
     Task<DiceCubeBet?> FindAsync(long userId, long chatId, CancellationToken ct);
-    Task InsertAsync(DiceCubeBet bet, CancellationToken ct);
+    Task<bool> InsertAsync(DiceCubeBet bet, CancellationToken ct);
     Task DeleteAsync(long userId, long chatId, CancellationToken ct);
 }
 
@@ -29,15 +29,17 @@ public sealed class DiceCubeBetStore(INpgsqlConnectionFactory connections) : IDi
             cancellationToken: ct));
     }
 
-    public async Task InsertAsync(DiceCubeBet bet, CancellationToken ct)
+    public async Task<bool> InsertAsync(DiceCubeBet bet, CancellationToken ct)
     {
         await using var conn = await connections.OpenAsync(ct);
-        await conn.ExecuteAsync(new CommandDefinition("""
+        var rows = await conn.ExecuteAsync(new CommandDefinition("""
             INSERT INTO dicecube_bets (user_id, chat_id, amount, created_at)
             VALUES (@UserId, @ChatId, @Amount, @CreatedAt)
+            ON CONFLICT (user_id, chat_id) DO NOTHING
             """,
             bet,
             cancellationToken: ct));
+        return rows > 0;
     }
 
     public async Task DeleteAsync(long userId, long chatId, CancellationToken ct)

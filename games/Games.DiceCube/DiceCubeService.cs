@@ -19,6 +19,7 @@
 
 using BotFramework.Host;
 using BotFramework.Sdk;
+using Microsoft.Extensions.Options;
 
 namespace Games.DiceCube;
 
@@ -32,8 +33,10 @@ public sealed class DiceCubeService(
     IEconomicsService economics,
     IAnalyticsService analytics,
     IDiceCubeBetStore bets,
-    IDomainEventBus events) : IDiceCubeService
+    IDomainEventBus events,
+    IOptions<DiceCubeOptions> options) : IDiceCubeService
 {
+    private readonly int _maxBet = options.Value.MaxBet;
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
         [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 3, [6] = 5,
@@ -41,7 +44,7 @@ public sealed class DiceCubeService(
 
     public async Task<CubeBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)
     {
-        if (amount <= 0) return CubeBetResult.Fail(CubeBetError.InvalidAmount);
+        if (amount <= 0 || amount > _maxBet) return CubeBetResult.Fail(CubeBetError.InvalidAmount);
 
         await economics.EnsureUserAsync(userId, displayName, ct);
         var balance = await economics.GetBalanceAsync(userId, ct);
@@ -53,7 +56,11 @@ public sealed class DiceCubeService(
         if (!await economics.TryDebitAsync(userId, amount, "dicecube.bet", ct))
             return CubeBetResult.Fail(CubeBetError.NotEnoughCoins, balance);
 
-        await bets.InsertAsync(new DiceCubeBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct);
+        if (!await bets.InsertAsync(new DiceCubeBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
+        {
+            await economics.CreditAsync(userId, amount, "dicecube.bet.refund", ct);
+            return CubeBetResult.Fail(CubeBetError.AlreadyPending, balance);
+        }
 
         analytics.Track("dicecube", "bet", new Dictionary<string, object?>
         {

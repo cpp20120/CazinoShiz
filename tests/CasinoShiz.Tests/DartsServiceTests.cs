@@ -1,4 +1,5 @@
 using Games.Darts;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace CasinoShiz.Tests;
@@ -12,7 +13,8 @@ public class DartsServiceTests
             economics ?? new FakeEconomicsService(),
             new NullAnalyticsService(),
             bets ?? new InMemoryDartsBetStore(),
-            new NullEventBus());
+            new NullEventBus(),
+            Options.Create(new DartsOptions()));
 
     [Fact]
     public async Task PlaceBetAsync_ZeroAmount_ReturnsInvalidAmount()
@@ -247,7 +249,7 @@ public class DartsServiceTests
     {
         var bus = new NullEventBus();
         var bets = new InMemoryDartsBetStore();
-        var svc = new DartsService(new FakeEconomicsService(), new NullAnalyticsService(), bets, bus);
+        var svc = new DartsService(new FakeEconomicsService(), new NullAnalyticsService(), bets, bus, Options.Create(new DartsOptions()));
         await svc.PlaceBetAsync(1, "u", 100, 50, default);
         await svc.ThrowAsync(1, "u", 100, 4, default);
         Assert.Single(bus.Published);

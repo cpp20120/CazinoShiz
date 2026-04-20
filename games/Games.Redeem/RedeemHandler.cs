@@ -1,6 +1,7 @@
 using BotFramework.Host;
 using BotFramework.Host.Services;
 using BotFramework.Sdk;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -16,6 +17,7 @@ public sealed partial class RedeemHandler(
     IRedeemService service,
     ILocalizer localizer,
     IOptions<RedeemOptions> options,
+    IHostApplicationLifetime lifetime,
     ILogger<RedeemHandler> logger) : IUpdateHandler
 {
     private readonly RedeemOptions _opts = options.Value;
@@ -91,7 +93,7 @@ public sealed partial class RedeemHandler(
             replyMarkup: markup,
             cancellationToken: ctx.Ct);
 
-        _ = ScheduleTimeoutAsync(ctx.Bot, chatId, captchaMsg.MessageId);
+        _ = ScheduleTimeoutAsync(ctx.Bot, chatId, captchaMsg.MessageId, lifetime.ApplicationStopping);
     }
 
     private async Task HandleCallbackAsync(UpdateContext ctx, CallbackQuery cbq)
@@ -138,14 +140,15 @@ public sealed partial class RedeemHandler(
             cancellationToken: ctx.Ct);
     }
 
-    private async Task ScheduleTimeoutAsync(ITelegramBotClient bot, long chatId, int messageId)
+    private async Task ScheduleTimeoutAsync(ITelegramBotClient bot, long chatId, int messageId, CancellationToken ct)
     {
         try
         {
-            await Task.Delay(_opts.CaptchaTimeoutMs);
+            await Task.Delay(_opts.CaptchaTimeoutMs, ct);
             try { await bot.DeleteMessage(chatId, messageId); } catch { }
             try { await bot.SendMessage(chatId, Loc("captcha.timeout")); } catch { }
         }
+        catch (OperationCanceledException) { }
         catch (Exception ex) { LogTimeoutFailed(ex); }
     }
 

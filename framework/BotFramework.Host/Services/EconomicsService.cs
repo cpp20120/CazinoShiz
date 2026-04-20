@@ -43,6 +43,8 @@ public sealed partial class EconomicsService(
         var cacheKey = $"user_exists:{userId}";
         if (cache.TryGetValue(cacheKey, out _)) return;
 
+        if (displayName.Length > 64) displayName = displayName[..64];
+
         const string sql = """
             INSERT INTO users (telegram_user_id, display_name, coins)
             VALUES (@userId, @displayName, @startingCoins)

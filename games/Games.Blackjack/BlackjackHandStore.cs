@@ -6,7 +6,7 @@ namespace Games.Blackjack;
 public interface IBlackjackHandStore
 {
     Task<BlackjackHandRow?> FindAsync(long userId, CancellationToken ct);
-    Task InsertAsync(BlackjackHandRow hand, CancellationToken ct);
+    Task<bool> InsertAsync(BlackjackHandRow hand, CancellationToken ct);
     Task UpdateAsync(BlackjackHandRow hand, CancellationToken ct);
     Task DeleteAsync(long userId, CancellationToken ct);
     Task<IReadOnlyList<long>> ListStuckUserIdsAsync(DateTimeOffset cutoff, CancellationToken ct);
@@ -29,16 +29,18 @@ public sealed class BlackjackHandStore(INpgsqlConnectionFactory connections) : I
             cancellationToken: ct));
     }
 
-    public async Task InsertAsync(BlackjackHandRow hand, CancellationToken ct)
+    public async Task<bool> InsertAsync(BlackjackHandRow hand, CancellationToken ct)
     {
         await using var conn = await connections.OpenAsync(ct);
-        await conn.ExecuteAsync(new CommandDefinition("""
+        var rows = await conn.ExecuteAsync(new CommandDefinition("""
             INSERT INTO blackjack_hands
                 (user_id, chat_id, bet, player_cards, dealer_cards, deck_state, state_message_id, created_at)
             VALUES (@UserId, @ChatId, @Bet, @PlayerCards, @DealerCards, @DeckState, @StateMessageId, @CreatedAt)
+            ON CONFLICT (user_id) DO NOTHING
             """,
             hand,
             cancellationToken: ct));
+        return rows > 0;
     }
 
     public async Task UpdateAsync(BlackjackHandRow hand, CancellationToken ct)
