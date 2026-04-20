@@ -123,6 +123,7 @@ public static class BotFrameworkBuilderExtensions
         DapperTypeHandlers.Register();
 
         services.AddRazorPages();
+        services.AddMemoryCache();
 
         services.Configure<BotFrameworkOptions>(configuration.GetSection(BotFrameworkOptions.SectionName));
 

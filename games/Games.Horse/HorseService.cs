@@ -117,10 +117,13 @@ public sealed partial class HorseService(
         var ks = GetKoefs(stakes);
 
         int winner = SpeedGenerator.GenPlaces(_opts.HorseCount);
-        var speeds = SpeedGenerator.CreateSpeeds(_opts.HorseCount, winner);
-        var (frames, height, width) = HorseRaceRenderer.DrawHorses(speeds);
-        var gifBytes = GifEncoder.RenderFramesToGif(frames, width, height);
-        var lastFrame = frames[^1];
+        var (gifBytes, lastFrame) = await Task.Run(() =>
+        {
+            var speeds = SpeedGenerator.CreateSpeeds(_opts.HorseCount, winner);
+            var (frames, height, width) = HorseRaceRenderer.DrawHorses(speeds);
+            var gif = GifEncoder.RenderFramesToGif(frames, width, height);
+            return (gif, frames[^1]);
+        }, ct);
 
         await resultStore.UpsertAsync(new HorseResultRow(raceDate, winner, lastFrame), ct);
 

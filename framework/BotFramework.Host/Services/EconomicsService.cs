@@ -24,6 +24,7 @@
 using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 using Dapper;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 
 namespace BotFramework.Host.Services;
@@ -31,12 +32,17 @@ namespace BotFramework.Host.Services;
 public sealed partial class EconomicsService(
     INpgsqlConnectionFactory connections,
     IOptions<BotFrameworkOptions> options,
+    IMemoryCache cache,
     ILogger<EconomicsService> logger) : IEconomicsService
 {
     private readonly int _startingCoins = options.Value.StartingCoins;
+    private static readonly TimeSpan UserExistsTtl = TimeSpan.FromHours(24);
 
     public async Task EnsureUserAsync(long userId, string displayName, CancellationToken ct)
     {
+        var cacheKey = $"user_exists:{userId}";
+        if (cache.TryGetValue(cacheKey, out _)) return;
+
         const string sql = """
             INSERT INTO users (telegram_user_id, display_name, coins)
             VALUES (@userId, @displayName, @startingCoins)
@@ -51,6 +57,8 @@ public sealed partial class EconomicsService(
             displayName,
             startingCoins = _startingCoins,
         }, cancellationToken: ct));
+
+        cache.Set(cacheKey, true, UserExistsTtl);
     }
 
     public async Task<int> GetBalanceAsync(long userId, CancellationToken ct)
