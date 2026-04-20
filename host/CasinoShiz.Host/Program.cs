@@ -11,7 +11,7 @@
 // leaks here — modules own their own ConfigureServices.
 // ─────────────────────────────────────────────────────────────────────────────
 
-using BotFramework.Host;
+using BotFramework.Host.Composition;
 using Games.Admin;
 using Games.Basketball;
 using Games.Blackjack;

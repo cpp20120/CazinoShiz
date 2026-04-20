@@ -24,7 +24,7 @@
 using BotFramework.Sdk;
 using Microsoft.Extensions.Configuration;
 
-namespace BotFramework.Host;
+namespace BotFramework.Host.Composition;
 
 public sealed class ModuleLoader
 {
@@ -47,7 +47,7 @@ public sealed class ModuleLoader
         return loaded;
     }
 
-    public static LoadedModules LoadAll(
+    private static LoadedModules LoadAll(
         IEnumerable<IModule> modules,
         IModuleServiceCollection services)
     {

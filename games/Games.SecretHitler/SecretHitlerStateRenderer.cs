@@ -49,13 +49,11 @@ public static class SecretHitlerStateRenderer
         {
             lines.Add("");
             lines.Add(Loc(localizer, "board.players"));
-            foreach (var p in players.OrderBy(p => p.Position))
-            {
-                var marker = p.Position == game.CurrentPresidentPosition ? "👑"
+            lines.AddRange(from p in players.OrderBy(p => p.Position)
+                let marker = p.Position == game.CurrentPresidentPosition ? "👑"
                     : p.Position == game.NominatedChancellorPosition ? "🎩"
-                    : p.IsAlive ? "•" : "💀";
-                lines.Add($"  {marker} <b>{p.DisplayName}</b> <span class=\"muted\">(#{p.Position})</span>");
-            }
+                    : p.IsAlive ? "•" : "💀"
+                select $"  {marker} <b>{p.DisplayName}</b> <span class=\"muted\">(#{p.Position})</span>");
         }
 
         return string.Join("\n", lines);
@@ -69,21 +67,22 @@ public static class SecretHitlerStateRenderer
             string.Format(Loc(localizer, "role.your_role"), roleName),
         };
 
-        if (me.Role == ShRole.Fascist)
+        switch (me.Role)
         {
-            var teammates = players.Where(p => p.Position != me.Position && (p.Role == ShRole.Fascist || p.Role == ShRole.Hitler)).ToList();
-            lines.Add(Loc(localizer, "role.your_allies"));
-            foreach (var t in teammates)
+            case ShRole.Fascist:
             {
-                var label = t.Role == ShRole.Hitler ? Loc(localizer, "role.hitler_short") : Loc(localizer, "role.fascist_short");
-                lines.Add($"  • <b>{t.DisplayName}</b> — {label}");
+                var teammates = players.Where(p => p.Position != me.Position && (p.Role == ShRole.Fascist || p.Role == ShRole.Hitler)).ToList();
+                lines.Add(Loc(localizer, "role.your_allies"));
+                lines.AddRange(from t in teammates let label = t.Role == ShRole.Hitler ? Loc(localizer, "role.hitler_short") : Loc(localizer, "role.fascist_short") select $"  • <b>{t.DisplayName}</b> — {label}");
+                break;
             }
-        }
-        else if (me.Role == ShRole.Hitler && playerCount <= 6)
-        {
-            var fascists = players.Where(p => p.Role == ShRole.Fascist).ToList();
-            lines.Add(Loc(localizer, "role.your_fascists"));
-            foreach (var f in fascists) lines.Add($"  • <b>{f.DisplayName}</b>");
+            case ShRole.Hitler when playerCount <= 6:
+            {
+                var fascists = players.Where(p => p.Role == ShRole.Fascist).ToList();
+                lines.Add(Loc(localizer, "role.your_fascists"));
+                lines.AddRange(fascists.Select(f => $"  • <b>{f.DisplayName}</b>"));
+                break;
+            }
         }
 
         return string.Join("\n", lines);
@@ -102,14 +101,12 @@ public static class SecretHitlerStateRenderer
 
         if (game.Phase == ShPhase.Election && viewer.IsAlive && viewer.LastVote == ShVote.None)
         {
-            return new InlineKeyboardMarkup(new[]
-            {
-                new[]
-                {
+            return new InlineKeyboardMarkup([
+                [
                     InlineKeyboardButton.WithCallbackData(Loc(localizer, "btn.ja"), "sh:vote:ja"),
-                    InlineKeyboardButton.WithCallbackData(Loc(localizer, "btn.nein"), "sh:vote:nein"),
-                }
-            });
+                    InlineKeyboardButton.WithCallbackData(Loc(localizer, "btn.nein"), "sh:vote:nein")
+                ]
+            ]);
         }
 
         if (game.Phase == ShPhase.LegislativePresident && viewer.Position == game.CurrentPresidentPosition)
@@ -119,7 +116,7 @@ public static class SecretHitlerStateRenderer
                 InlineKeyboardButton.WithCallbackData(
                     string.Format(Loc(localizer, "btn.discard"), PolicyLabel(p, localizer), i + 1),
                     $"sh:discard:{i}")).ToArray();
-            return new InlineKeyboardMarkup(new[] { buttons });
+            return new InlineKeyboardMarkup([buttons]);
         }
 
         if (game.Phase == ShPhase.LegislativeChancellor && viewer.Position == game.NominatedChancellorPosition)
@@ -129,26 +126,25 @@ public static class SecretHitlerStateRenderer
                 InlineKeyboardButton.WithCallbackData(
                     string.Format(Loc(localizer, "btn.enact"), PolicyLabel(p, localizer), i + 1),
                     $"sh:enact:{i}")).ToArray();
-            return new InlineKeyboardMarkup(new[] { buttons });
+            return new InlineKeyboardMarkup([buttons]);
         }
 
         return null;
     }
 
-    public static List<SecretHitlerPlayer> EligibleChancellors(
+    private static List<SecretHitlerPlayer> EligibleChancellors(
         SecretHitlerGame game, SecretHitlerPlayer president, List<SecretHitlerPlayer> players)
     {
         var alive = players.Where(p => p.IsAlive && p.Position != president.Position).ToList();
-        int aliveCount = players.Count(p => p.IsAlive);
+        var aliveCount = players.Count(p => p.IsAlive);
         return alive.Where(c =>
         {
             if (c.Position == game.LastElectedChancellorPosition) return false;
-            if (aliveCount > 5 && c.Position == game.LastElectedPresidentPosition) return false;
-            return true;
+            return aliveCount <= 5 || c.Position != game.LastElectedPresidentPosition;
         }).OrderBy(c => c.Position).ToList();
     }
 
-    public static string PhaseLabel(ShPhase phase, ILocalizer localizer) => phase switch
+    private static string PhaseLabel(ShPhase phase, ILocalizer localizer) => phase switch
     {
         ShPhase.Nomination => Loc(localizer, "phase.nomination"),
         ShPhase.Election => Loc(localizer, "phase.election"),

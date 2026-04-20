@@ -21,6 +21,7 @@
 // analytics/audit use, not concurrency control.
 // ─────────────────────────────────────────────────────────────────────────────
 
+using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 using Dapper;
 using Microsoft.Extensions.Options;

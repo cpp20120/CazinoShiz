@@ -14,3 +14,8 @@ data/
 *.DotSettings.user
 src/
 experiments/
+
+# Test coverage output
+coverage-report/
+coverage-results*/
+TestResults/

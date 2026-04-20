@@ -32,6 +32,7 @@
 //      so by the time BotHostedService asks for it every module is there.
 // ─────────────────────────────────────────────────────────────────────────────
 
+using BotFramework.Host.Composition;
 using BotFramework.Host.Pipeline;
 using BotFramework.Host.Services;
 using BotFramework.Sdk;
@@ -39,7 +40,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
 
-namespace BotFramework.Host;
+namespace BotFramework.Host.Composition;
 
 public interface IBotFrameworkBuilder
 {

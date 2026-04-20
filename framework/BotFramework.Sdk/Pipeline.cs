@@ -24,23 +24,16 @@ public interface ICommandMiddleware
 /// Carries the command plus out-of-band data middleware wants to stash.
 /// Items is a loose dictionary — typed accessors live in middleware-specific
 /// extensions so the surface here stays minimal.
-public sealed class CommandContext
+public sealed class CommandContext(ICommand command, RequestContext request, CancellationToken ct)
 {
-    public ICommand Command { get; }
-    public CancellationToken Cancellation { get; }
+    public ICommand Command { get; } = command;
+    public CancellationToken Cancellation { get; } = ct;
     public IDictionary<string, object?> Items { get; } = new Dictionary<string, object?>();
 
     /// Populated by the Host before dispatch — user id parsed from the
     /// incoming Update, culture, trace id. Middleware uses it for auth
     /// decisions and logging.
-    public RequestContext Request { get; }
-
-    public CommandContext(ICommand command, RequestContext request, CancellationToken ct)
-    {
-        Command = command;
-        Request = request;
-        Cancellation = ct;
-    }
+    public RequestContext Request { get; } = request;
 }
 
 /// Request-scoped identity + tracing metadata. Propagated through the bus so

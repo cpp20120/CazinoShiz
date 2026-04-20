@@ -33,26 +33,20 @@ using Microsoft.Extensions.Options;
 
 namespace BotFramework.Host.Services;
 
-public sealed partial class ClickHouseAnalyticsService : IAnalyticsService, IHostedService, IAsyncDisposable
+public sealed partial class ClickHouseAnalyticsService(
+    IOptions<ClickHouseOptions> options,
+    ILogger<ClickHouseAnalyticsService> logger)
+    : IAnalyticsService, IHostedService, IAsyncDisposable
 {
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = false };
 
-    private readonly ClickHouseOptions _options;
-    private readonly ILogger<ClickHouseAnalyticsService> _logger;
+    private readonly ClickHouseOptions _options = options.Value;
     private readonly Lock _lock = new();
     private readonly List<EventData> _buffer = [];
     private ClickHouseConnection? _connection;
     private PeriodicTimer? _flushTimer;
     private CancellationTokenSource? _loopCts;
     private Task? _flushLoop;
-
-    public ClickHouseAnalyticsService(
-        IOptions<ClickHouseOptions> options,
-        ILogger<ClickHouseAnalyticsService> logger)
-    {
-        _options = options.Value;
-        _logger = logger;
-    }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {

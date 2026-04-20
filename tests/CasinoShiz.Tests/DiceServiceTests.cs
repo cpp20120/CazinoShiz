@@ -1,0 +1,111 @@
+using Games.Dice;
+using Microsoft.Extensions.Options;
+using Xunit;
+
+namespace CasinoShiz.Tests;
+
+// Telegram slot-machine dice values are base-4 packed triples:
+//   value 1  → [0,0,0] = three bars  → prize 21
+//   value 22 → [1,1,1] = three cherries → prize 23
+//   value 43 → [2,2,2] = three lemons → prize 30
+//   value 64 → [3,3,3] = three sevens → prize 77
+public class DiceServiceTests
+{
+    private static DiceService MakeService(
+        FakeEconomicsService? economics = null,
+        int cost = 7) =>
+        new(
+            economics ?? new FakeEconomicsService(),
+            new NullAnalyticsService(),
+            new NullDiceHistoryStore(),
+            new NullEventBus(),
+            Options.Create(new DiceOptions { Cost = cost }));
+
+    [Fact]
+    public async Task PlayAsync_ForwardedMessage_ReturnsForwarded()
+    {
+        var svc = MakeService();
+        var result = await svc.PlayAsync(1, "u", 64, 100, isForwarded: true, default);
+        Assert.Equal(DiceOutcome.Forwarded, result.Outcome);
+    }
+
+    [Fact]
+    public async Task PlayAsync_ForwardedMessage_NoDebit()
+    {
+        var econ = new FakeEconomicsService();
+        var svc = MakeService(econ);
+        await svc.PlayAsync(1, "u", 64, 100, isForwarded: true, default);
+        Assert.Empty(econ.Debits);
+    }
+
+    [Fact]
+    public async Task PlayAsync_InsufficientBalance_ReturnsNotEnoughCoins()
+    {
+        var econ = new FakeEconomicsService { StartingBalance = 0 };
+        var svc = MakeService(econ);
+        var result = await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        Assert.Equal(DiceOutcome.NotEnoughCoins, result.Outcome);
+    }
+
+    [Fact]
+    public async Task PlayAsync_TripleSeven_Returns77Prize()
+    {
+        var svc = MakeService();
+        // value 64 decodes to [3,3,3] = three sevens
+        var result = await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        Assert.Equal(DiceOutcome.Played, result.Outcome);
+        Assert.Equal(77, result.Prize);
+    }
+
+    [Fact]
+    public async Task PlayAsync_TripleBar_Returns21Prize()
+    {
+        var svc = MakeService();
+        // value 1 decodes to [0,0,0] = three bars
+        var result = await svc.PlayAsync(1, "u", 1, 100, isForwarded: false, default);
+        Assert.Equal(DiceOutcome.Played, result.Outcome);
+        Assert.Equal(21, result.Prize);
+    }
+
+    [Fact]
+    public async Task PlayAsync_TripleCherry_Returns23Prize()
+    {
+        var svc = MakeService();
+        // value 22 decodes to [1,1,1] = three cherries
+        var result = await svc.PlayAsync(1, "u", 22, 100, isForwarded: false, default);
+        Assert.Equal(DiceOutcome.Played, result.Outcome);
+        Assert.Equal(23, result.Prize);
+    }
+
+    [Fact]
+    public async Task PlayAsync_TripleLemon_Returns30Prize()
+    {
+        var svc = MakeService();
+        // value 43 decodes to [2,2,2] = three lemons
+        var result = await svc.PlayAsync(1, "u", 43, 100, isForwarded: false, default);
+        Assert.Equal(DiceOutcome.Played, result.Outcome);
+        Assert.Equal(30, result.Prize);
+    }
+
+    [Fact]
+    public async Task PlayAsync_ValidRoll_DebitsStakeAndGas()
+    {
+        var econ = new FakeEconomicsService();
+        var svc = MakeService(econ, cost: 7);
+        await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        Assert.Single(econ.Debits);
+        // loss = cost + gas; gas for cost=7 (< 10) is at least 1
+        Assert.True(econ.Debits[0].Amount >= 8);
+    }
+
+    [Fact]
+    public async Task PlayAsync_WinningRoll_CreditsPrize()
+    {
+        var econ = new FakeEconomicsService();
+        var svc = MakeService(econ);
+        // three sevens always wins
+        await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        Assert.Single(econ.Credits);
+        Assert.Equal(77, econ.Credits[0].Amount);
+    }
+}

@@ -6,19 +6,19 @@ public enum ShPolicy { Liberal, Fascist }
 
 public static class ShPolicyDeck
 {
-    public const int TotalLiberal = 6;
-    public const int TotalFascist = 11;
+    private const int TotalLiberal = 6;
+    private const int TotalFascist = 11;
     public const int MinDrawPoolSize = 3;
 
     public static string BuildShuffledDeck()
     {
         var deck = new List<ShPolicy>(TotalLiberal + TotalFascist);
-        for (int i = 0; i < TotalLiberal; i++) deck.Add(ShPolicy.Liberal);
-        for (int i = 0; i < TotalFascist; i++) deck.Add(ShPolicy.Fascist);
+        for (var i = 0; i < TotalLiberal; i++) deck.Add(ShPolicy.Liberal);
+        for (var i = 0; i < TotalFascist; i++) deck.Add(ShPolicy.Fascist);
 
-        for (int i = deck.Count - 1; i > 0; i--)
+        for (var i = deck.Count - 1; i > 0; i--)
         {
-            int j = RandomNumberGenerator.GetInt32(i + 1);
+            var j = RandomNumberGenerator.GetInt32(i + 1);
             (deck[i], deck[j]) = (deck[j], deck[i]);
         }
 

@@ -24,6 +24,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 
 namespace BotFramework.Host;

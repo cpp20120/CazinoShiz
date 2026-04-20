@@ -24,10 +24,11 @@
 // leaves no phantom tracking row.
 // ─────────────────────────────────────────────────────────────────────────────
 
+using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 using Dapper;
 
-namespace BotFramework.Host;
+namespace BotFramework.Host.Composition;
 
 public sealed partial class ModuleMigrationRunner(
     INpgsqlConnectionFactory connections,

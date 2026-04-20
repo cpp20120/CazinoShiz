@@ -1,65 +1,166 @@
+using BotFramework.Host;
 using BotFramework.Sdk;
-using Games.Admin;
-using Games.Basketball;
-using Games.Blackjack;
-using Games.Bowling;
-using Games.Darts;
-using Games.Dice;
-using Games.DiceCube;
-using Games.Horse;
-using Games.Leaderboard;
-using Games.Poker;
-using Games.Redeem;
-using Games.SecretHitler;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
 using Xunit;
 
 namespace CasinoShiz.Tests;
 
+// ── Test handlers (file-scoped, live in this assembly) ────────────────────────
+
+[Command("/testcmd")]
+file sealed class TestCommandHandler : IUpdateHandler
+{
+    public static bool WasCalled { get; set; }
+    public Task HandleAsync(UpdateContext ctx) { WasCalled = true; return Task.CompletedTask; }
+}
+
+[CallbackPrefix("testcb:")]
+file sealed class TestCallbackHandler : IUpdateHandler
+{
+    public static bool WasCalled { get; set; }
+    public Task HandleAsync(UpdateContext ctx) { WasCalled = true; return Task.CompletedTask; }
+}
+
+[CallbackFallback]
+file sealed class FallbackHandler : IUpdateHandler
+{
+    public static bool WasCalled { get; set; }
+    public Task HandleAsync(UpdateContext ctx) { WasCalled = true; return Task.CompletedTask; }
+}
+
+// Module whose assembly is this test project — router scans it for handlers
+file sealed class TestModule : IModule
+{
+    public string Id => "test";
+    public string DisplayName => "Test";
+    public string Version => "1.0";
+    public void ConfigureServices(IModuleServiceCollection services) { }
+    public IReadOnlyList<LocaleBundle> GetLocales() => [];
+}
+
 public class UpdateRouterTests
 {
-    [Fact]
-    public void AllHandlers_ImplementIUpdateHandler()
+    private static UpdateRouter MakeRouter() =>
+        new([new TestModule()], NullLogger<UpdateRouter>.Instance);
+
+    private static IServiceProvider BuildServices()
     {
-        var handlerTypes = new[]
+        var sc = new ServiceCollection();
+        sc.AddScoped<TestCommandHandler>();
+        sc.AddScoped<TestCallbackHandler>();
+        sc.AddScoped<FallbackHandler>();
+        return sc.BuildServiceProvider();
+    }
+
+    private static Update TextUpdate(string text) => new()
+    {
+        Id = 1,
+        Message = new Message
         {
-            typeof(DiceHandler), typeof(DiceCubeHandler), typeof(DartsHandler),
-            typeof(BasketballHandler), typeof(BowlingHandler),
-            typeof(BlackjackHandler), typeof(HorseHandler), typeof(PokerHandler),
-            typeof(SecretHitlerHandler), typeof(RedeemHandler),
-            typeof(LeaderboardHandler), typeof(AdminHandler),
-        };
-        foreach (var t in handlerTypes)
-            Assert.True(typeof(IUpdateHandler).IsAssignableFrom(t), $"{t.Name} missing IUpdateHandler");
-    }
+            Id = 1,
+            Text = text,
+            From = new User { Id = 1, IsBot = false, FirstName = "T" },
+            Chat = new Chat { Id = 1, Type = ChatType.Private },
+            Date = DateTime.UtcNow,
+        }
+    };
 
-    [Theory]
-    [InlineData(typeof(DiceHandler), typeof(MessageDiceAttribute))]
-    [InlineData(typeof(BasketballHandler), typeof(MessageDiceAttribute))]
-    [InlineData(typeof(BasketballHandler), typeof(CommandAttribute))]
-    [InlineData(typeof(BowlingHandler), typeof(MessageDiceAttribute))]
-    [InlineData(typeof(BowlingHandler), typeof(CommandAttribute))]
-    [InlineData(typeof(PokerHandler), typeof(CommandAttribute))]
-    [InlineData(typeof(PokerHandler), typeof(CallbackPrefixAttribute))]
-    [InlineData(typeof(HorseHandler), typeof(CommandAttribute))]
-    [InlineData(typeof(RedeemHandler), typeof(CommandAttribute))]
-    [InlineData(typeof(RedeemHandler), typeof(CallbackPrefixAttribute))]
-    [InlineData(typeof(AdminHandler), typeof(CommandAttribute))]
-    [InlineData(typeof(LeaderboardHandler), typeof(CommandAttribute))]
-    public void HandlerType_HasExpectedRouteAttribute(System.Type handler, System.Type attr)
+    private static Update CallbackUpdate(string data) => new()
     {
-        var found = System.Attribute.GetCustomAttributes(handler, attr);
-        Assert.NotEmpty(found);
+        Id = 1,
+        CallbackQuery = new CallbackQuery
+        {
+            Id = "1",
+            Data = data,
+            From = new User { Id = 1, IsBot = false, FirstName = "T" },
+        }
+    };
+
+    // ── Dispatch ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Router_MatchingCommand_CallsHandler()
+    {
+        TestCommandHandler.WasCalled = false;
+        var router = MakeRouter();
+        using var sp = (ServiceProvider)BuildServices();
+        using var scope = sp.CreateScope();
+
+        await router.DispatchAsync(null!, TextUpdate("/testcmd create"), scope.ServiceProvider, default);
+
+        Assert.True(TestCommandHandler.WasCalled);
     }
 
     [Fact]
-    public void HorseCommandAttribute_HorserunHigherPriorityThanHorse()
+    public async Task Router_MatchingCallback_CallsCallbackHandler()
     {
-        var attrs = System.Attribute.GetCustomAttributes(typeof(HorseHandler), typeof(CommandAttribute))
-            .OfType<CommandAttribute>().ToList();
-        Assert.Contains(attrs, a => a.Prefix == "/horse");
-        Assert.Contains(attrs, a => a.Prefix == "/horserun");
-        var horse = attrs.First(a => a.Prefix == "/horse");
-        var run = attrs.First(a => a.Prefix == "/horserun");
-        Assert.True(run.Priority > horse.Priority);
+        TestCallbackHandler.WasCalled = false;
+        var router = MakeRouter();
+        using var sp = (ServiceProvider)BuildServices();
+        using var scope = sp.CreateScope();
+
+        await router.DispatchAsync(null!, CallbackUpdate("testcb:action"), scope.ServiceProvider, default);
+
+        Assert.True(TestCallbackHandler.WasCalled);
+    }
+
+    [Fact]
+    public async Task Router_UnmatchedCallback_FallsBackToFallbackHandler()
+    {
+        FallbackHandler.WasCalled = false;
+        var router = MakeRouter();
+        using var sp = (ServiceProvider)BuildServices();
+        using var scope = sp.CreateScope();
+
+        await router.DispatchAsync(null!, CallbackUpdate("unknown:data"), scope.ServiceProvider, default);
+
+        Assert.True(FallbackHandler.WasCalled);
+    }
+
+    [Fact]
+    public async Task Router_CallbackPrefixTakesPriorityOverFallback()
+    {
+        TestCallbackHandler.WasCalled = false;
+        FallbackHandler.WasCalled = false;
+        var router = MakeRouter();
+        using var sp = (ServiceProvider)BuildServices();
+        using var scope = sp.CreateScope();
+
+        await router.DispatchAsync(null!, CallbackUpdate("testcb:check"), scope.ServiceProvider, default);
+
+        Assert.True(TestCallbackHandler.WasCalled);
+        Assert.False(FallbackHandler.WasCalled);
+    }
+
+    [Fact]
+    public async Task Router_NoMatch_DoesNotThrow()
+    {
+        var router = MakeRouter();
+        using var sp = (ServiceProvider)BuildServices();
+        using var scope = sp.CreateScope();
+
+        var ex = await Record.ExceptionAsync(() =>
+            router.DispatchAsync(null!, TextUpdate("/no_handler_registered"), scope.ServiceProvider, default));
+        Assert.Null(ex);
+    }
+
+    // ── Construction ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void Router_NoModules_DoesNotThrow()
+    {
+        var ex = Record.Exception(() => new UpdateRouter([], NullLogger<UpdateRouter>.Instance));
+        Assert.Null(ex);
+    }
+
+    [Fact]
+    public void Router_LogRegisteredRoutes_DoesNotThrow()
+    {
+        var router = MakeRouter();
+        var ex = Record.Exception(() => router.LogRegisteredRoutes());
+        Assert.Null(ex);
     }
 }

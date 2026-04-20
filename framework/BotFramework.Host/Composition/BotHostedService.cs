@@ -17,13 +17,14 @@
 // registered before this one, so schema is ready when we start polling).
 // ─────────────────────────────────────────────────────────────────────────────
 
+using BotFramework.Host.Composition;
 using BotFramework.Host.Pipeline;
 using BotFramework.Sdk;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using TgBotCommand = Telegram.Bot.Types.BotCommand;
 
-namespace BotFramework.Host;
+namespace BotFramework.Host.Composition;
 
 public sealed partial class BotHostedService(
     IServiceProvider serviceProvider,

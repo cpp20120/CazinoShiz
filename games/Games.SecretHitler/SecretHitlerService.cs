@@ -374,7 +374,7 @@ public sealed partial class SecretHitlerService(
             await games.UpdateAsync(game, ct);
 
             var remaining = closed
-                ? new List<SecretHitlerPlayer>()
+                ? []
                 : await players.ListByGameAsync(game.InviteCode, ct);
 
             LogShLeft(game.InviteCode, userId, closed);
@@ -407,7 +407,7 @@ public sealed partial class SecretHitlerService(
         {
             ShWinner.Liberals => list.Where(p => p.Role == ShRole.Liberal).ToList(),
             ShWinner.Fascists => list.Where(p => p.Role == ShRole.Fascist || p.Role == ShRole.Hitler).ToList(),
-            _ => new List<SecretHitlerPlayer>(),
+            _ => [],
         };
 
         if (winners.Count == 0 || game.Pot == 0) return Array.Empty<(long, int)>();

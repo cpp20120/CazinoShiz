@@ -1,4 +1,5 @@
 using BotFramework.Host;
+using BotFramework.Host.Composition;
 using Dapper;
 using Games.Horse;
 using Microsoft.AspNetCore.Mvc;

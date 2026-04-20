@@ -488,4 +488,72 @@ public class ShTransitionsTests
 
         Assert.Equal(2, game.CurrentPresidentPosition);
     }
+
+    // ── ValidateChancellorEnact ──────────────────────────────────────────────
+
+    [Fact]
+    public void ValidateChancellorEnact_wrongPhase_returnsWrongPhase()
+    {
+        var game = new SecretHitlerGame { InviteCode = "X", Phase = ShPhase.Election };
+        var chancellor = MakePlayers(2)[0];
+        game.NominatedChancellorPosition = chancellor.Position;
+        Assert.Equal(ShValidation.WrongPhase, ShTransitions.ValidateChancellorEnact(game, chancellor, 0));
+    }
+
+    [Fact]
+    public void ValidateChancellorEnact_notChancellor_returnsNotChancellor()
+    {
+        var players = MakePlayers(3);
+        var game = new SecretHitlerGame
+        {
+            InviteCode = "X",
+            Phase = ShPhase.LegislativeChancellor,
+            NominatedChancellorPosition = 1,
+            ChancellorReceived = "LF",
+        };
+        // player 0 is not the chancellor (chancellor is position 1)
+        Assert.Equal(ShValidation.NotChancellor, ShTransitions.ValidateChancellorEnact(game, players[0], 0));
+    }
+
+    [Fact]
+    public void ValidateChancellorEnact_indexOutOfRange_returnsInvalidPolicy()
+    {
+        var players = MakePlayers(3);
+        var game = new SecretHitlerGame
+        {
+            InviteCode = "X",
+            Phase = ShPhase.LegislativeChancellor,
+            NominatedChancellorPosition = players[0].Position,
+            ChancellorReceived = "LF",
+        };
+        Assert.Equal(ShValidation.InvalidPolicy, ShTransitions.ValidateChancellorEnact(game, players[0], 5));
+    }
+
+    [Fact]
+    public void ValidateChancellorEnact_valid_returnsOk()
+    {
+        var players = MakePlayers(3);
+        var game = new SecretHitlerGame
+        {
+            InviteCode = "X",
+            Phase = ShPhase.LegislativeChancellor,
+            NominatedChancellorPosition = players[0].Position,
+            ChancellorReceived = "LF",
+        };
+        Assert.Equal(ShValidation.Ok, ShTransitions.ValidateChancellorEnact(game, players[0], 0));
+    }
+
+    [Fact]
+    public void ValidateChancellorEnact_negativeIndex_returnsInvalidPolicy()
+    {
+        var players = MakePlayers(3);
+        var game = new SecretHitlerGame
+        {
+            InviteCode = "X",
+            Phase = ShPhase.LegislativeChancellor,
+            NominatedChancellorPosition = players[0].Position,
+            ChancellorReceived = "LF",
+        };
+        Assert.Equal(ShValidation.InvalidPolicy, ShTransitions.ValidateChancellorEnact(game, players[0], -1));
+    }
 }

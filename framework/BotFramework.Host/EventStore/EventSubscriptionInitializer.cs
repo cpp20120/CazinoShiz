@@ -12,6 +12,7 @@
 // Program.cs sees.
 // ─────────────────────────────────────────────────────────────────────────────
 
+using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 
 namespace BotFramework.Host;

@@ -17,6 +17,7 @@
 // helper so no call site changes shape.
 // ─────────────────────────────────────────────────────────────────────────────
 
+using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 using Microsoft.Extensions.Options;
 

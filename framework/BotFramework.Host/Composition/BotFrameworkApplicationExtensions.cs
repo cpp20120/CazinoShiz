@@ -34,7 +34,7 @@ using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 
-namespace BotFramework.Host;
+namespace BotFramework.Host.Composition;
 
 public static class BotFrameworkApplicationExtensions
 {

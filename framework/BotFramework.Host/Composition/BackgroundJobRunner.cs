@@ -13,7 +13,7 @@
 using BotFramework.Sdk;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace BotFramework.Host;
+namespace BotFramework.Host.Composition;
 
 public sealed partial class BackgroundJobRunner(
     ModuleRegistrations registrations,
