@@ -26,6 +26,7 @@ public interface IHorseService
     Task<RaceInfo> GetTodayInfoAsync(CancellationToken ct);
     Task<TodayRaceResult> GetTodayResultAsync(CancellationToken ct);
     Task<RaceOutcome> RunRaceAsync(long callerUserId, CancellationToken ct);
+    Task SaveFileIdAsync(string raceDate, string fileId, CancellationToken ct);
 }
 
 public sealed partial class HorseService(
@@ -95,8 +96,11 @@ public sealed partial class HorseService(
         var result = await resultStore.FindAsync(raceDate, ct);
         return result == null
             ? new TodayRaceResult(null, null)
-            : new TodayRaceResult(result.Winner, result.ImageData);
+            : new TodayRaceResult(result.Winner, result.FileId);
     }
+
+    public Task SaveFileIdAsync(string raceDate, string fileId, CancellationToken ct)
+        => resultStore.SaveFileIdAsync(raceDate, fileId, ct);
 
     public async Task<RaceOutcome> RunRaceAsync(long callerUserId, CancellationToken ct)
     {
@@ -117,15 +121,14 @@ public sealed partial class HorseService(
         var ks = GetKoefs(stakes);
 
         int winner = SpeedGenerator.GenPlaces(_opts.HorseCount);
-        var (gifBytes, lastFrame) = await Task.Run(() =>
+        var gifBytes = await Task.Run(() =>
         {
             var speeds = SpeedGenerator.CreateSpeeds(_opts.HorseCount, winner);
             var (frames, height, width) = HorseRaceRenderer.DrawHorses(speeds);
-            var gif = GifEncoder.RenderFramesToGif(frames, width, height);
-            return (gif, frames[^1]);
+            return GifEncoder.RenderFramesToGif(frames, width, height);
         }, ct);
 
-        await resultStore.UpsertAsync(new HorseResultRow(raceDate, winner, lastFrame), ct);
+        await resultStore.UpsertAsync(new HorseResultRow(raceDate, winner, null), ct);
 
         var transactions = Payoff(bets, ks, winner);
 

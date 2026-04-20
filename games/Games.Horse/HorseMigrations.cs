@@ -26,5 +26,10 @@ public sealed class HorseMigrations : IModuleMigrations
                 created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
             );
             """),
+
+        new Migration("002_result_file_id", """
+            ALTER TABLE horse_results ADD COLUMN IF NOT EXISTS file_id TEXT NULL;
+            ALTER TABLE horse_results DROP COLUMN IF EXISTS image_data;
+            """),
     ];
 }

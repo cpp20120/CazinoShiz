@@ -1,0 +1,52 @@
+bot:
+  image:
+    repository: casinoshiz
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  port: 3000
+  isProduction: true
+  defaultCulture: ru
+  startingCoins: 100
+  token: ""
+  adminWebToken: ""
+  admins: []
+  trustedChannel: ""
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: 600m
+      memory: 768Mi
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  database: cazino
+  user: cazino
+  password: cazino
+  port: 5432
+  storage: 5Gi
+  storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+ingress:
+  enabled: false
+  className: nginx
+  host: ""
+  tls:
+    enabled: false
+    secretName: ""
+
+games:
+  dice:
+    cost: 7
+  horse:
+    admins: []

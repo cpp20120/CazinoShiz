@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "casinoshiz.fullname" . }}
+  labels:
+    {{- include "casinoshiz.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.bot.port }}
+      targetPort: {{ .Values.bot.port }}
+      protocol: TCP
+  selector:
+    {{- include "casinoshiz.selectorLabels" . | nindent 4 }}

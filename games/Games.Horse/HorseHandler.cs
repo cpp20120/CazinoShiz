@@ -113,9 +113,15 @@ public sealed partial class HorseHandler(
         await ctx.Bot.SendMessage(chatId, Loc("run.started"),
             replyParameters: reply, cancellationToken: ctx.Ct);
 
-        await using var gifStream = new MemoryStream(outcome.GifBytes);
-        await ctx.Bot.SendAnimation(chatId, InputFile.FromStream(gifStream, "horses.gif"),
-            cancellationToken: ctx.Ct);
+        Message gifMessage;
+        await using (var gifStream = new MemoryStream(outcome.GifBytes))
+            gifMessage = await ctx.Bot.SendAnimation(chatId, InputFile.FromStream(gifStream, "horses.gif"),
+                cancellationToken: ctx.Ct);
+
+        var raceDate = HorseTimeHelper.GetRaceDate();
+        var fileId = gifMessage.Animation?.FileId;
+        if (fileId != null)
+            await service.SaveFileIdAsync(raceDate, fileId, ctx.Ct);
 
         var announceCt = lifetime.ApplicationStopping;
         var bot = ctx.Bot;
@@ -144,10 +150,9 @@ public sealed partial class HorseHandler(
         var reply = new ReplyParameters { MessageId = msg.MessageId };
         var r = await service.GetTodayResultAsync(ctx.Ct);
 
-        if (r.Winner.HasValue && r.ImageData != null)
+        if (r.Winner.HasValue && r.FileId != null)
         {
-            await using var imageStream = new MemoryStream(r.ImageData);
-            await ctx.Bot.SendPhoto(msg.Chat.Id, InputFile.FromStream(imageStream, "horses.jpg"),
+            await ctx.Bot.SendAnimation(msg.Chat.Id, InputFile.FromFileId(r.FileId),
                 caption: string.Format(Loc("result.winner"), r.Winner.Value + 1),
                 replyParameters: reply, cancellationToken: ctx.Ct);
         }

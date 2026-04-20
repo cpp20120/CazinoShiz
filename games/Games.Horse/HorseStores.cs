@@ -5,7 +5,7 @@ namespace Games.Horse;
 
 public sealed record HorseBetRow(Guid Id, string RaceDate, long UserId, int HorseId, int Amount);
 
-public sealed record HorseResultRow(string RaceDate, int Winner, byte[] ImageData);
+public sealed record HorseResultRow(string RaceDate, int Winner, string? FileId);
 
 public interface IHorseBetStore
 {
@@ -18,6 +18,7 @@ public interface IHorseResultStore
 {
     Task<HorseResultRow?> FindAsync(string raceDate, CancellationToken ct);
     Task UpsertAsync(HorseResultRow result, CancellationToken ct);
+    Task SaveFileIdAsync(string raceDate, string fileId, CancellationToken ct);
 }
 
 public sealed class HorseBetStore(INpgsqlConnectionFactory connections) : IHorseBetStore
@@ -59,7 +60,7 @@ public sealed class HorseResultStore(INpgsqlConnectionFactory connections) : IHo
     {
         await using var conn = await connections.OpenAsync(ct);
         return await conn.QuerySingleOrDefaultAsync<HorseResultRow>(new CommandDefinition(
-            "SELECT race_date AS RaceDate, winner AS Winner, image_data AS ImageData FROM horse_results WHERE race_date = @raceDate",
+            "SELECT race_date AS RaceDate, winner AS Winner, file_id AS FileId FROM horse_results WHERE race_date = @raceDate",
             new { raceDate },
             cancellationToken: ct));
     }
@@ -68,13 +69,21 @@ public sealed class HorseResultStore(INpgsqlConnectionFactory connections) : IHo
     {
         await using var conn = await connections.OpenAsync(ct);
         await conn.ExecuteAsync(new CommandDefinition("""
-            INSERT INTO horse_results (race_date, winner, image_data)
-            VALUES (@RaceDate, @Winner, @ImageData)
+            INSERT INTO horse_results (race_date, winner)
+            VALUES (@RaceDate, @Winner)
             ON CONFLICT (race_date) DO UPDATE SET
-                winner = EXCLUDED.winner,
-                image_data = EXCLUDED.image_data
+                winner = EXCLUDED.winner
             """,
             result,
+            cancellationToken: ct));
+    }
+
+    public async Task SaveFileIdAsync(string raceDate, string fileId, CancellationToken ct)
+    {
+        await using var conn = await connections.OpenAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE horse_results SET file_id = @fileId WHERE race_date = @raceDate",
+            new { raceDate, fileId },
             cancellationToken: ct));
     }
 }

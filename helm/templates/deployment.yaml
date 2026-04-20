@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "casinoshiz.fullname" . }}
+  labels:
+    {{- include "casinoshiz.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.bot.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "casinoshiz.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "casinoshiz.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: bot
+          image: "{{ .Values.bot.image.repository }}:{{ .Values.bot.image.tag }}"
+          imagePullPolicy: {{ .Values.bot.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.bot.port }}
+          env:
+            - name: ASPNETCORE_URLS
+              value: "http://+:{{ .Values.bot.port }}"
+            - name: Bot__Token
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "casinoshiz.fullname" . }}
+                  key: bot-token
+            - name: Bot__AdminWebToken
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "casinoshiz.fullname" . }}
+                  key: admin-web-token
+            - name: ConnectionStrings__Default
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "casinoshiz.fullname" . }}
+                  key: postgres-connection
+            - name: Bot__IsProduction
+              value: {{ .Values.bot.isProduction | quote }}
+            - name: Bot__WebhookPort
+              value: {{ .Values.bot.port | quote }}
+            - name: Bot__DefaultCulture
+              value: {{ .Values.bot.defaultCulture | quote }}
+            - name: Bot__StartingCoins
+              value: {{ .Values.bot.startingCoins | quote }}
+            - name: Bot__TrustedChannel
+              value: {{ .Values.bot.trustedChannel | quote }}
+            - name: ClickHouse__Enabled
+              value: "false"
+            - name: Games__dice__Cost
+              value: {{ .Values.games.dice.cost | quote }}
+            {{- if .Values.games.horse.admins }}
+            {{- range $i, $id := .Values.games.horse.admins }}
+            - name: Games__horse__Admins__{{ $i }}
+              value: {{ $id | quote }}
+            {{- end }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.bot.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.bot.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.bot.resources | nindent 12 }}

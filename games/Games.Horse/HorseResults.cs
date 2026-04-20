@@ -23,7 +23,7 @@ public sealed record RaceOutcome(
     List<(long UserId, int Amount)> Transactions,
     List<RacerSummary> Participants);
 
-public sealed record TodayRaceResult(int? Winner, byte[]? ImageData);
+public sealed record TodayRaceResult(int? Winner, string? FileId);
 
 public static class HorseResultHelpers
 {
