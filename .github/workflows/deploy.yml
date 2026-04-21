@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
   IMAGE: ghcr.io/${{ github.repository_owner }}/casinoshiz
 
 jobs:
@@ -41,16 +40,21 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Update image tag in eco repo
-        env:
-          ECO_DEPLOY_TOKEN: ${{ secrets.ECO_DEPLOY_TOKEN }}
+  update-eco:
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: roamiiing/eco
+          token: ${{ secrets.ECO_DEPLOY_TOKEN }}
+
+      - name: Update image tag
         run: |
-          git clone https://x-access-token:${ECO_DEPLOY_TOKEN}@github.com/cppshizoid/eco.git /tmp/eco
-          cd /tmp/eco
-          sed -i 's|tag: ".*"|tag: "${{ github.sha }}"|' \
+          sed -i "s|tag: \".*\"|tag: \"${{ github.sha }}\"|" \
             _infrastructure/flux/clusters/single-node/production/casinoshiz/values.yaml
-          git config user.email "ci@github.com"
-          git config user.name "GitHub Actions"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add _infrastructure/flux/clusters/single-node/production/casinoshiz/values.yaml
-          git commit -m "chore: update casinoshiz image tag to ${{ github.sha }}"
+          git diff --staged --quiet || git commit -m "chore(casinoshiz): deploy ${{ github.sha }}"
           git push
