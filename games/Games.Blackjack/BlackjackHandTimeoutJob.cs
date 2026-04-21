@@ -38,6 +38,8 @@ public sealed partial class BlackjackHandTimeoutJob(
 
     private async Task SweepAsync(CancellationToken ct)
     {
+        BlackjackService.PruneGates((long)_opts.HandTimeoutMs);
+
         using var scope = services.CreateScope();
         var store = scope.ServiceProvider.GetRequiredService<IBlackjackHandStore>();
         var service = scope.ServiceProvider.GetRequiredService<IBlackjackService>();

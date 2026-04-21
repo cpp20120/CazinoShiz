@@ -1,11 +1,16 @@
 using BotFramework.Host;
+using BotFramework.Host.Services;
+using BotFramework.Sdk;
 using Dapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace CasinoShiz.Host.Pages.Admin;
 
-public sealed class UsersModel(INpgsqlConnectionFactory connections) : PageModel
+public sealed class UsersModel(
+    INpgsqlConnectionFactory connections,
+    IEconomicsService economics,
+    IAdminAuditLog audit) : PageModel
 {
     public IReadOnlyList<UserRow> Users { get; private set; } = [];
 
@@ -14,45 +19,51 @@ public sealed class UsersModel(INpgsqlConnectionFactory connections) : PageModel
 
     public string? Flash { get; set; }
     public bool FlashError { get; set; }
+    public AdminSession? Actor { get; private set; }
 
     public async Task OnGetAsync(CancellationToken ct)
     {
+        Actor = HttpContext.Session.GetAdminSession();
         await LoadAsync(ct);
     }
 
     public async Task<IActionResult> OnPostSetAsync(long userId, int coins, CancellationToken ct)
     {
-        await using var conn = await connections.OpenAsync(ct);
-        var rows = await conn.ExecuteAsync(new CommandDefinition("""
-            UPDATE users
-            SET coins = @coins, version = version + 1, updated_at = now()
-            WHERE telegram_user_id = @userId
-            """,
-            new { userId, coins }, cancellationToken: ct));
-        TempData["Flash"] = rows > 0 ? $"User {userId} → {coins} coins" : $"User {userId} not found";
-        if (rows == 0) TempData["FlashError"] = "x";
+        var actor = HttpContext.Session.GetAdminSession();
+        if (actor?.Role != AdminRole.SuperAdmin)
+            return StatusCode(403);
+
+        var current = await economics.GetBalanceAsync(userId, ct);
+        var delta = coins - current;
+        if (delta != 0)
+            await economics.AdjustUncheckedAsync(userId, delta, ct);
+
+        await audit.LogAsync(actor.UserId, actor.Name, "users.set_coins",
+            new { targetUserId = userId, coins }, ct);
+
+        TempData["Flash"] = $"User {userId} → {coins} coins";
         return RedirectToPage(new { q = Q });
     }
 
     public async Task<IActionResult> OnPostAdjustAsync(long userId, int delta, CancellationToken ct)
     {
+        var actor = HttpContext.Session.GetAdminSession();
+        if (actor?.Role != AdminRole.SuperAdmin)
+            return StatusCode(403);
+
         if (delta == 0)
         {
             TempData["FlashError"] = "Delta must be non-zero";
             return RedirectToPage(new { q = Q });
         }
-        await using var conn = await connections.OpenAsync(ct);
-        var newCoins = await conn.ExecuteScalarAsync<int?>(new CommandDefinition("""
-            UPDATE users
-            SET coins = coins + @delta, version = version + 1, updated_at = now()
-            WHERE telegram_user_id = @userId
-            RETURNING coins
-            """,
-            new { userId, delta }, cancellationToken: ct));
-        TempData["Flash"] = newCoins.HasValue
-            ? $"User {userId}: {(delta > 0 ? "+" : "")}{delta} → {newCoins} coins"
-            : $"User {userId} not found";
-        if (newCoins is null) TempData["FlashError"] = "x";
+
+        await economics.AdjustUncheckedAsync(userId, delta, ct);
+        var newCoins = await economics.GetBalanceAsync(userId, ct);
+
+        await audit.LogAsync(actor.UserId, actor.Name, "users.adjust_coins",
+            new { targetUserId = userId, delta, newCoins }, ct);
+
+        TempData["Flash"] = $"User {userId}: {(delta > 0 ? "+" : "")}{delta} → {newCoins} coins";
         return RedirectToPage(new { q = Q });
     }
 

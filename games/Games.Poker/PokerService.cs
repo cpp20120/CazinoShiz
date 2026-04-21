@@ -45,8 +45,28 @@ public sealed partial class PokerService(
     IOptions<PokerOptions> options,
     ILogger<PokerService> logger) : IPokerService
 {
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _gates = new();
-    private static SemaphoreSlim GetGate(string key) => _gates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+    private static readonly ConcurrentDictionary<string, Gate> _gates = new();
+
+    private static SemaphoreSlim GetGate(string key)
+    {
+        var g = _gates.GetOrAdd(key, _ => new Gate());
+        Volatile.Write(ref g.LastUsedTick, Environment.TickCount64);
+        return g.Semaphore;
+    }
+
+    internal static void PruneGates(long idleMs)
+    {
+        var cutoff = Environment.TickCount64 - idleMs;
+        foreach (var (key, g) in _gates)
+            if (Volatile.Read(ref g.LastUsedTick) < cutoff && g.Semaphore.CurrentCount == 1)
+                _gates.TryRemove(key, out _);
+    }
+
+    private sealed class Gate
+    {
+        public readonly SemaphoreSlim Semaphore = new(1, 1);
+        public long LastUsedTick = Environment.TickCount64;
+    }
 
     private readonly PokerOptions _opts = options.Value;
 

@@ -5,7 +5,7 @@ public sealed class ClickHouseOptions
     public const string SectionName = "ClickHouse";
 
     public bool Enabled { get; set; } = false;
-    public string Host { get; set; } = "http://localhost:8123";
+    public string Host { get; set; } = "";
     public string User { get; set; } = "default";
     public string Password { get; set; } = "";
     public string Database { get; set; } = "default";

@@ -28,12 +28,7 @@ spec:
                 secretKeyRef:
                   name: {{ include "casinoshiz.fullname" . }}
                   key: bot-token
-            - name: Bot__AdminWebToken
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "casinoshiz.fullname" . }}
-                  key: admin-web-token
-            - name: ConnectionStrings__Default
+            - name: ConnectionStrings__Postgres
               valueFrom:
                 secretKeyRef:
                   name: {{ include "casinoshiz.fullname" . }}
@@ -48,25 +43,45 @@ spec:
               value: {{ .Values.bot.startingCoins | quote }}
             - name: Bot__TrustedChannel
               value: {{ .Values.bot.trustedChannel | quote }}
+            - name: Bot__Username
+              value: {{ .Values.bot.username | quote }}
+            {{- range $i, $id := .Values.bot.admins }}
+            - name: Bot__Admins__{{ $i }}
+              value: {{ $id | quote }}
+            {{- end }}
+            {{- range $i, $id := .Values.bot.readOnlyAdmins }}
+            - name: Bot__ReadOnlyAdmins__{{ $i }}
+              value: {{ $id | quote }}
+            {{- end }}
             - name: ClickHouse__Enabled
               value: "false"
             - name: Games__dice__Cost
               value: {{ .Values.games.dice.cost | quote }}
-            {{- if .Values.games.horse.admins }}
             {{- range $i, $id := .Values.games.horse.admins }}
             - name: Games__horse__Admins__{{ $i }}
               value: {{ $id | quote }}
             {{- end }}
+            {{- if .Values.redis.enabled }}
+            - name: Redis__Enabled
+              value: "true"
+            - name: Redis__ConnectionString
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "casinoshiz.fullname" . }}
+                  key: redis-connection
+            - name: Redis__PartitionCount
+              value: {{ .Values.redis.partitionCount | quote }}
             {{- end }}
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: {{ .Values.bot.port }}
             initialDelaySeconds: 10
             periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /health
+              path: /health/live
               port: {{ .Values.bot.port }}
             initialDelaySeconds: 20
             periodSeconds: 30

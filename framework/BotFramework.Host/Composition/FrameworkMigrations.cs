@@ -64,5 +64,18 @@ internal sealed class FrameworkMigrations : IModuleMigrations
             CREATE INDEX IF NOT EXISTS ix_event_log_type ON event_log (event_type, occurred_at);
             CREATE INDEX IF NOT EXISTS ix_event_log_at ON event_log (occurred_at);
             """),
+
+        new Migration("005_admin_audit", """
+            CREATE TABLE IF NOT EXISTS admin_audit (
+                id           BIGSERIAL    PRIMARY KEY,
+                actor_id     BIGINT       NOT NULL,
+                actor_name   TEXT         NOT NULL,
+                action       TEXT         NOT NULL,
+                details      JSONB        NOT NULL DEFAULT '{}',
+                occurred_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+            );
+            CREATE INDEX IF NOT EXISTS ix_admin_audit_actor ON admin_audit (actor_id, occurred_at);
+            CREATE INDEX IF NOT EXISTS ix_admin_audit_at    ON admin_audit (occurred_at);
+            """),
     ];
 }

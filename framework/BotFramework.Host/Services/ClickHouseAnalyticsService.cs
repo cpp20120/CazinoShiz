@@ -56,6 +56,10 @@ public sealed partial class ClickHouseAnalyticsService(
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(_options.Host))
+            throw new InvalidOperationException(
+                "ClickHouse:Enabled is true but ClickHouse:Host is not set.");
+
         try
         {
             _connection = new ClickHouseConnection(BuildConnectionString(_options));

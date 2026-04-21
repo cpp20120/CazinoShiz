@@ -15,7 +15,8 @@ public sealed class SecretHitlerModule : IModule
             .AddScoped<ISecretHitlerService, SecretHitlerService>()
             .AddScoped<ISecretHitlerGameStore, SecretHitlerGameStore>()
             .AddScoped<ISecretHitlerPlayerStore, SecretHitlerPlayerStore>()
-            .AddHandler<SecretHitlerHandler>();
+            .AddHandler<SecretHitlerHandler>()
+            .AddBackgroundJob<SecretHitlerGateCleanupJob>();
     }
 
     public IModuleMigrations GetMigrations() => new SecretHitlerMigrations();

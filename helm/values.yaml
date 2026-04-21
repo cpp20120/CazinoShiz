@@ -9,8 +9,9 @@ bot:
   defaultCulture: ru
   startingCoins: 100
   token: ""
-  adminWebToken: ""
+  username: ""
   admins: []
+  readOnlyAdmins: []
   trustedChannel: ""
   resources:
     requests:
@@ -36,6 +37,22 @@ postgres:
     limits:
       cpu: 500m
       memory: 512Mi
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  password: ""
+  port: 6379
+  storage: 1Gi
+  storageClass: ""
+  partitionCount: 8
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
 
 ingress:
   enabled: false

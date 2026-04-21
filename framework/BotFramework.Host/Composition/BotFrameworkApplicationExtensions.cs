@@ -24,9 +24,9 @@
 // reasoning (sidechannel resistance).
 // ─────────────────────────────────────────────────────────────────────────────
 
-using System.Security.Cryptography;
-using System.Text;
 using BotFramework.Host.Pipeline;
+using BotFramework.Host.Redis;
+using BotFramework.Host.Services;
 using BotFramework.Sdk;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -42,6 +42,7 @@ public static class BotFrameworkApplicationExtensions
     {
         var opts = app.Services.GetRequiredService<IOptions<BotFrameworkOptions>>().Value;
 
+        app.UseSession();
         MapAdminGate(app);
         app.MapRazorPages();
         MapHealth(app);
@@ -58,6 +59,13 @@ public static class BotFrameworkApplicationExtensions
         {
             var update = await ctx.Request.ReadFromJsonAsync<Update>(ctx.RequestAborted);
             if (update is null) return Results.BadRequest();
+
+            var publisher = ctx.RequestServices.GetService<UpdateStreamPublisher>();
+            if (publisher is not null)
+            {
+                await publisher.PublishAsync(update, ctx.RequestAborted);
+                return Results.Ok();
+            }
 
             using var scope = ctx.RequestServices.CreateScope();
             var pipeline = scope.ServiceProvider.GetRequiredService<UpdatePipeline>();
@@ -98,50 +106,30 @@ public static class BotFrameworkApplicationExtensions
             }
 
             var opts = ctx.RequestServices.GetRequiredService<IOptions<BotFrameworkOptions>>().Value;
-            var expected = opts.AdminWebToken;
-            if (string.IsNullOrEmpty(expected))
+            if (string.IsNullOrEmpty(opts.Username))
             {
                 ctx.Response.StatusCode = 503;
-                await ctx.Response.WriteAsync("Admin UI disabled: Bot:AdminWebToken not set");
+                await ctx.Response.WriteAsync("Admin UI disabled: Bot:Username not set");
                 return;
             }
 
-            var queryToken = ctx.Request.Query["token"].ToString();
-            if (!string.IsNullOrEmpty(queryToken))
+            // Login and auth callback pages are always accessible
+            if (ctx.Request.Path.StartsWithSegments("/admin/login") ||
+                ctx.Request.Path.StartsWithSegments("/admin/auth") ||
+                ctx.Request.Path.StartsWithSegments("/admin/logout"))
             {
-                if (!TokensMatch(queryToken, expected))
-                {
-                    ctx.Response.StatusCode = 401;
-                    await ctx.Response.WriteAsync("Unauthorized");
-                    return;
-                }
-                ctx.Response.Cookies.Append("admin_token", expected, new CookieOptions
-                {
-                    HttpOnly = true,
-                    SameSite = SameSiteMode.Strict,
-                    Secure = ctx.Request.IsHttps,
-                    MaxAge = TimeSpan.FromDays(30),
-                });
-                ctx.Response.Redirect(ctx.Request.Path);
+                await next();
                 return;
             }
 
-            var cookieToken = ctx.Request.Cookies["admin_token"] ?? "";
-            if (!TokensMatch(cookieToken, expected))
+            var session = ctx.Session.GetAdminSession();
+            if (session is null)
             {
-                ctx.Response.StatusCode = 401;
-                await ctx.Response.WriteAsync("Unauthorized");
+                ctx.Response.Redirect($"/admin/login?returnUrl={Uri.EscapeDataString(ctx.Request.Path)}");
                 return;
             }
 
             await next();
         });
-    }
-
-    private static bool TokensMatch(string a, string b)
-    {
-        var ab = Encoding.UTF8.GetBytes(a);
-        var bb = Encoding.UTF8.GetBytes(b);
-        return ab.Length == bb.Length && CryptographicOperations.FixedTimeEquals(ab, bb);
     }
 }

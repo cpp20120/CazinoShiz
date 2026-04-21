@@ -104,6 +104,13 @@ public sealed partial class EconomicsService(
         LogCredit(userId, amount, result.NewBalance, reason);
     }
 
+    public async Task AdjustUncheckedAsync(long userId, int delta, CancellationToken ct)
+    {
+        if (delta == 0) return;
+        var result = await ApplyAsync(userId, delta, allowNegative: true, ct);
+        LogAdjustUnchecked(userId, delta, result.NewBalance);
+    }
+
     private async Task<(bool Applied, int NewBalance)> ApplyAsync(
         long userId, int delta, bool allowNegative, CancellationToken ct)
     {
@@ -153,4 +160,7 @@ public sealed partial class EconomicsService(
 
     [LoggerMessage(LogLevel.Warning, "economics.debit_rejected user={UserId} amount={Amount} balance={Balance} reason={Reason}")]
     partial void LogDebitRejected(long userId, int amount, int balance, string reason);
+
+    [LoggerMessage(LogLevel.Warning, "economics.adjust_unchecked user={UserId} delta={Delta} balance={Balance}")]
+    partial void LogAdjustUnchecked(long userId, int delta, int balance);
 }

@@ -36,8 +36,28 @@ public sealed class BlackjackService(
     IDomainEventBus events,
     IOptions<BlackjackOptions> options) : IBlackjackService
 {
-    private static readonly ConcurrentDictionary<long, SemaphoreSlim> _gates = new();
-    private static SemaphoreSlim GetGate(long userId) => _gates.GetOrAdd(userId, _ => new SemaphoreSlim(1, 1));
+    private static readonly ConcurrentDictionary<long, Gate> _gates = new();
+
+    private static SemaphoreSlim GetGate(long userId)
+    {
+        var g = _gates.GetOrAdd(userId, _ => new Gate());
+        Volatile.Write(ref g.LastUsedTick, Environment.TickCount64);
+        return g.Semaphore;
+    }
+
+    internal static void PruneGates(long idleMs)
+    {
+        var cutoff = Environment.TickCount64 - idleMs;
+        foreach (var (key, g) in _gates)
+            if (Volatile.Read(ref g.LastUsedTick) < cutoff && g.Semaphore.CurrentCount == 1)
+                _gates.TryRemove(key, out _);
+    }
+
+    private sealed class Gate
+    {
+        public readonly SemaphoreSlim Semaphore = new(1, 1);
+        public long LastUsedTick = Environment.TickCount64;
+    }
 
     private readonly BlackjackOptions _opts = options.Value;
 

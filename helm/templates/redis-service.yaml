@@ -1,0 +1,18 @@
+{{- if .Values.redis.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "casinoshiz.fullname" . }}-redis
+  labels:
+    {{- include "casinoshiz.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.redis.port }}
+      targetPort: {{ .Values.redis.port }}
+      name: redis
+  selector:
+    {{- include "casinoshiz.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+{{- end }}

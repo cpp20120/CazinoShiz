@@ -1,5 +1,7 @@
+@using BotFramework.Host.Services
 @{
     var title = ViewData["Title"] as string ?? "Admin";
+    var adminSession = Context.Session.GetAdminSession();
 }
 <!DOCTYPE html>
 <html lang="ru">
@@ -34,6 +36,9 @@
         }
         nav a:hover { background: #334155; }
         nav a.active { background: #2563eb; color: white; }
+        .header-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+        .user-pill { font-size: 12px; color: #94a3b8; }
+        .user-pill span { color: #e2e8f0; font-weight: 500; }
         main { padding: 24px; max-width: 1200px; margin: 0 auto; }
         h2 { margin-top: 0; }
         table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 8px; overflow: hidden; }
@@ -83,6 +88,13 @@
             <a href="/admin/horse" class="@(Context.Request.Path.StartsWithSegments("/admin/horse") ? "active" : "")">Horse</a>
             <a href="/admin/events" class="@(Context.Request.Path.StartsWithSegments("/admin/events") ? "active" : "")">Events</a>
         </nav>
+        @if (adminSession is not null)
+        {
+            <div class="header-right">
+                <span class="user-pill"><span>@adminSession.Name</span> · @adminSession.Role</span>
+                <a href="/admin/logout" style="font-size:12px;color:#94a3b8">Logout</a>
+            </div>
+        }
     </header>
     <main>
         @RenderBody()

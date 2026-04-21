@@ -34,4 +34,13 @@ public sealed class BotFrameworkOptions
     /// broadcast target — e.g. the admin horse panel posts the race GIF here.
     /// Empty string disables broadcasting.
     public string TrustedChannel { get; set; } = "";
+
+    /// Telegram user IDs that have full admin access (can mutate state).
+    public IReadOnlyList<long> Admins { get; set; } = [];
+
+    /// Telegram user IDs that have read-only admin access.
+    public IReadOnlyList<long> ReadOnlyAdmins { get; set; } = [];
+
+    /// Bot @username (with or without leading "@") — used by Telegram Login Widget.
+    public string Username { get; set; } = "";
 }

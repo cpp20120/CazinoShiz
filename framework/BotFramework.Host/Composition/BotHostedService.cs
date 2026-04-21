@@ -19,6 +19,7 @@
 
 using BotFramework.Host.Composition;
 using BotFramework.Host.Pipeline;
+using BotFramework.Host.Redis;
 using BotFramework.Sdk;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
@@ -112,6 +113,7 @@ public sealed partial class BotHostedService(
 
     private async Task RunPollingLoop(CancellationToken ct)
     {
+        var publisher = serviceProvider.GetService<UpdateStreamPublisher>();
         var offset = 0;
         while (!ct.IsCancellationRequested)
         {
@@ -121,10 +123,17 @@ public sealed partial class BotHostedService(
                 foreach (var update in updates)
                 {
                     offset = update.Id + 1;
-                    using var scope = serviceProvider.CreateScope();
-                    var pipeline = scope.ServiceProvider.GetRequiredService<UpdatePipeline>();
-                    var ctx = new UpdateContext(botClient, update, scope.ServiceProvider, ct);
-                    await pipeline.InvokeAsync(ctx);
+                    if (publisher is not null)
+                    {
+                        await publisher.PublishAsync(update, ct);
+                    }
+                    else
+                    {
+                        using var scope = serviceProvider.CreateScope();
+                        var pipeline = scope.ServiceProvider.GetRequiredService<UpdatePipeline>();
+                        var ctx = new UpdateContext(botClient, update, scope.ServiceProvider, ct);
+                        await pipeline.InvokeAsync(ctx);
+                    }
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)

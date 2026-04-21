@@ -41,6 +41,21 @@ services:
       retries: 30
       start_period: 20s
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
   bot:
     build:
       context: .
@@ -50,13 +65,17 @@ services:
     env_file:
       - .env
     environment:
-      ConnectionStrings__Default: "Host=postgres;Port=5432;Database=cazino;Username=cazino;Password=cazino"
+      ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=cazino;Username=cazino;Password=cazino"
+      Redis__Enabled: "true"
+      Redis__ConnectionString: "redis:6379"
     volumes:
       - ./data:/app/data
     depends_on:
       clickhouse:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 

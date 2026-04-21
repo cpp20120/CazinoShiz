@@ -1,5 +1,6 @@
 using BotFramework.Host;
 using BotFramework.Host.Composition;
+using BotFramework.Host.Services;
 using Dapper;
 using Games.Horse;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +17,7 @@ public sealed partial class HorseModel(
     HorseGifCache gifCache,
     IOptions<HorseOptions> options,
     IOptions<BotFrameworkOptions> botOptions,
+    IAdminAuditLog audit,
     ITelegramBotClient bot,
     ILogger<HorseModel> logger) : PageModel
 {
@@ -41,12 +43,11 @@ public sealed partial class HorseModel(
 
     public async Task<IActionResult> OnPostRunAsync(CancellationToken ct)
     {
-        var callerId = _opts.Admins.FirstOrDefault();
-        if (callerId == 0)
-        {
-            TempData["FlashError"] = "Games:horse:Admins is empty — add your Telegram id to config.";
-            return RedirectToPage();
-        }
+        var actor = HttpContext.Session.GetAdminSession();
+        if (actor?.Role != AdminRole.SuperAdmin)
+            return StatusCode(403);
+
+        var callerId = actor.UserId;
 
         var outcome = await horse.RunRaceAsync(callerId, ct);
         if (outcome.Error != HorseError.None)
@@ -58,10 +59,14 @@ public sealed partial class HorseModel(
         gifCache.Put(TodayRaceDate, outcome.GifBytes);
 
         var (channelStatus, dmsOk, dmsFail) = await BroadcastAsync(outcome, ct);
-        TempData["Flash"] =
-            $"Race done. Winner: horse {outcome.Winner + 1}. " +
+        var flash = $"Race done. Winner: horse {outcome.Winner + 1}. " +
             $"Payouts: {outcome.Transactions.Count}. " +
             $"Channel: {channelStatus}. DMs: {dmsOk}/{dmsOk + dmsFail}.";
+        TempData["Flash"] = flash;
+
+        await audit.LogAsync(actor.UserId, actor.Name, "horse.run_race",
+            new { winner = outcome.Winner + 1, payouts = outcome.Transactions.Count, raceDate = TodayRaceDate }, ct);
+
         return RedirectToPage();
     }
 

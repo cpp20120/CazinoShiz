@@ -13,15 +13,15 @@
 // framework that's fine. If pattern count ever grows past a hundred, the
 // fix is a trie indexed by "module" then "action", not a rewrite.
 //
-// Subscribers run sequentially in registration order inside the caller's
-// transaction. No parallelism — same-transaction semantics would break.
+// Subscribers run sequentially in registration order. Each subscriber failure
+// is caught and logged — one bad subscriber never kills others or the caller.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Sdk;
 
 namespace BotFramework.Host;
 
-public sealed class InProcessEventBus : IDomainEventBus
+public sealed partial class InProcessEventBus(ILogger<InProcessEventBus> logger) : IDomainEventBus
 {
     private readonly List<Subscription> _subs = [];
 
@@ -33,7 +33,14 @@ public sealed class InProcessEventBus : IDomainEventBus
         foreach (var sub in _subs)
         {
             if (!Matches(sub.Pattern, ev.EventType)) continue;
-            await sub.Subscriber.HandleAsync(ev, ct);
+            try
+            {
+                await sub.Subscriber.HandleAsync(ev, ct);
+            }
+            catch (Exception ex)
+            {
+                LogSubscriberFailed(ex, ev.EventType, sub.Subscriber.GetType().Name);
+            }
         }
     }
 
@@ -54,6 +61,9 @@ public sealed class InProcessEventBus : IDomainEventBus
 
         return (patMod == "*" || patMod == evMod) && (patAction == "*" || patAction == evAction);
     }
+
+    [LoggerMessage(LogLevel.Error, "event_bus.subscriber_failed event={EventType} subscriber={Subscriber}")]
+    partial void LogSubscriberFailed(Exception ex, string eventType, string subscriber);
 
     private sealed record Subscription(string Pattern, IDomainEventSubscriber Subscriber);
 }

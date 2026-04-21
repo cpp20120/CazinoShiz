@@ -1,5 +1,6 @@
 using BotFramework.Host;
 using BotFramework.Sdk;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace CasinoShiz.Tests;
@@ -23,7 +24,7 @@ public class InProcessEventBusTests
     [Fact]
     public async Task Publish_ExactMatch_Dispatches()
     {
-        var bus = new InProcessEventBus();
+        var bus = new InProcessEventBus(NullLogger<InProcessEventBus>.Instance);
         var sub = new RecordingSubscriber();
         bus.Subscribe("sh.game_ended", sub);
 
@@ -35,7 +36,7 @@ public class InProcessEventBusTests
     [Fact]
     public async Task Publish_ExactMatch_NoMatchOnDifferentEvent()
     {
-        var bus = new InProcessEventBus();
+        var bus = new InProcessEventBus(NullLogger<InProcessEventBus>.Instance);
         var sub = new RecordingSubscriber();
         bus.Subscribe("sh.game_ended", sub);
 
@@ -47,7 +48,7 @@ public class InProcessEventBusTests
     [Fact]
     public async Task Publish_WildcardStar_MatchesAll()
     {
-        var bus = new InProcessEventBus();
+        var bus = new InProcessEventBus(NullLogger<InProcessEventBus>.Instance);
         var sub = new RecordingSubscriber();
         bus.Subscribe("*", sub);
 
@@ -60,7 +61,7 @@ public class InProcessEventBusTests
     [Fact]
     public async Task Publish_ModuleWildcard_MatchesAllActionsForModule()
     {
-        var bus = new InProcessEventBus();
+        var bus = new InProcessEventBus(NullLogger<InProcessEventBus>.Instance);
         var sub = new RecordingSubscriber();
         bus.Subscribe("sh.*", sub);
 
@@ -74,7 +75,7 @@ public class InProcessEventBusTests
     [Fact]
     public async Task Publish_ActionWildcard_MatchesSameActionAcrossModules()
     {
-        var bus = new InProcessEventBus();
+        var bus = new InProcessEventBus(NullLogger<InProcessEventBus>.Instance);
         var sub = new RecordingSubscriber();
         bus.Subscribe("*.game_ended", sub);
 
@@ -88,7 +89,7 @@ public class InProcessEventBusTests
     [Fact]
     public async Task Publish_ModuleWildcard_NoMatchForOtherModule()
     {
-        var bus = new InProcessEventBus();
+        var bus = new InProcessEventBus(NullLogger<InProcessEventBus>.Instance);
         var sub = new RecordingSubscriber();
         bus.Subscribe("sh.*", sub);
 
@@ -100,7 +101,7 @@ public class InProcessEventBusTests
     [Fact]
     public async Task Publish_NoDotInEvent_NoMatchForPatternWithDot()
     {
-        var bus = new InProcessEventBus();
+        var bus = new InProcessEventBus(NullLogger<InProcessEventBus>.Instance);
         var sub = new RecordingSubscriber();
         bus.Subscribe("sh.event", sub);
 
@@ -112,7 +113,7 @@ public class InProcessEventBusTests
     [Fact]
     public async Task Publish_NoDotInPattern_NoMatch()
     {
-        var bus = new InProcessEventBus();
+        var bus = new InProcessEventBus(NullLogger<InProcessEventBus>.Instance);
         var sub = new RecordingSubscriber();
         bus.Subscribe("nodotpattern", sub);
 
@@ -126,7 +127,7 @@ public class InProcessEventBusTests
     [Fact]
     public async Task Publish_MultipleSubscribersMatch_AllDispatched()
     {
-        var bus = new InProcessEventBus();
+        var bus = new InProcessEventBus(NullLogger<InProcessEventBus>.Instance);
         var sub1 = new RecordingSubscriber();
         var sub2 = new RecordingSubscriber();
         bus.Subscribe("sh.game_ended", sub1);
@@ -141,7 +142,7 @@ public class InProcessEventBusTests
     [Fact]
     public async Task Publish_NoSubscribers_DoesNotThrow()
     {
-        var bus = new InProcessEventBus();
+        var bus = new InProcessEventBus(NullLogger<InProcessEventBus>.Instance);
         var ex = await Record.ExceptionAsync(() => bus.PublishAsync(new FakeEvent("sh.game_ended"), default));
         Assert.Null(ex);
     }
@@ -149,7 +150,7 @@ public class InProcessEventBusTests
     [Fact]
     public async Task Publish_SubscriberReceivesCorrectEvent()
     {
-        var bus = new InProcessEventBus();
+        var bus = new InProcessEventBus(NullLogger<InProcessEventBus>.Instance);
         var sub = new RecordingSubscriber();
         bus.Subscribe("sh.game_ended", sub);
 

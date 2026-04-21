@@ -49,6 +49,12 @@ sealed class FakeEconomicsService : IEconomicsService
         Credits.Add((userId, amount, reason));
         return Task.CompletedTask;
     }
+
+    public Task AdjustUncheckedAsync(long userId, int delta, CancellationToken ct)
+    {
+        _balances[userId] = _balances.GetValueOrDefault(userId, StartingBalance) + delta;
+        return Task.CompletedTask;
+    }
 }
 
 sealed class NullAnalyticsService : IAnalyticsService

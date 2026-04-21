@@ -1,0 +1,66 @@
+@page
+@model CasinoShiz.Host.Pages.Admin.LoginModel
+@{
+    ViewData["Title"] = "Admin Login";
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin Login · CasinoShiz</title>
+    <style>
+        :root { color-scheme: dark; }
+        body { margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .card { background: #1e293b; border-radius: 12px; padding: 40px; text-align: center; max-width: 360px; width: 100%; }
+        h1 { margin: 0 0 8px; font-size: 22px; }
+        .sub { color: #94a3b8; margin: 0 0 28px; font-size: 13px; }
+        .tg-login { display: flex; justify-content: center; margin-bottom: 24px; }
+        .divider { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; color: #475569; font-size: 12px; }
+        .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: #334155; }
+        input[type=password] { width: 100%; padding: 10px 12px; border: 1px solid #475569; border-radius: 6px; background: #0f172a; color: #e2e8f0; font: inherit; box-sizing: border-box; margin-bottom: 10px; }
+        input[type=password]:focus { outline: none; border-color: #2563eb; }
+        button { width: 100%; padding: 10px; background: #2563eb; border: none; border-radius: 6px; color: white; font: inherit; font-weight: 500; cursor: pointer; }
+        button:hover { background: #1d4ed8; }
+        .error { background: #7f1d1d; color: #fca5a5; padding: 8px 12px; border-radius: 6px; margin-bottom: 16px; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🎰 CasinoShiz Admin</h1>
+        <p class="sub">Sign in to continue</p>
+
+        @if (Model.Error is not null)
+        {
+            <div class="error">@Model.Error</div>
+        }
+
+        @if (!string.IsNullOrEmpty(Model.BotUsername))
+        {
+            <div class="tg-login">
+                <script async src="https://telegram.org/js/telegram-widget.js?22"
+                    data-telegram-login="@Model.BotUsername"
+                    data-size="large"
+                    data-auth-url="/admin/auth@(Model.ReturnUrl is not null ? "?returnUrl=" + Uri.EscapeDataString(Model.ReturnUrl) : "")"
+                    data-request-access="write">
+                </script>
+            </div>
+        }
+
+        @if (Model.TokenLoginEnabled)
+        {
+            @if (!string.IsNullOrEmpty(Model.BotUsername))
+            {
+                <div class="divider">or</div>
+            }
+            <form method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+                <input type="password" name="token" placeholder="Admin token" autocomplete="current-password" />
+                <button type="submit">Sign in with token</button>
+            </form>
+        }
+    </div>
+</body>
+</html>

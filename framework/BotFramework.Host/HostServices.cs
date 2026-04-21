@@ -37,6 +37,9 @@ public interface IEconomicsService
     Task DebitAsync(long userId, int amount, string reason, CancellationToken ct);
 
     Task CreditAsync(long userId, int amount, string reason, CancellationToken ct);
+
+    /// Admin-only: add or subtract any amount, bypassing the non-negative guard.
+    Task AdjustUncheckedAsync(long userId, int delta, CancellationToken ct);
 }
 
 /// Modules call Track() with their moduleId + event name + tags. Host decides

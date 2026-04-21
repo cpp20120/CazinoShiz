@@ -7,10 +7,8 @@
 // Kept intentionally thin: one sync Create() and one async OpenAsync(). Pool
 // tuning is Npgsql's job via the connection string; nothing to configure here.
 //
-// Bound from the "ConnectionStrings:Default" section the same way ASP.NET
-// apps conventionally bind. The Host distribution sets the key in
-// appsettings.json (or env via ConnectionStrings__Default) — same shape a
-// .NET developer expects.
+// Reads "ConnectionStrings:Postgres" (preferred) falling back to "Default"
+// for backwards compat. Set via ConnectionStrings__Postgres env var.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using Microsoft.Extensions.Configuration;
@@ -26,9 +24,11 @@ public interface INpgsqlConnectionFactory
 
 public sealed class NpgsqlConnectionFactory(IConfiguration configuration) : INpgsqlConnectionFactory
 {
-    private readonly string _connectionString = configuration.GetConnectionString("Default")
+    private readonly string _connectionString =
+        configuration.GetConnectionString("Postgres")
+        ?? configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException(
-            "ConnectionStrings:Default is not set. Configure Postgres connection before starting the bot.");
+            "ConnectionStrings:Postgres is not set. Configure Postgres connection before starting the bot.");
 
     public NpgsqlConnection Create() => new(_connectionString);
 

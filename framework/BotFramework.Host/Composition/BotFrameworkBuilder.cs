@@ -34,11 +34,15 @@
 
 using BotFramework.Host.Composition;
 using BotFramework.Host.Pipeline;
+using BotFramework.Host.Redis;
 using BotFramework.Host.Services;
 using BotFramework.Sdk;
+using DotNetCore.CAP;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using StackExchange.Redis;
 using Telegram.Bot;
+using Microsoft.AspNetCore.Http;
 
 namespace BotFramework.Host.Composition;
 
@@ -124,6 +128,20 @@ public static class BotFrameworkBuilderExtensions
 
         services.AddRazorPages();
         services.AddMemoryCache();
+        services.AddAntiforgery();
+        services.AddSession(opts =>
+        {
+            opts.Cookie.HttpOnly = true;
+            opts.Cookie.SameSite = SameSiteMode.Strict;
+            opts.Cookie.IsEssential = true;
+            opts.IdleTimeout = TimeSpan.FromDays(30);
+        });
+        services.AddSingleton<TelegramLoginVerifier>(sp =>
+        {
+            var opts = sp.GetRequiredService<IOptions<BotFrameworkOptions>>().Value;
+            return new TelegramLoginVerifier(opts.Token);
+        });
+        services.AddScoped<IAdminAuditLog, AdminAuditLog>();
 
         services.Configure<BotFrameworkOptions>(configuration.GetSection(BotFrameworkOptions.SectionName));
 
@@ -150,7 +168,34 @@ public static class BotFrameworkBuilderExtensions
         // Host can supply additional ICommandMiddleware singletons before
         // AddBotFramework returns.
         services.AddSingleton<ICommandBus, CommandBus>();
-        services.AddSingleton<IDomainEventBus, InProcessEventBus>();
+
+        // Read Redis config early — needed for both CAP transport and update fan-out.
+        services.Configure<RedisOptions>(configuration.GetSection(RedisOptions.SectionName));
+        var redisEnabled = configuration.GetValue<bool>($"{RedisOptions.SectionName}:Enabled");
+        var redisConn = configuration.GetValue<string>($"{RedisOptions.SectionName}:ConnectionString");
+        if (redisEnabled && string.IsNullOrWhiteSpace(redisConn))
+            throw new InvalidOperationException(
+                "Redis:Enabled is true but Redis:ConnectionString is not set.");
+
+        var pgConnStr = configuration.GetConnectionString("Postgres")!;
+        // CAP (outbox + cross-pod delivery) only when Redis transport is available.
+        // Single-instance / dev falls back to InProcessEventBus — no broker needed.
+        if (redisEnabled)
+        {
+            services.AddCap(opts =>
+            {
+                opts.UsePostgreSql(pgConnStr);
+                opts.UseRedis(redisConn!);
+                opts.DefaultGroupName = "casinoshiz";
+            });
+            services.AddSingleton<CapEventBus>();
+            services.AddSingleton<IDomainEventBus>(sp => sp.GetRequiredService<CapEventBus>());
+            services.AddSingleton<CapEventConsumer>();
+        }
+        else
+        {
+            services.AddSingleton<IDomainEventBus, InProcessEventBus>();
+        }
         services.AddHostedService<EventSubscriptionInitializer>();
 
         services.AddSingleton<HealthEndpoint>();
@@ -182,6 +227,13 @@ public static class BotFrameworkBuilderExtensions
         services.AddHostedService<BackgroundJobRunner>();
 
         services.AddHostedService<BotHostedService>();
+
+        if (redisEnabled)
+        {
+            services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConn!));
+            services.AddSingleton<UpdateStreamPublisher>();
+            services.AddHostedService<UpdateStreamWorkerService>();
+        }
 
         return new BotFrameworkBuilder(services, configuration);
     }
