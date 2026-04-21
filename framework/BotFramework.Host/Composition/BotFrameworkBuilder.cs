@@ -128,6 +128,7 @@ public static class BotFrameworkBuilderExtensions
 
         services.AddRazorPages();
         services.AddMemoryCache();
+        services.AddDistributedMemoryCache();
         services.AddAntiforgery();
         services.AddSession(opts =>
         {
