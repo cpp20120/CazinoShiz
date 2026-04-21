@@ -25,7 +25,7 @@ spec:
               value: "http://+:{{ .Values.bot.port }}"
             - name: Bot__Token
               valueFrom:
-                secretKeyRef:
+                s ecretKeyRef:
                   name: {{ include "casinoshiz.fullname" . }}
                   key: bot-token
             - name: ConnectionStrings__Postgres
@@ -45,6 +45,10 @@ spec:
               value: {{ .Values.bot.trustedChannel | quote }}
             - name: Bot__Username
               value: {{ .Values.bot.username | quote }}
+            {{- if .Values.bot.adminWebToken }}
+            - name: Bot__AdminWebToken
+              value: {{ .Values.bot.adminWebToken | quote }}
+            {{- end }}
             {{- range $i, $id := .Values.bot.admins }}
             - name: Bot__Admins__{{ $i }}
               value: {{ $id | quote }}
