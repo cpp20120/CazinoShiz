@@ -40,3 +40,17 @@ jobs:
             ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Update image tag in eco repo
+        env:
+          ECO_DEPLOY_TOKEN: ${{ secrets.ECO_DEPLOY_TOKEN }}
+        run: |
+          git clone https://x-access-token:${ECO_DEPLOY_TOKEN}@github.com/cppshizoid/eco.git /tmp/eco
+          cd /tmp/eco
+          sed -i 's|tag: ".*"|tag: "${{ github.sha }}"|' \
+            _infrastructure/flux/clusters/single-node/production/casinoshiz/values.yaml
+          git config user.email "ci@github.com"
+          git config user.name "GitHub Actions"
+          git add _infrastructure/flux/clusters/single-node/production/casinoshiz/values.yaml
+          git commit -m "chore: update casinoshiz image tag to ${{ github.sha }}"
+          git push
