@@ -1,75 +1,102 @@
-# Casino
+# CasinoShiz
 
-[![](https://tokei.rs/b1/github/cpp20120/CazinoShiz)](https://github.com/cpp20120/CazinoShiz).
+[![](https://tokei.rs/b1/github/cpp20120/CazinoShiz)](https://github.com/cpp20120/CazinoShiz)
 
-Telegram casino mini-game bot with dice games, horse racing, freespin codes, and coin management.
+Telegram casino mini-game bot. Russian-language UI. Games: slots (🎰), dice cube (🎲), darts (🎯), bowling (🎳), basketball (🏀), horse racing, Texas Hold'em poker, blackjack, Secret Hitler (🗳), freespin codes, leaderboard.
 
-Built with ASP.NET Core (.NET 10), Telegram.Bot, Dapper + Npgsql (Postgres), and SkiaSharp. Organized as a modular `BotFramework` host with per-game modules.
+Built with ASP.NET Core (.NET 10), Telegram.Bot, Dapper + Npgsql (Postgres), Redis, DotNetCore.CAP, and SkiaSharp. Organized as a modular `BotFramework` host with per-game modules.
 
-## Features
+## Stack
 
-- **Dice Game** - Telegram slot machine with prize tables, daily attempt limits, and taxes
-- **Horse Racing** - Bet on horses, watch animated GIF races rendered with SkiaSharp
-- **Poker Game** - Texas Holdem
-- **BlackJack Game** - Black Jack
-- **Dice Cubes** - Telegram dice cube 
-- **Darts Game** - Telegram dice darts
-- **Bowling Game** - Telegram dice bowling
-- **Basketball Game** - Telegram dice Basketball
-- **Secret Hitler** - Secret Hitler game for mutilple users
-- **Freespin Codes** - Admin-generated redeem codes with emoji CAPTCHA verification
-- **Leaderboards** - Balance rankings and user stats
-- **Analytics** - ClickHouse integration with Grafana dashboards
-- **Admin Tools** - User management, payments, chat notifications
+| Layer | Tech |
+|---|---|
+| Runtime | ASP.NET Core, .NET 10 (preview SDK) |
+| Telegram | `Telegram.Bot` 22.x (polling + webhook) |
+| Persistence | PostgreSQL 16 via Dapper (`SELECT ... FOR UPDATE` on balance hot path) |
+| Event bus | DotNetCore.CAP 10.x (PostgreSQL outbox + Redis transport) / InProcessEventBus fallback |
+| Update fan-out | Redis Streams (opt-in, partitioned by chatId) |
+| Analytics | ClickHouse 24.x buffered writer (degrades gracefully when disabled) |
+| Dashboards | Grafana 11 with auto-provisioned ClickHouse datasource |
+| Graphics | SkiaSharp 3.x (horse race GIF renderer) |
+| Tests | xUnit, 631 tests covering framework + domain + services + router |
 
-
-
-## Setup
-
-1. Configure `host/CasinoShiz.Host/appsettings.json`:
-   ```json
-   {
-     "Bot": {
-       "Token": "YOUR_BOT_TOKEN",
-       "Admins": [123456789]
-     }
-   }
-   ```
-
-2. Run locally:
-   ```bash
-   dotnet build
-   dotnet run --project host/CasinoShiz.Host
-   ```
-
-3. Or via Docker:
-   ```bash
-   docker-compose up
-   ```
-   Create `.env` with environment overrides. Docker setup includes ClickHouse and Grafana.
-
-
-## Admin 
-
-To open the admin panel go to `https://localhost:5001/admin` and login with your Telegram user ID (must be listed in `appsettings.json`).
-## Project Structure
+## Project structure
 
 ```
 framework/
-  BotFramework.Sdk/         # Module contracts (IModule, IUpdateHandler, route attributes, IEconomicsService, …)
-  BotFramework.Sdk.Testing/ # xUnit helpers for pure-domain module tests
-  BotFramework.Host/        # ASP.NET host, update pipeline/router, economics, analytics, migrations runner
+  BotFramework.Sdk/          module contracts (IModule, IUpdateHandler, route attrs, IEconomicsService, …)
+  BotFramework.Sdk.Testing/  xUnit helpers for pure-domain module tests
+  BotFramework.Host/         ASP.NET host, pipeline/router, economics, analytics, CAP, Redis Streams
 games/
-  Games.Dice/ Games.DiceCube/ Games.Darts/ Games.Blackjack/ Games.Horse/
-  Games.Poker/ Games.SecretHitler/ Games.Redeem/
-  Games.Leaderboard/ Games.Admin/
+  Games.Dice/ Games.DiceCube/ Games.Darts/ Games.Basketball/ Games.Bowling/
+  Games.Blackjack/ Games.Horse/ Games.Poker/ Games.SecretHitler/
+  Games.Redeem/ Games.Leaderboard/ Games.Admin/
 host/
-  CasinoShiz.Host/          # Composition root — AddBotFramework().AddModule<T>() per shipped game
+  CasinoShiz.Host/           Program.cs — AddBotFramework().AddModule<T>()…UseBotFramework()
 tests/
-  CasinoShiz.Tests/         # xUnit tests against framework + module domain
+  CasinoShiz.Tests/          631 xUnit tests
 ```
 
-Bringing up another distribution (party-games bot, trading bot, …) is the same bootstrap with a different module list — no Host edits required.
+## Setup
+
+Copy `.env.example` to `.env` and fill in required fields:
+
+```bash
+cp .env.example .env
+# edit .env: set Bot__Token, Bot__Username, Bot__Admins__0
+```
+
+Run locally (polling mode):
+
+```bash
+dotnet build
+dotnet run --project host/CasinoShiz.Host
+```
+
+Run with full stack (Postgres + ClickHouse + Redis + Grafana):
+
+```bash
+docker compose up --build
+```
+
+Run tests:
+
+```bash
+dotnet test
+```
+
+## Admin UI
+
+Go to `http://localhost:3000/admin/login`.
+
+Two sign-in methods:
+- **Token form** — paste the value of `Bot__AdminWebToken` from your `.env`. Works everywhere including localhost.
+- **Telegram Login Widget** — requires `Bot__Username` set and the bot domain registered in BotFather (`/setdomain`). Works on public domains only.
+
+After login, access is role-gated:
+- **SuperAdmin** (`Bot__Admins`) — full access, can mutate balances and run races
+- **ReadOnly** (`Bot__ReadOnlyAdmins`) — view only, mutation endpoints return 403
+
+All write actions are logged to the `admin_audit` table.
+
+## Configuration
+
+Key `Bot` section fields in `appsettings.json` / env vars:
+
+| Key | Required | Description |
+|---|---|---|
+| `Bot__Token` | yes | Telegram bot API token |
+| `Bot__Username` | yes | Bot @username (with or without @) — used by admin login widget |
+| `Bot__Admins__0` | yes | Telegram user ID with full admin access |
+| `Bot__ReadOnlyAdmins__0` | no | Telegram user ID with read-only admin access |
+| `Bot__AdminWebToken` | no | Token for password-based admin login (token form) |
+| `Bot__IsProduction` | no | `true` → webhook mode; `false` → polling (default) |
+| `Bot__TrustedChannel` | no | Channel @username for race broadcast |
+| `ConnectionStrings__Postgres` | yes | Npgsql connection string |
+| `Redis__Enabled` | no | `true` to enable Redis Streams + CAP Redis transport |
+| `Redis__ConnectionString` | if enabled | e.g. `redis:6379` |
+| `ClickHouse__Enabled` | no | `true` to enable analytics |
+| `ClickHouse__Host` | if enabled | e.g. `http://clickhouse:8123` |
 
 ## License
 
