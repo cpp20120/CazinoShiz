@@ -23,9 +23,9 @@ RUN dotnet restore host/CasinoShiz.Host/CasinoShiz.Host.csproj
 COPY framework/ framework/
 COPY games/     games/
 COPY host/      host/
-RUN dotnet publish host/CasinoShiz.Host/CasinoShiz.Host.csproj -c Release -o /app/publish
+RUN dotnet publish host/CasinoShiz.Host/CasinoShiz.Host.csproj -c Release -o /app/publish --no-self-contained
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview-alpine AS runtime
 WORKDIR /app
 COPY --from=build /app/publish .
 
