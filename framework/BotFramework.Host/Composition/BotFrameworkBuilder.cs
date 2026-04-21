@@ -132,7 +132,7 @@ public static class BotFrameworkBuilderExtensions
         services.AddSession(opts =>
         {
             opts.Cookie.HttpOnly = true;
-            opts.Cookie.SameSite = SameSiteMode.Strict;
+            opts.Cookie.SameSite = SameSiteMode.Lax;
             opts.Cookie.IsEssential = true;
             opts.IdleTimeout = TimeSpan.FromDays(30);
         });
