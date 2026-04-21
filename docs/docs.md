@@ -474,6 +474,85 @@ The compose file overrides `ConnectionStrings__Postgres` on the bot service so i
 
 `/health` endpoint returns `ok` in any mode.
 
+### Helm (Kubernetes)
+
+The `helm/` chart deploys the bot and a bundled Postgres StatefulSet. ClickHouse and Grafana are **not included** — analytics are disabled (`ClickHouse__Enabled=false`). Use docker-compose for a full analytics stack locally; for production analytics on Kubernetes deploy the [Grafana community chart](https://github.com/grafana/helm-charts) separately and point it at an external ClickHouse.
+
+**Prerequisites:** `kubectl` configured for your cluster, `helm` 3.x, and a bot image pushed to a registry your cluster can pull.
+
+**1. Build and push the image:**
+
+```bash
+docker build -t your-registry/casinoshiz:latest .
+docker push your-registry/casinoshiz:latest
+```
+
+**2. Create `helm/values.secret.yaml`** (git-ignored — never commit this):
+
+```yaml
+bot:
+  token: "YOUR_TELEGRAM_BOT_TOKEN"
+  adminWebToken: "YOUR_ADMIN_WEB_TOKEN"
+  admins:
+    - 123456789   # your Telegram numeric user ID
+
+postgres:
+  password: "strong-password-here"
+```
+
+**3. Install:**
+
+```bash
+helm install casinoshiz helm/ \
+  -f helm/values.yaml \
+  -f helm/values.secret.yaml \
+  --namespace casinoshiz --create-namespace
+```
+
+**4. Upgrade after image or config change:**
+
+```bash
+helm upgrade casinoshiz helm/ \
+  -f helm/values.yaml \
+  -f helm/values.secret.yaml \
+  --namespace casinoshiz
+```
+
+**Webhook (production).** Set `bot.isProduction: true` in values and enable ingress:
+
+```yaml
+# values.secret.yaml or values.yaml
+bot:
+  isProduction: true
+
+ingress:
+  enabled: true
+  className: nginx
+  host: bot.example.com
+  tls:
+    enabled: true
+    secretName: casinoshiz-tls
+```
+
+Then register the webhook with Telegram:
+
+```
+https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://bot.example.com/<TOKEN>
+```
+
+**Grafana dashboards with Helm.** Analytics require ClickHouse. If you run ClickHouse externally, re-enable it via an extra values file:
+
+```yaml
+# values.clickhouse.yaml
+bot:
+  clickhouse:
+    enabled: true
+    host: "clickhouse.example.com"
+    port: 8123
+```
+
+Then deploy the Grafana Helm chart and import dashboards from `grafana/provisioning/dashboards/`.
+
 ### Ports & URLs
 
 Defaults, from `docker-compose.yml`:
