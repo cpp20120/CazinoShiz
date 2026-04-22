@@ -51,14 +51,15 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
         ForwardedHeaders.XForwardedFor |
         ForwardedHeaders.XForwardedProto;
 
-    options.KnownIPNetworks.Clear();
+
+    options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
-    
 });
 
 
 var app = builder.Build();
 
 app.UseBotFramework();
+app.UseForwardedHeaders();
 
 app.Run();
