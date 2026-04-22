@@ -1,6 +1,7 @@
 using Games.Basketball;
 using Games.Bowling;
 using Games.Darts;
+using Games.Football;
 using Games.DiceCube;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
@@ -208,5 +209,40 @@ public class DartsMultiplierTests
             new InMemoryDartsBetStore(), new NullEventBus(), Options.Create(new DartsOptions()));
         var result = await svc.ThrowAsync(1, "u", 100, face: 6, default);
         Assert.Equal(DartsThrowOutcome.NoBet, result.Outcome);
+    }
+}
+
+public class FootballMultiplierTests
+{
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(2, 0)]
+    [InlineData(3, 0)]
+    [InlineData(4, 2)]
+    [InlineData(5, 3)]
+    public void Multipliers_CorrectByFace(int face, int expected)
+    {
+        Assert.Equal(expected, FootballService.Multipliers[face]);
+    }
+
+    [Fact]
+    public async Task ThrowAsync_GoalFace5_CreditsX3()
+    {
+        var econ = new FakeEconomicsService();
+        var store = new InMemoryFootballBetStore();
+        var svc = new FootballService(econ, new NullAnalyticsService(), store, new NullEventBus(), Options.Create(new FootballOptions()));
+        await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
+        var result = await svc.ThrowAsync(1, "u", 100, face: 5, default);
+        Assert.Equal(FootballThrowOutcome.Thrown, result.Outcome);
+        Assert.Equal(300, result.Payout);
+    }
+
+    [Fact]
+    public async Task ThrowAsync_NoBet_ReturnsNoBet()
+    {
+        var svc = new FootballService(new FakeEconomicsService(), new NullAnalyticsService(),
+            new InMemoryFootballBetStore(), new NullEventBus(), Options.Create(new FootballOptions()));
+        var result = await svc.ThrowAsync(1, "u", 100, face: 5, default);
+        Assert.Equal(FootballThrowOutcome.NoBet, result.Outcome);
     }
 }

@@ -5,6 +5,7 @@ using Games.Blackjack;
 using Games.Basketball;
 using Games.Bowling;
 using Games.Darts;
+using Games.Football;
 using Games.DiceCube;
 using Games.Dice;
 using Games.Horse;
@@ -170,6 +171,27 @@ sealed class InMemoryDartsBetStore : IDartsBetStore
         Task.FromResult(_bets.GetValueOrDefault((userId, chatId)));
 
     public Task<bool> InsertAsync(DartsBet bet, CancellationToken ct)
+    {
+        if (_bets.ContainsKey((bet.UserId, bet.ChatId))) return Task.FromResult(false);
+        _bets[(bet.UserId, bet.ChatId)] = bet;
+        return Task.FromResult(true);
+    }
+
+    public Task DeleteAsync(long userId, long chatId, CancellationToken ct)
+    {
+        _bets.Remove((userId, chatId));
+        return Task.CompletedTask;
+    }
+}
+
+sealed class InMemoryFootballBetStore : IFootballBetStore
+{
+    private readonly Dictionary<(long, long), FootballBet> _bets = new();
+
+    public Task<FootballBet?> FindAsync(long userId, long chatId, CancellationToken ct) =>
+        Task.FromResult(_bets.GetValueOrDefault((userId, chatId)));
+
+    public Task<bool> InsertAsync(FootballBet bet, CancellationToken ct)
     {
         if (_bets.ContainsKey((bet.UserId, bet.ChatId))) return Task.FromResult(false);
         _bets[(bet.UserId, bet.ChatId)] = bet;

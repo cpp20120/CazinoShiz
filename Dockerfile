@@ -9,6 +9,7 @@ COPY games/Games.Dice/Games.Dice.csproj                         games/Games.Dice
 COPY games/Games.DiceCube/Games.DiceCube.csproj                 games/Games.DiceCube/
 COPY games/Games.Darts/Games.Darts.csproj                       games/Games.Darts/
 COPY games/Games.Basketball/Games.Basketball.csproj             games/Games.Basketball/
+COPY games/Games.Football/Games.Football.csproj                 games/Games.Football/
 COPY games/Games.Bowling/Games.Bowling.csproj                   games/Games.Bowling/
 COPY games/Games.Blackjack/Games.Blackjack.csproj               games/Games.Blackjack/
 COPY games/Games.Horse/Games.Horse.csproj                       games/Games.Horse/

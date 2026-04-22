@@ -8,6 +8,7 @@
     <Project Path="games\Games.Dice\Games.Dice.csproj" />
     <Project Path="games\Games.DiceCube\Games.DiceCube.csproj" />
     <Project Path="games\Games.Darts\Games.Darts.csproj" />
+    <Project Path="games\Games.Football\Games.Football.csproj" />
     <Project Path="games\Games.Basketball\Games.Basketball.csproj" />
     <Project Path="games\Games.Bowling\Games.Bowling.csproj" />
     <Project Path="games\Games.Blackjack\Games.Blackjack.csproj" />

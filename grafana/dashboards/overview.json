@@ -339,7 +339,7 @@
       "targets": [
         {
           "format": 1,
-          "rawSql": "SELECT count() FROM analytics.events_v2 WHERE event_type IN ('darts.throw_completed','basketball.throw_completed','bowling.roll_completed','dicecube.roll_completed','dice.roll_completed') AND created_at >= now() - INTERVAL 24 HOUR",
+          "rawSql": "SELECT count() FROM analytics.events_v2 WHERE event_type IN ('darts.throw_completed','football.throw_completed','basketball.throw_completed','bowling.roll_completed','dicecube.roll_completed','dice.roll_completed') AND created_at >= now() - INTERVAL 24 HOUR",
           "refId": "A"
         }
       ],
@@ -400,7 +400,7 @@
       "targets": [
         {
           "format": 1,
-          "rawSql": "SELECT user_id, module, sum(toInt64OrZero(params['Payout']) + toInt64OrZero(params['Prize'])) AS coins_won, count() AS rounds FROM analytics.events_v2 WHERE event_type IN ('darts.throw_completed','basketball.throw_completed','bowling.roll_completed','dicecube.roll_completed','dice.roll_completed','horse.race_finished') AND created_at >= now() - INTERVAL 24 HOUR GROUP BY user_id, module HAVING coins_won > 0 ORDER BY coins_won DESC LIMIT 20",
+          "rawSql": "SELECT user_id, module, sum(toInt64OrZero(params['Payout']) + toInt64OrZero(params['Prize'])) AS coins_won, count() AS rounds FROM analytics.events_v2 WHERE event_type IN ('darts.throw_completed','football.throw_completed','basketball.throw_completed','bowling.roll_completed','dicecube.roll_completed','dice.roll_completed','horse.race_finished') AND created_at >= now() - INTERVAL 24 HOUR GROUP BY user_id, module HAVING coins_won > 0 ORDER BY coins_won DESC LIMIT 20",
           "refId": "A"
         }
       ],

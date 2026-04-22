@@ -76,6 +76,7 @@ public sealed class HistoryModel(INpgsqlConnectionFactory connections) : PageMod
             FROM event_log
             WHERE event_type IN (
                 'darts.throw_completed',
+                'football.throw_completed',
                 'basketball.throw_completed',
                 'bowling.roll_completed',
                 'dicecube.roll_completed',
