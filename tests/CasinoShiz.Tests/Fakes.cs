@@ -62,6 +62,9 @@ sealed class FakeEconomicsService : IEconomicsService
         _balances[key] = _balances.GetValueOrDefault(key, StartingBalance) + delta;
         return Task.CompletedTask;
     }
+
+    public Task<LedgerRevertResult> RevertLedgerEntryAsync(long economicsLedgerId, CancellationToken ct) =>
+        Task.FromResult(new LedgerRevertResult(LedgerRevertStatus.NotFound, 0));
 }
 
 sealed class NullAnalyticsService : IAnalyticsService

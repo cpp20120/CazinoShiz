@@ -103,6 +103,48 @@ public sealed partial class EconomicsService(
         LogAdjustUnchecked(userId, balanceScopeId, delta, result.NewBalance);
     }
 
+    public async Task<LedgerRevertResult> RevertLedgerEntryAsync(long economicsLedgerId, CancellationToken ct)
+    {
+        const string select = """
+            SELECT id, telegram_user_id, balance_scope_id, delta, reason
+            FROM economics_ledger WHERE id = @id
+            """;
+        var revReason = $"ledger.revert#{economicsLedgerId}";
+        await using var conn = await connections.OpenAsync(ct);
+        var row = await conn.QueryFirstOrDefaultAsync<LedgerLineRead?>(
+            new CommandDefinition(select, new { id = economicsLedgerId }, cancellationToken: ct));
+        if (row is null)
+            return new LedgerRevertResult(LedgerRevertStatus.NotFound, 0);
+
+        var already = await conn.ExecuteScalarAsync<bool>(new CommandDefinition(
+            "SELECT EXISTS(SELECT 1 FROM economics_ledger WHERE reason = @r)",
+            new { r = revReason },
+            cancellationToken: ct));
+        if (already)
+            return new LedgerRevertResult(LedgerRevertStatus.AlreadyReverted, 0);
+
+        // Compensation = undo that line: append (-delta) with a reason that is unique per target id.
+        var correction = -row.Delta;
+        if (correction == 0)
+        {
+            var bal0 = await GetBalanceAsync(row.TelegramUserId, row.BalanceScopeId, ct);
+            return new LedgerRevertResult(LedgerRevertStatus.NoEffect, bal0);
+        }
+
+        try
+        {
+            var (_, newBal) = await ApplyAsync(
+                row.TelegramUserId, row.BalanceScopeId, correction, allowNegative: true, revReason, ct);
+            return new LedgerRevertResult(LedgerRevertStatus.Ok, newBal);
+        }
+        catch (InvalidOperationException)
+        {
+            return new LedgerRevertResult(LedgerRevertStatus.UserMissing, 0);
+        }
+    }
+
+    private sealed record LedgerLineRead(long Id, long TelegramUserId, long BalanceScopeId, int Delta, string Reason);
+
     private async Task<(bool Applied, int NewBalance)> ApplyAsync(
         long userId, long balanceScopeId, int delta, bool allowNegative, string reason, CancellationToken ct)
     {

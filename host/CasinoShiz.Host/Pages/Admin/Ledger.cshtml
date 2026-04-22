@@ -3,7 +3,12 @@
 @{ ViewData["Title"] = "Ledger"; }
 
 <h2>Ledger (last 500)</h2>
-<p class="muted">Appends on every credit, debit, and admin adjust. Same database transaction as <code>users.coins</code> updates.</p>
+<p class="muted">Appends on every credit, debit, and admin adjust. Same database transaction as <code>users.coins</code> updates. <b>Revert</b> (SuperAdmin) posts the opposite <code>delta</code> with reason <code>ledger.revert#&lt;id&gt;</code> — does not delete rows.</p>
+
+@if (!string.IsNullOrEmpty(Model.Flash))
+{
+    <div class="flash @(Model.FlashError ? "error" : "")">@Model.Flash</div>
+}
 
 <div class="card">
     <form method="get" class="inline">
@@ -17,29 +22,51 @@
     <table>
         <thead>
             <tr>
+                <th>Id</th>
                 <th>Time (UTC)</th>
                 <th>User</th>
                 <th>Scope</th>
                 <th>Delta</th>
                 <th>After</th>
                 <th>Reason</th>
+                @if (Model.CanRevert)
+                {
+                    <th></th>
+                }
             </tr>
         </thead>
         <tbody>
         @foreach (var r in Model.Rows)
         {
             <tr>
+                <td class="muted"><code>@r.Id</code></td>
                 <td class="muted">@r.CreatedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
                 <td><code>@r.TelegramUserId</code></td>
                 <td><code>@r.BalanceScopeId</code></td>
                 <td>@(r.Delta > 0 ? "+" : "")@r.Delta</td>
                 <td><b>@r.BalanceAfter</b></td>
                 <td>@r.Reason</td>
+                @if (Model.CanRevert)
+                {
+                    <td>
+                        @if (!r.Reason.StartsWith("ledger.revert#", StringComparison.Ordinal))
+                        {
+                            <form method="post" asp-page-handler="Revert" class="inline" onsubmit="return confirm('Revert line #@r.Id (delta @(r.Delta > 0 ? "+" : "")@r.Delta)? A compensating entry will be appended.');">
+                                <input type="hidden" name="ledgerId" value="@r.Id" />
+                                <button type="submit" class="ghost danger" style="font-size: 11px">Revert</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <span class="muted">—</span>
+                        }
+                    </td>
+                }
             </tr>
         }
         @if (Model.Rows.Count == 0)
         {
-            <tr><td colspan="6" class="muted">No entries.</td></tr>
+            <tr><td colspan="@(Model.CanRevert ? 8 : 7)" class="muted">No entries.</td></tr>
         }
         </tbody>
     </table>

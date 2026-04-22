@@ -41,7 +41,29 @@ public interface IEconomicsService
 
     /// Admin-only: add or subtract any amount, bypassing the non-negative guard.
     Task AdjustUncheckedAsync(long userId, long balanceScopeId, int delta, CancellationToken ct);
+
+    /// <summary>
+    /// SuperAdmin recovery: appends a compensating row (delta = <c>-original</c>, reason
+    /// <c>ledger.revert#&lt;id&gt;</c>) so the wallet matches undoing that line. Fails if the line
+    /// is missing or already reverted. Append-only: never deletes the original row.
+    /// </summary>
+    Task<LedgerRevertResult> RevertLedgerEntryAsync(long economicsLedgerId, CancellationToken ct);
 }
+
+public enum LedgerRevertStatus
+{
+    Ok,
+    /// <summary>Unknown <c>economics_ledger.id</c> or not in this database.</summary>
+    NotFound,
+    /// <summary>A row with reason <c>ledger.revert#thisId</c> already exists.</summary>
+    AlreadyReverted,
+    /// <summary>User/scope row missing (data corruption).</summary>
+    UserMissing,
+    /// <summary>Line had <c>delta = 0</c>; nothing to reverse.</summary>
+    NoEffect,
+}
+
+public readonly record struct LedgerRevertResult(LedgerRevertStatus Status, int NewBalance = 0);
 
 /// Modules call Track() with their moduleId + event name + tags. Host decides
 /// where it ends up (ClickHouse batch, log line, Prometheus counter). Module
