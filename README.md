@@ -16,7 +16,7 @@ Built with ASP.NET Core (.NET 10), Telegram.Bot, Dapper + Npgsql (Postgres), Red
 | Event bus | DotNetCore.CAP 10.x (PostgreSQL outbox + Redis transport) / InProcessEventBus fallback |
 | Update fan-out | Redis Streams (opt-in, partitioned by chatId) |
 | Analytics | ClickHouse 24.x buffered writer (degrades gracefully when disabled) |
-| Dashboards | Grafana 11 with auto-provisioned ClickHouse datasource |
+| Dashboards | Grafana 11 — ClickHouse (analytics) + Prometheus (Postgres/Redis + [cAdvisor](https://github.com/google/cadvisor) CPU/memory) |
 | Graphics | SkiaSharp 3.x (horse race GIF renderer) |
 | Tests | xUnit, 631 tests covering framework + domain + services + router |
 
@@ -53,10 +53,14 @@ dotnet build
 dotnet run --project host/CasinoShiz.Host
 ```
 
-Run with full stack (Postgres + ClickHouse + Redis + Grafana):
+Run with full stack (Postgres + ClickHouse + Redis + Prometheus + Grafana):
 
 ```bash
 docker compose up --build
+# Grafana: http://localhost:3001  — Overview (ClickHouse), PostgreSQL & Redis, Services (cAdvisor: CPU/memory + PG/Redis)
+# Prometheus UI: http://localhost:9090
+# cAdvisor: per-container CPU/memory (Linux + Docker, privileged, internal)
+# If Prometheus panels are empty: open Prometheus → Status → Targets (exporters + cAdvisor should be UP), then in Grafana: Connections → Data sources → Prometheus → Save & test. Recreate the stack or remove the `grafana_data` volume if an old broken datasource is cached.
 ```
 
 Run tests:

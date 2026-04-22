@@ -1,0 +1,33 @@
+# Single file so all datasources are provisioned together (Grafana 11+).
+# Prometheus: server-side proxy, POST for query_range. ClickHouse: plugin native.
+apiVersion: 1
+
+datasources:
+  - name: ClickHouse
+    orgId: 1
+    type: grafana-clickhouse-datasource
+    access: proxy
+    isDefault: true
+    uid: clickhouse
+    jsonData:
+      host: clickhouse
+      port: 9000
+      protocol: native
+      defaultDatabase: analytics
+      username: default
+    secureJsonData:
+      password: ""
+    editable: true
+
+  # access must be "proxy" (server-side, default) or "direct" (browser) — "server" is not valid in YAML
+  - name: Prometheus
+    orgId: 1
+    type: prometheus
+    access: proxy
+    uid: prometheus
+    url: http://prometheus:9090
+    isDefault: false
+    editable: true
+    jsonData:
+      timeInterval: 15s
+      httpMethod: POST

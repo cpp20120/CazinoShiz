@@ -56,6 +56,57 @@ services:
       retries: 10
       start_period: 5s
 
+  # Prometheus scrapes postgres-exporter + redis-exporter; Grafana uses the Prometheus datasource.
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://cazino:cazino@postgres:5432/cazino?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Per-container CPU/memory (cgroups). Linux + Docker; needs host paths + privileged.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    # Internal only; Prometheus scrapes cadvisor:8080/metrics
+
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    depends_on:
+      - postgres-exporter
+      - redis-exporter
+      - cadvisor
+
   bot:
     build:
       context: .
@@ -97,6 +148,9 @@ services:
     depends_on:
       clickhouse:
         condition: service_healthy
+      prometheus:
+        condition: service_started
 
 volumes:
   grafana_data:
+  prometheus_data:
