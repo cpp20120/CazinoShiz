@@ -2,6 +2,7 @@ using Games.Basketball;
 using Games.Bowling;
 using Games.Darts;
 using Games.DiceCube;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -13,19 +14,20 @@ public class DiceCubeMultiplierTests
     [InlineData(1, 0)]
     [InlineData(2, 0)]
     [InlineData(3, 0)]
-    [InlineData(4, 2)]
-    [InlineData(5, 3)]
-    [InlineData(6, 5)]
+    [InlineData(4, 1)]
+    [InlineData(5, 2)]
+    [InlineData(6, 3)]
     public void Multipliers_CorrectByFace(int face, int expected)
     {
-        Assert.Equal(expected, DiceCubeService.Multipliers[face]);
+        var m = DiceCubeService.BuildMultipliers(new DiceCubeOptions());
+        Assert.Equal(expected, m[face]);
     }
 
     [Fact]
     public async Task PlaceBetAsync_InvalidAmount_ReturnsFail()
     {
         var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(),
-            new InMemoryDiceCubeBetStore(), new NullEventBus(), Options.Create(new DiceCubeOptions()));
+            new InMemoryDiceCubeBetStore(), new NullEventBus(), new MemoryCache(new MemoryCacheOptions()), Options.Create(new DiceCubeOptions()));
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: 0, default);
         Assert.Equal(CubeBetError.InvalidAmount, result.Error);
     }
@@ -35,7 +37,7 @@ public class DiceCubeMultiplierTests
     {
         var econ = new FakeEconomicsService { StartingBalance = 10 };
         var svc = new DiceCubeService(econ, new NullAnalyticsService(),
-            new InMemoryDiceCubeBetStore(), new NullEventBus(), Options.Create(new DiceCubeOptions()));
+            new InMemoryDiceCubeBetStore(), new NullEventBus(), new MemoryCache(new MemoryCacheOptions()), Options.Create(new DiceCubeOptions()));
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         Assert.Equal(CubeBetError.NotEnoughCoins, result.Error);
     }
@@ -45,7 +47,7 @@ public class DiceCubeMultiplierTests
     {
         var store = new InMemoryDiceCubeBetStore();
         var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(),
-            store, new NullEventBus(), Options.Create(new DiceCubeOptions()));
+            store, new NullEventBus(), new MemoryCache(new MemoryCacheOptions()), Options.Create(new DiceCubeOptions()));
         await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         Assert.Equal(CubeBetError.AlreadyPending, result.Error);
@@ -55,22 +57,22 @@ public class DiceCubeMultiplierTests
     public async Task RollAsync_NoBet_ReturnsNoBet()
     {
         var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(),
-            new InMemoryDiceCubeBetStore(), new NullEventBus(), Options.Create(new DiceCubeOptions()));
+            new InMemoryDiceCubeBetStore(), new NullEventBus(), new MemoryCache(new MemoryCacheOptions()), Options.Create(new DiceCubeOptions()));
         var result = await svc.RollAsync(1, "u", 100, face: 6, default);
         Assert.Equal(CubeRollOutcome.NoBet, result.Outcome);
     }
 
     [Fact]
-    public async Task RollAsync_WithBetFace6_CreditsX5()
+    public async Task RollAsync_WithBetFace6_CreditsX3()
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryDiceCubeBetStore();
-        var svc = new DiceCubeService(econ, new NullAnalyticsService(), store, new NullEventBus(), Options.Create(new DiceCubeOptions()));
+        var svc = new DiceCubeService(econ, new NullAnalyticsService(), store, new NullEventBus(), new MemoryCache(new MemoryCacheOptions()), Options.Create(new DiceCubeOptions()));
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.RollAsync(1, "u", 100, face: 6, default);
         Assert.Equal(CubeRollOutcome.Rolled, result.Outcome);
-        Assert.Equal(5, result.Multiplier);
-        Assert.Equal(500, result.Payout);
+        Assert.Equal(3, result.Multiplier);
+        Assert.Equal(300, result.Payout);
     }
 
     [Fact]
@@ -78,7 +80,7 @@ public class DiceCubeMultiplierTests
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryDiceCubeBetStore();
-        var svc = new DiceCubeService(econ, new NullAnalyticsService(), store, new NullEventBus(), Options.Create(new DiceCubeOptions()));
+        var svc = new DiceCubeService(econ, new NullAnalyticsService(), store, new NullEventBus(), new MemoryCache(new MemoryCacheOptions()), Options.Create(new DiceCubeOptions()));
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.RollAsync(1, "u", 100, face: 1, default);
         Assert.Equal(CubeRollOutcome.Rolled, result.Outcome);

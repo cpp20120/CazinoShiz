@@ -163,6 +163,7 @@ public static class BotFrameworkBuilderExtensions
         services.AddSingleton<IUpdateMiddleware, ExceptionMiddleware>();
         services.AddSingleton<IUpdateMiddleware, LoggingMiddleware>();
         services.AddSingleton<IUpdateMiddleware, RateLimitMiddleware>();
+        services.AddSingleton<IUpdateMiddleware, KnownChatsMiddleware>();
 
         // Command bus + cross-module domain event bus. Middleware is picked up
         // from DI — modules add theirs through IModuleServiceCollection and the

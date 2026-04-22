@@ -61,10 +61,12 @@ public sealed partial class DiceCubeHandler(
         var r = await service.PlaceBetAsync(userId, displayName, chatId, amount, ctx.Ct);
         var text = r.Error switch
         {
-            CubeBetError.None => string.Format(Loc("bet.accepted"), r.Amount),
+            CubeBetError.None => string.Format(
+                Loc("bet.accepted"), r.Amount, service.Mult4, service.Mult5, service.Mult6),
             CubeBetError.InvalidAmount => Loc("bet.invalid"),
             CubeBetError.NotEnoughCoins => string.Format(Loc("bet.not_enough"), r.Balance),
             CubeBetError.AlreadyPending => string.Format(Loc("bet.already_pending"), r.PendingAmount),
+            CubeBetError.Cooldown => string.Format(Loc("bet.cooldown"), r.CooldownSeconds),
             _ => Loc("bet.failed"),
         };
         try

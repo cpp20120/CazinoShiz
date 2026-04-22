@@ -160,7 +160,7 @@ public class DartsServiceTests
     [Fact]
     public async Task ThrowAsync_Bullseye_Pays6x_NotSameAsDiceCube()
     {
-        // Darts bullseye (face 6) pays 6x; DiceCube face 6 pays 5x
+        // Darts bullseye (face 6) pays 6x; DiceCube face 6 pays 3x (configurable)
         Assert.Equal(6, DartsService.Multipliers[6]);
     }
 

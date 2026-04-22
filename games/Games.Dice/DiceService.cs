@@ -66,12 +66,12 @@ public sealed class DiceService(
             return new DicePlayResult(DiceOutcome.Forwarded);
         }
 
-        await economics.EnsureUserAsync(userId, displayName, ct);
+        await economics.EnsureUserAsync(userId, chatId, displayName, ct);
 
         var gas = TaxService.GetGasTax(_opts.Cost);
         var loss = _opts.Cost + gas;
 
-        if (!await economics.TryDebitAsync(userId, loss, reason: "dice.stake", ct))
+        if (!await economics.TryDebitAsync(userId, chatId, loss, reason: "dice.stake", ct))
         {
             analytics.Track("dice", "not_enough_coins", new Dictionary<string, object?>
             {
@@ -88,9 +88,9 @@ public sealed class DiceService(
         var prize = GetPrize(maxFrequent, maxFrequency, rolls);
 
         if (prize > 0)
-            await economics.CreditAsync(userId, prize, reason: "dice.prize", ct);
+            await economics.CreditAsync(userId, chatId, prize, reason: "dice.prize", ct);
 
-        var balance = await economics.GetBalanceAsync(userId, ct);
+        var balance = await economics.GetBalanceAsync(userId, chatId, ct);
 
         var rolledAt = DateTimeOffset.UtcNow;
         await history.AppendAsync(new DiceRoll(

@@ -31,14 +31,14 @@ public sealed class BowlingService(
     {
         if (amount <= 0) return BowlingBetResult.Fail(BowlingBetError.InvalidAmount);
 
-        await economics.EnsureUserAsync(userId, displayName, ct);
-        var balance = await economics.GetBalanceAsync(userId, ct);
+        await economics.EnsureUserAsync(userId, chatId, displayName, ct);
+        var balance = await economics.GetBalanceAsync(userId, chatId, ct);
         if (amount > balance) return BowlingBetResult.Fail(BowlingBetError.NotEnoughCoins, balance);
 
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return BowlingBetResult.Fail(BowlingBetError.AlreadyPending, balance, existing.Amount);
 
-        if (!await economics.TryDebitAsync(userId, amount, "bowling.bet", ct))
+        if (!await economics.TryDebitAsync(userId, chatId, amount, "bowling.bet", ct))
             return BowlingBetResult.Fail(BowlingBetError.NotEnoughCoins, balance);
 
         await bets.InsertAsync(new BowlingBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct);
@@ -56,15 +56,15 @@ public sealed class BowlingService(
         var bet = await bets.FindAsync(userId, chatId, ct);
         if (bet == null) return new BowlingRollResult(BowlingRollOutcome.NoBet);
 
-        await economics.EnsureUserAsync(userId, displayName, ct);
+        await economics.EnsureUserAsync(userId, chatId, displayName, ct);
         var multiplier = Multipliers.TryGetValue(face, out var m) ? m : 0;
         var payout = bet.Amount * multiplier;
 
         if (payout > 0)
-            await economics.CreditAsync(userId, payout, "bowling.payout", ct);
+            await economics.CreditAsync(userId, chatId, payout, "bowling.payout", ct);
 
         await bets.DeleteAsync(userId, chatId, ct);
-        var balance = await economics.GetBalanceAsync(userId, ct);
+        var balance = await economics.GetBalanceAsync(userId, chatId, ct);
 
         analytics.Track("bowling", "roll", new Dictionary<string, object?>
         {

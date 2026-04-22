@@ -24,15 +24,15 @@ public sealed partial class UpdateStreamWorkerService(
         var db = redis.GetDatabase();
         for (var i = 0; i < _opts.PartitionCount; i++)
         {
+            var key = StreamKey(i);
             try
             {
-                await db.StreamCreateConsumerGroupAsync(
-                    $"{_opts.StreamKeyPrefix}:{i}",
-                    _opts.ConsumerGroup,
-                    "$",
-                    createStream: true);
+                await EnsureStreamAndConsumerGroupAsync(db, key, ct);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogStreamGroupInitFailed(i, key, ex);
+            }
         }
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -49,10 +49,35 @@ public sealed partial class UpdateStreamWorkerService(
             try { await _running.WaitAsync(ct); } catch { }
     }
 
+    private string StreamKey(int partition) => $"{_opts.StreamKeyPrefix}:{partition}";
+
+    /// <summary>
+    /// <c>XREADGROUP</c> returns NOGROUP if the stream was never created or the group is missing
+    /// (e.g. startup XGROUP failed silently, empty Redis, or key evicted). MKSTREAM + create group fixes it.
+    /// </summary>
+    private async Task EnsureStreamAndConsumerGroupAsync(IDatabase db, string streamKey, CancellationToken ct)
+    {
+        try
+        {
+            await db.StreamCreateConsumerGroupAsync(
+                streamKey,
+                _opts.ConsumerGroup,
+                "$",
+                createStream: true);
+        }
+        catch (RedisException ex) when (ex.Message.Contains("BUSYGROUP", StringComparison.Ordinal))
+        {
+            // Group (and stream) already exist.
+        }
+    }
+
+    private static bool IsNoGroupError(Exception ex) =>
+        ex.Message.Contains("NOGROUP", StringComparison.Ordinal);
+
     private async Task RunPartitionAsync(int partition, CancellationToken ct)
     {
         var db = redis.GetDatabase();
-        var streamKey = $"{_opts.StreamKeyPrefix}:{partition}";
+        var streamKey = StreamKey(partition);
         var consumer = $"{Environment.MachineName}:{partition}";
 
         while (!ct.IsCancellationRequested)
@@ -85,6 +110,17 @@ public sealed partial class UpdateStreamWorkerService(
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
+            catch (Exception ex) when (IsNoGroupError(ex))
+            {
+                try
+                {
+                    await EnsureStreamAndConsumerGroupAsync(db, streamKey, ct);
+                }
+                catch (Exception ensureEx)
+                {
+                    LogWorkerError(ensureEx, partition);
+                }
+            }
             catch (Exception ex)
             {
                 LogWorkerError(ex, partition);
@@ -110,6 +146,9 @@ public sealed partial class UpdateStreamWorkerService(
 
     [LoggerMessage(LogLevel.Error, "update_worker.error partition={Partition}")]
     partial void LogWorkerError(Exception ex, int partition);
+
+    [LoggerMessage(LogLevel.Warning, "update_stream.xgroup_init_failed partition={Partition} key={StreamKey}")]
+    partial void LogStreamGroupInitFailed(int partition, string streamKey, Exception ex);
 
     [LoggerMessage(LogLevel.Warning, "update_worker.processing_failed partition={Partition} id={EntryId}")]
     partial void LogProcessingFailed(Exception ex, int partition, string entryId);

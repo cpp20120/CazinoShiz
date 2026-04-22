@@ -1,0 +1,46 @@
+@page "/admin/ledger"
+@model CasinoShiz.Host.Pages.Admin.LedgerModel
+@{ ViewData["Title"] = "Ledger"; }
+
+<h2>Ledger (last 500)</h2>
+<p class="muted">Appends on every credit, debit, and admin adjust. Same database transaction as <code>users.coins</code> updates.</p>
+
+<div class="card">
+    <form method="get" class="inline">
+        <input type="text" name="u" value="@Model.U" placeholder="User id" style="width: 140px" />
+        <input type="text" name="s" value="@Model.S" placeholder="Scope (chat) id" style="width: 160px" />
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Time (UTC)</th>
+                <th>User</th>
+                <th>Scope</th>
+                <th>Delta</th>
+                <th>After</th>
+                <th>Reason</th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var r in Model.Rows)
+        {
+            <tr>
+                <td class="muted">@r.CreatedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td><code>@r.TelegramUserId</code></td>
+                <td><code>@r.BalanceScopeId</code></td>
+                <td>@(r.Delta > 0 ? "+" : "")@r.Delta</td>
+                <td><b>@r.BalanceAfter</b></td>
+                <td>@r.Reason</td>
+            </tr>
+        }
+        @if (Model.Rows.Count == 0)
+        {
+            <tr><td colspan="6" class="muted">No entries.</td></tr>
+        }
+        </tbody>
+    </table>
+</div>

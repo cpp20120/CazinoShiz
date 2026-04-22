@@ -1,0 +1,48 @@
+@page "/admin/people"
+@model CasinoShiz.Host.Pages.Admin.PeopleModel
+@{ ViewData["Title"] = "People"; }
+
+<h2>People</h2>
+<p class="muted">One row per Telegram account. <a href="/admin/users">Wallets</a> lists every balance (per chat) so you can adjust by <b>user id + scope (chat) id</b>.</p>
+
+<div class="card">
+    <form method="get" class="inline">
+        <input type="text" name="q" value="@Model.Q" placeholder="Search by name or Telegram user id…" style="min-width: 300px" />
+        <button type="submit">Search</button>
+        @if (!string.IsNullOrEmpty(Model.Q))
+        {
+            <a href="/admin/people" class="muted">clear</a>
+        }
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Telegram ID</th>
+                <th>Name (latest row)</th>
+                <th>Wallets</th>
+                <th>Last active</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var p in Model.People)
+            {
+                <tr>
+                    <td><code>@p.UserId</code></td>
+                    <td>@p.DisplayName</td>
+                    <td><b>@p.WalletCount</b> <span class="muted">(DM + groups, etc.)</span></td>
+                    <td class="muted">@p.LastActive.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td><a href="/admin/users?q=@p.UserId">Open wallets →</a></td>
+                </tr>
+            }
+            @if (Model.People.Count == 0)
+            {
+                <tr><td colspan="5" class="muted">No people found.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+<p class="muted">Up to 500 results. <b>Wallets</b> shows each <code>(telegram id, balance_scope_id / chat id)</code> for Set / adjust.</p>

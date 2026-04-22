@@ -5,8 +5,8 @@ namespace Games.Leaderboard;
 
 public interface ILeaderboardService
 {
-    Task<Leaderboard> GetTopAsync(int limit, CancellationToken ct);
-    Task<BalanceInfo> GetBalanceAsync(long userId, string displayName, CancellationToken ct);
+    Task<Leaderboard> GetTopAsync(int limit, long balanceScopeId, CancellationToken ct);
+    Task<BalanceInfo> GetBalanceAsync(long userId, long balanceScopeId, string displayName, CancellationToken ct);
 }
 
 public sealed class LeaderboardService(
@@ -16,12 +16,12 @@ public sealed class LeaderboardService(
 {
     private readonly LeaderboardOptions _opts = options.Value;
 
-    public async Task<Leaderboard> GetTopAsync(int limit, CancellationToken ct)
+    public async Task<Leaderboard> GetTopAsync(int limit, long balanceScopeId, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var since = now - (long)_opts.DaysOfInactivityToHide * 24 * 60 * 60 * 1000;
 
-        var active = await store.ListActiveAsync(since, ct);
+        var active = await store.ListActiveAsync(since, balanceScopeId, ct);
         if (active.Count == 0) return new Leaderboard([], Truncated: false);
 
         var places = new List<LeaderboardPlace>();
@@ -43,10 +43,11 @@ public sealed class LeaderboardService(
         return new Leaderboard(places, truncated);
     }
 
-    public async Task<BalanceInfo> GetBalanceAsync(long userId, string displayName, CancellationToken ct)
+    public async Task<BalanceInfo> GetBalanceAsync(
+        long userId, long balanceScopeId, string displayName, CancellationToken ct)
     {
-        await economics.EnsureUserAsync(userId, displayName, ct);
-        var row = await store.FindAsync(userId, ct);
+        await economics.EnsureUserAsync(userId, balanceScopeId, displayName, ct);
+        var row = await store.FindAsync(userId, balanceScopeId, ct);
         if (row is not { } r) return new BalanceInfo(0, Visible: false);
 
         var thresholdMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()

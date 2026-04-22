@@ -74,8 +74,8 @@ public sealed class BlackjackService(
             if (existing != null)
                 return new BlackjackResult(BlackjackError.HandInProgress, null);
 
-            await economics.EnsureUserAsync(userId, displayName, ct);
-            if (!await economics.TryDebitAsync(userId, bet, "blackjack.start", ct))
+            await economics.EnsureUserAsync(userId, chatId, displayName, ct);
+            if (!await economics.TryDebitAsync(userId, chatId, bet, "blackjack.start", ct))
             {
                 analytics.Track("blackjack", "not_enough_coins", new Dictionary<string, object?>
                 {
@@ -108,11 +108,11 @@ public sealed class BlackjackService(
 
             if (!await hands.InsertAsync(hand, ct))
             {
-                await economics.CreditAsync(userId, bet, "blackjack.start.refund", ct);
+                await economics.CreditAsync(userId, chatId, bet, "blackjack.start.refund", ct);
                 return new BlackjackResult(BlackjackError.HandInProgress, null);
             }
 
-            var balance = await economics.GetBalanceAsync(userId, ct);
+            var balance = await economics.GetBalanceAsync(userId, chatId, ct);
             return new BlackjackResult(BlackjackError.None, BuildSnapshot(hand, balance, revealed: false), hand.StateMessageId);
         }
         finally { gate.Release(); }
@@ -136,7 +136,7 @@ public sealed class BlackjackService(
                 return await SettleAsync(updated, doubled: false, persisted: true, ct);
 
             await hands.UpdateAsync(updated, ct);
-            var balance = await economics.GetBalanceAsync(userId, ct);
+            var balance = await economics.GetBalanceAsync(userId, hand.ChatId, ct);
             return new BlackjackResult(BlackjackError.None, BuildSnapshot(updated, balance, revealed: false), updated.StateMessageId);
         }
         finally { gate.Release(); }
@@ -167,7 +167,7 @@ public sealed class BlackjackService(
             var player = Deck.Parse(hand.PlayerCards);
             if (player.Length != 2) return new BlackjackResult(BlackjackError.CannotDouble, null);
 
-            if (!await economics.TryDebitAsync(userId, hand.Bet, "blackjack.double", ct))
+            if (!await economics.TryDebitAsync(userId, hand.ChatId, hand.Bet, "blackjack.double", ct))
                 return new BlackjackResult(BlackjackError.NotEnoughCoins, null);
 
             var deck = hand.DeckState;
@@ -188,7 +188,7 @@ public sealed class BlackjackService(
     {
         var hand = await hands.FindAsync(userId, ct);
         if (hand == null) return (null, null);
-        var balance = await economics.GetBalanceAsync(userId, ct);
+        var balance = await economics.GetBalanceAsync(userId, hand.ChatId, ct);
         return (BuildSnapshot(hand, balance, revealed: false), hand.StateMessageId);
     }
 
@@ -217,11 +217,11 @@ public sealed class BlackjackService(
         var dealerBj = BlackjackHandValue.IsNaturalBlackjack(dealer);
 
         var (outcome, payout) = Resolve(playerTotal, dealerTotal, playerBj, dealerBj, hand.Bet);
-        if (payout > 0) await economics.CreditAsync(hand.UserId, payout, "blackjack.settle", ct);
+        if (payout > 0) await economics.CreditAsync(hand.UserId, hand.ChatId, payout, "blackjack.settle", ct);
 
         if (persisted) await hands.DeleteAsync(hand.UserId, ct);
 
-        var balance = await economics.GetBalanceAsync(hand.UserId, ct);
+        var balance = await economics.GetBalanceAsync(hand.UserId, hand.ChatId, ct);
 
         analytics.Track("blackjack", "end", new Dictionary<string, object?>
         {

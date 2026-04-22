@@ -38,13 +38,23 @@
             <option value="">(all)</option>
             @foreach (var g in new[] { "darts", "dicecube", "basketball", "bowling", "dice", "horse" })
             {
-                <option value="@g" selected="@(Model.Game == g)">@g</option>
+                if (Model.Game == g) { <option value="@g" selected>@g</option> }
+                else { <option value="@g">@g</option> }
             }
         </select>
         <label>User id:</label>
         <input name="user" value="@Model.UserFilter" placeholder="telegram user id" />
+        <label>Chat:</label>
+        <select name="ChatId" onchange="this.form.submit()">
+            <option value="">(all)</option>
+            @foreach (var c in Model.Chats)
+            {
+                if (Model.ChatId == c.ChatId) { <option value="@c.ChatId" selected>@c.Label</option> }
+                else { <option value="@c.ChatId">@c.Label</option> }
+            }
+        </select>
         <button type="submit">Filter</button>
-        @if (!string.IsNullOrEmpty(Model.Game) || !string.IsNullOrEmpty(Model.UserFilter))
+        @if (!string.IsNullOrEmpty(Model.Game) || !string.IsNullOrEmpty(Model.UserFilter) || Model.ChatId is not null)
         {
             <a href="/admin/history" class="muted" style="margin-left: 8px">clear</a>
         }
@@ -58,6 +68,7 @@
                 <th>When</th>
                 <th>Game</th>
                 <th>User</th>
+                <th>Chat</th>
                 <th>Face</th>
                 <th>Bet</th>
                 <th>×</th>
@@ -74,6 +85,7 @@
                     <td class="muted">@r.OccurredAt.UtcDateTime.ToString("MM-dd HH:mm:ss")</td>
                     <td><span class="pill">@r.Game</span></td>
                     <td><code>@r.UserId</code></td>
+                    <td class="muted">@(r.ChatScopeId != 0 ? r.ChatScopeId.ToString() : "—")</td>
                     <td>@(r.Face?.ToString() ?? "—")</td>
                     <td>@r.Bet</td>
                     <td>@(r.Multiplier.HasValue ? "×" + r.Multiplier : "")</td>
@@ -88,7 +100,7 @@
             }
             @if (Model.Rows.Count == 0)
             {
-                <tr><td colspan="9" class="muted">No history for this filter.</td></tr>
+                <tr><td colspan="10" class="muted">No history for this filter.</td></tr>
             }
         </tbody>
     </table>

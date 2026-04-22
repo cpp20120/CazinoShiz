@@ -5,8 +5,9 @@ namespace Games.Admin;
 public interface IAdminService
 {
     Task<int> UserSyncAsync(long callerId, CancellationToken ct);
-    Task<PayResult?> PayAsync(long callerId, long targetUserId, int amount, CancellationToken ct);
-    Task<UserSummary?> GetUserAsync(long targetUserId, CancellationToken ct);
+    /// <param name="balanceScopeId">Chat where the /run pay is executed — coins apply to that wallet.</param>
+    Task<PayResult?> PayAsync(long callerId, long targetUserId, long balanceScopeId, int amount, CancellationToken ct);
+    Task<UserSummary?> GetUserAsync(long targetUserId, long balanceScopeId, CancellationToken ct);
     Task<RenameResult> RenameAsync(string oldName, string newName, CancellationToken ct);
     void ReportNotAdmin(long userId);
     void ReportUserInfo(long callerId, string targetId);
@@ -42,22 +43,23 @@ public sealed partial class AdminService(
         return users.Count;
     }
 
-    public async Task<PayResult?> PayAsync(long callerId, long targetUserId, int amount, CancellationToken ct)
+    public async Task<PayResult?> PayAsync(
+        long callerId, long targetUserId, long balanceScopeId, int amount, CancellationToken ct)
     {
-        var before = await store.FindUserAsync(targetUserId, ct);
+        var before = await store.FindUserAsync(targetUserId, balanceScopeId, ct);
         var displayName = before?.DisplayName ?? $"User ID: {targetUserId}";
-        await economics.EnsureUserAsync(targetUserId, displayName, ct);
+        await economics.EnsureUserAsync(targetUserId, balanceScopeId, displayName, ct);
 
         if (amount >= 0)
         {
-            await economics.CreditAsync(targetUserId, amount, "admin.pay", ct);
+            await economics.CreditAsync(targetUserId, balanceScopeId, amount, "admin.pay", ct);
         }
         else
         {
-            await economics.DebitAsync(targetUserId, -amount, "admin.pay", ct);
+            await economics.DebitAsync(targetUserId, balanceScopeId, -amount, "admin.pay", ct);
         }
 
-        var after = await store.FindUserAsync(targetUserId, ct);
+        var after = await store.FindUserAsync(targetUserId, balanceScopeId, ct);
         if (after == null) return null;
 
         analytics.Track("admin", "command", new Dictionary<string, object?>
@@ -72,8 +74,8 @@ public sealed partial class AdminService(
         return new PayResult(after.DisplayName, oldCoins, after.Coins, amount);
     }
 
-    public Task<UserSummary?> GetUserAsync(long targetUserId, CancellationToken ct) =>
-        store.FindUserAsync(targetUserId, ct);
+    public Task<UserSummary?> GetUserAsync(long targetUserId, long balanceScopeId, CancellationToken ct) =>
+        store.FindUserAsync(targetUserId, balanceScopeId, ct);
 
     public async Task<RenameResult> RenameAsync(string oldName, string newName, CancellationToken ct)
     {

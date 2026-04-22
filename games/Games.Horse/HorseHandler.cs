@@ -84,7 +84,7 @@ public sealed partial class HorseHandler(
         }
 
         var displayName = msg.From?.Username ?? msg.From?.FirstName ?? $"User ID: {userId}";
-        var r = await service.PlaceBetAsync(userId, displayName, horseId, amount, ctx.Ct);
+        var r = await service.PlaceBetAsync(userId, displayName, chatId, horseId, amount, ctx.Ct);
 
         var text = r.Error switch
         {

@@ -22,7 +22,8 @@ namespace Games.Horse;
 
 public interface IHorseService
 {
-    Task<BetResult> PlaceBetAsync(long userId, string displayName, int horseId, int amount, CancellationToken ct);
+    Task<BetResult> PlaceBetAsync(
+        long userId, string displayName, long balanceScopeId, int horseId, int amount, CancellationToken ct);
     Task<RaceInfo> GetTodayInfoAsync(CancellationToken ct);
     Task<TodayRaceResult> GetTodayResultAsync(CancellationToken ct);
     Task<RaceOutcome> RunRaceAsync(long callerUserId, CancellationToken ct);
@@ -43,7 +44,8 @@ public sealed partial class HorseService(
     public int HorseCount => _opts.HorseCount;
     public int MinBetsToRun => _opts.MinBetsToRun;
 
-    public async Task<BetResult> PlaceBetAsync(long userId, string displayName, int horseId, int amount, CancellationToken ct)
+    public async Task<BetResult> PlaceBetAsync(
+        long userId, string displayName, long balanceScopeId, int horseId, int amount, CancellationToken ct)
     {
         if (horseId < 1 || horseId > _opts.HorseCount)
         {
@@ -51,8 +53,8 @@ public sealed partial class HorseService(
             return BetFail(HorseError.InvalidHorseId);
         }
 
-        await economics.EnsureUserAsync(userId, displayName, ct);
-        var balance = await economics.GetBalanceAsync(userId, ct);
+        await economics.EnsureUserAsync(userId, balanceScopeId, displayName, ct);
+        var balance = await economics.GetBalanceAsync(userId, balanceScopeId, ct);
 
         if (amount <= 0 || amount > balance)
         {
@@ -60,11 +62,11 @@ public sealed partial class HorseService(
             return BetFail(HorseError.InvalidAmount, horseId, balance);
         }
 
-        if (!await economics.TryDebitAsync(userId, amount, "horse.bet", ct))
+        if (!await economics.TryDebitAsync(userId, balanceScopeId, amount, "horse.bet", ct))
             return BetFail(HorseError.InvalidAmount, horseId, balance);
 
         var raceDate = HorseTimeHelper.GetRaceDate();
-        var bet = new HorseBetRow(Guid.NewGuid(), raceDate, userId, horseId - 1, amount);
+        var bet = new HorseBetRow(Guid.NewGuid(), raceDate, userId, balanceScopeId, horseId - 1, amount);
         await betStore.InsertAsync(bet, ct);
 
         LogHorseBetPlaced(userId, horseId, amount, raceDate);
@@ -132,19 +134,23 @@ public sealed partial class HorseService(
 
         var transactions = Payoff(bets, ks, winner);
 
-        var payoutByUser = transactions
-            .GroupBy(t => t.UserId)
+        var payoutByKey = transactions
+            .GroupBy(t => (t.UserId, t.BalanceScopeId))
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
 
-        foreach (var (uid, prize) in payoutByUser)
-            await economics.CreditAsync(uid, prize, "horse.payout", ct);
+        foreach (var (key, prize) in payoutByKey)
+            await economics.CreditAsync(key.UserId, key.BalanceScopeId, prize, "horse.payout", ct);
+
+        var wonByUser = payoutByKey
+            .GroupBy(kv => kv.Key.UserId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Value));
 
         var participants = bets
             .GroupBy(b => b.UserId)
             .Select(g => new RacerSummary(
                 g.Key,
                 g.Sum(x => x.Amount),
-                payoutByUser.GetValueOrDefault(g.Key, 0)))
+                wonByUser.GetValueOrDefault(g.Key, 0)))
             .ToList();
 
         await betStore.DeleteByRaceDateAsync(raceDate, ct);
@@ -159,7 +165,8 @@ public sealed partial class HorseService(
         await events.PublishAsync(new HorseRaceFinished(raceDate, winner + 1, bets.Count,
             transactions.Count, pot, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()), ct);
 
-        return new RaceOutcome(HorseError.None, winner, gifBytes, transactions, participants);
+        var txForUi = transactions.Select(t => (t.UserId, t.Amount)).ToList();
+        return new RaceOutcome(HorseError.None, winner, gifBytes, txForUi, participants);
     }
 
     public static Dictionary<int, double> GetKoefs(Dictionary<int, int> stakes)
@@ -173,12 +180,12 @@ public sealed partial class HorseService(
         );
     }
 
-    private static List<(long UserId, int Amount)> Payoff(
+    private static List<(long UserId, long BalanceScopeId, int Amount)> Payoff(
         IReadOnlyList<HorseBetRow> bets, Dictionary<int, double> ks, int winner)
     {
         return bets
             .Where(b => b.HorseId == winner)
-            .Select(b => (b.UserId, (int)Math.Floor(b.Amount * ks[b.HorseId])))
+            .Select(b => (b.UserId, b.BalanceScopeId, (int)Math.Floor(b.Amount * ks[b.HorseId])))
             .ToList();
     }
 

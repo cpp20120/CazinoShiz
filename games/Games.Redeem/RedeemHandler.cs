@@ -66,7 +66,7 @@ public sealed partial class RedeemHandler(
         var codeText = parts.Length > 1 ? parts[1] : "";
         var displayName = msg.From?.Username ?? msg.From?.FirstName ?? $"User ID: {userId}";
 
-        var result = await service.BeginRedeemAsync(userId, displayName, codeText, ctx.Ct);
+        var result = await service.BeginRedeemAsync(userId, chatId, displayName, codeText, ctx.Ct);
 
         switch (result.Error)
         {
@@ -127,7 +127,7 @@ public sealed partial class RedeemHandler(
             return;
         }
 
-        var result = await service.CompleteRedeemAsync(userId, codeGuid, ctx.Ct);
+        var result = await service.CompleteRedeemAsync(userId, chatId, codeGuid, ctx.Ct);
         if (result.Error == RedeemError.AlreadyRedeemed)
         {
             await ctx.Bot.SendMessage(chatId, Loc("err.lost_race"), cancellationToken: ctx.Ct);

@@ -7,15 +7,27 @@
 <div class="card">
     <form method="get" class="inline">
         <label>Module:</label>
-        <select name="module" onchange="this.form.submit()">
+        <select name="Module" onchange="this.form.submit()">
             <option value="">(all)</option>
             @foreach (var m in Model.Modules)
             {
-                <option value="@m" selected="@(Model.Module == m)">@m</option>
+                if ((Model.Module ?? "") == m) { <option value="@m" selected>@m</option> }
+                else { <option value="@m">@m</option> }
             }
         </select>
+        <label>Chat (payload <code>ChatId</code>):</label>
+        <select name="ChatId" onchange="this.form.submit()">
+            <option value="">(all)</option>
+            @foreach (var c in Model.Chats)
+            {
+                if (Model.ChatId == c.ChatId) { <option value="@c.ChatId" selected>@c.Label</option> }
+                else { <option value="@c.ChatId">@c.Label</option> }
+            }
+        </select>
+        <a href="/admin/groups" class="muted" style="margin-left:6px" title="Where chat list comes from">chats &amp; groups</a>
         <noscript><button type="submit">Filter</button></noscript>
     </form>
+    <p class="muted" style="margin:8px 0 0 0">With a chat selected, only events that include a <code>ChatId</code> in JSON are shown (some modules omit it).</p>
 </div>
 
 <div class="card">

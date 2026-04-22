@@ -1,8 +1,9 @@
 @page "/admin/users"
 @model CasinoShiz.Host.Pages.Admin.UsersModel
-@{ ViewData["Title"] = "Users"; }
+@{ ViewData["Title"] = "Wallets"; }
 
-<h2>Users</h2>
+<h2>Wallets <span class="pill">per chat scope</span></h2>
+<p class="muted">Each row is <b>one user + one balance_scope_id</b> (Telegram <code>Chat.Id</code> — DM, group, etc.). <a href="/admin/people">People</a> — directory of unique Telegram users.</p>
 
 @if (!string.IsNullOrEmpty(Model.Flash))
 {
@@ -11,7 +12,7 @@
 
 <div class="card">
     <form method="get" class="inline">
-        <input type="text" name="q" value="@Model.Q" placeholder="Search by name or Telegram id…" style="min-width: 300px" />
+        <input type="text" name="q" value="@Model.Q" placeholder="Search by name, user id, or scope (chat) id…" style="min-width: 300px" />
         <button type="submit">Search</button>
         @if (!string.IsNullOrEmpty(Model.Q))
         {
@@ -25,6 +26,7 @@
         <thead>
             <tr>
                 <th>Telegram ID</th>
+                <th>Scope (chat)</th>
                 <th>Name</th>
                 <th>Coins</th>
                 <th>Updated</th>
@@ -36,17 +38,20 @@
             {
                 <tr>
                     <td><code>@u.UserId</code></td>
+                    <td><code>@u.BalanceScopeId</code></td>
                     <td>@u.DisplayName</td>
                     <td><b>@u.Coins</b></td>
                     <td class="muted">@u.UpdatedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
                     <td>
                         <form method="post" asp-page-handler="Set" class="inline">
                             <input type="hidden" name="userId" value="@u.UserId" />
+                            <input type="hidden" name="balanceScopeId" value="@u.BalanceScopeId" />
                             <input type="number" name="coins" value="@u.Coins" style="width: 100px" required />
                             <button type="submit">Set</button>
                         </form>
                         <form method="post" asp-page-handler="Adjust" class="inline" style="margin-left: 10px">
                             <input type="hidden" name="userId" value="@u.UserId" />
+                            <input type="hidden" name="balanceScopeId" value="@u.BalanceScopeId" />
                             <input type="number" name="delta" value="1000" style="width: 90px" required />
                             <button type="submit" class="ghost">+/-</button>
                         </form>
@@ -55,7 +60,7 @@
             }
             @if (Model.Users.Count == 0)
             {
-                <tr><td colspan="5" class="muted">No users found.</td></tr>
+                <tr><td colspan="6" class="muted">No users found.</td></tr>
             }
         </tbody>
     </table>

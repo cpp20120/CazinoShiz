@@ -1,30 +1,27 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // DiceCubeService — place a cube bet, resolve on 🎲 throw.
 //
-// Lifecycle:
-//   • PlaceBetAsync: validate amount, ensure user seeded with starting coins,
-//     reject double-bets in the same chat, debit via IEconomicsService, insert
-//     pending bet row.
-//   • RollAsync: look up pending bet, compute multiplier from the face roll,
-//     credit payout if any, delete the bet, publish DiceCubeRollCompleted.
+// Payout: credit = bet × mult(face). Faces 1–3 pay 0. Mults 4/5/6 are configured
+// (defaults 1,2,3) so a fair 1..6 die has ~0 expected change vs the old 2,3,5
+// which was strongly +EV for the player.
 //
-// Payout table verbatim from the live service:
-//     4 → x2 · 5 → x3 · 6 → x5 · (1,2,3) → 0
-//
-// Atomicity note: the bet-insertion and the debit are not in a single
-// transaction. A crash between them leaves the coin gone but no pending bet.
-// Matches the monolith's behavior (same boundary). Revisit when EconomicsService
-// grows a transactional API.
+// MinSecondsBetweenBets: optional per-(user, chat) delay after a completed roll
+// before the next /dice bet to reduce leaderboard / chat spam.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
 using BotFramework.Sdk;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 
 namespace Games.DiceCube;
 
 public interface IDiceCubeService
 {
+    int Mult4 { get; }
+    int Mult5 { get; }
+    int Mult6 { get; }
+
     Task<CubeBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct);
     Task<CubeRollResult> RollAsync(long userId, string displayName, long chatId, int face, CancellationToken ct);
 }
@@ -34,31 +31,53 @@ public sealed class DiceCubeService(
     IAnalyticsService analytics,
     IDiceCubeBetStore bets,
     IDomainEventBus events,
+    IMemoryCache cache,
     IOptions<DiceCubeOptions> options) : IDiceCubeService
 {
+    private readonly DiceCubeOptions _opt = options.Value;
     private readonly int _maxBet = options.Value.MaxBet;
-    public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
-    {
-        [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 3, [6] = 5,
-    };
+    private readonly IReadOnlyDictionary<int, int> _mults = BuildMultipliers(options.Value);
+
+    public int Mult4 => _opt.Mult4;
+    public int Mult5 => _opt.Mult5;
+    public int Mult6 => _opt.Mult6;
+
+    public static IReadOnlyDictionary<int, int> BuildMultipliers(DiceCubeOptions o) =>
+        new Dictionary<int, int>
+        {
+            [1] = 0, [2] = 0, [3] = 0, [4] = o.Mult4, [5] = o.Mult5, [6] = o.Mult6,
+        };
+
+    private static string CooldownCacheKey(long userId, long chatId) => $"dicecube:lastroll:{userId}:{chatId}";
 
     public async Task<CubeBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)
     {
         if (amount <= 0 || amount > _maxBet) return CubeBetResult.Fail(CubeBetError.InvalidAmount);
 
-        await economics.EnsureUserAsync(userId, displayName, ct);
-        var balance = await economics.GetBalanceAsync(userId, ct);
+        await economics.EnsureUserAsync(userId, chatId, displayName, ct);
+        var balance = await economics.GetBalanceAsync(userId, chatId, ct);
         if (amount > balance) return CubeBetResult.Fail(CubeBetError.NotEnoughCoins, balance);
+
+        if (_opt.MinSecondsBetweenBets > 0
+            && cache.TryGetValue(CooldownCacheKey(userId, chatId), out DateTimeOffset lastRoll))
+        {
+            var wait = (lastRoll + TimeSpan.FromSeconds(_opt.MinSecondsBetweenBets)) - DateTimeOffset.UtcNow;
+            if (wait > TimeSpan.Zero)
+            {
+                var sec = (int)Math.Ceiling(wait.TotalSeconds);
+                return CubeBetResult.CooldownWait(balance, sec);
+            }
+        }
 
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return CubeBetResult.Fail(CubeBetError.AlreadyPending, balance, existing.Amount);
 
-        if (!await economics.TryDebitAsync(userId, amount, "dicecube.bet", ct))
+        if (!await economics.TryDebitAsync(userId, chatId, amount, "dicecube.bet", ct))
             return CubeBetResult.Fail(CubeBetError.NotEnoughCoins, balance);
 
         if (!await bets.InsertAsync(new DiceCubeBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
         {
-            await economics.CreditAsync(userId, amount, "dicecube.bet.refund", ct);
+            await economics.CreditAsync(userId, chatId, amount, "dicecube.bet.refund", ct);
             return CubeBetResult.Fail(CubeBetError.AlreadyPending, balance);
         }
 
@@ -67,7 +86,7 @@ public sealed class DiceCubeService(
             ["user_id"] = userId, ["chat_id"] = chatId, ["amount"] = amount,
         });
 
-        return new CubeBetResult(CubeBetError.None, amount, balance - amount);
+        return new CubeBetResult(CubeBetError.None, amount, balance - amount, 0, 0);
     }
 
     public async Task<CubeRollResult> RollAsync(long userId, string displayName, long chatId, int face, CancellationToken ct)
@@ -75,15 +94,26 @@ public sealed class DiceCubeService(
         var bet = await bets.FindAsync(userId, chatId, ct);
         if (bet == null) return new CubeRollResult(CubeRollOutcome.NoBet);
 
-        await economics.EnsureUserAsync(userId, displayName, ct);
-        var multiplier = Multipliers.TryGetValue(face, out var m) ? m : 0;
+        await economics.EnsureUserAsync(userId, chatId, displayName, ct);
+        var multiplier = _mults.TryGetValue(face, out var m) ? m : 0;
         var payout = bet.Amount * multiplier;
 
         if (payout > 0)
-            await economics.CreditAsync(userId, payout, "dicecube.payout", ct);
+            await economics.CreditAsync(userId, chatId, payout, "dicecube.payout", ct);
 
         await bets.DeleteAsync(userId, chatId, ct);
-        var balance = await economics.GetBalanceAsync(userId, ct);
+        if (_opt.MinSecondsBetweenBets > 0)
+        {
+            cache.Set(
+                CooldownCacheKey(userId, chatId),
+                DateTimeOffset.UtcNow,
+                new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(6),
+                });
+        }
+
+        var balance = await economics.GetBalanceAsync(userId, chatId, ct);
 
         analytics.Track("dicecube", "roll", new Dictionary<string, object?>
         {

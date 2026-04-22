@@ -91,7 +91,7 @@ public sealed class AdminHandler(
             return;
         }
 
-        var r = await service.PayAsync(userId, forUserId, amount, ctx.Ct);
+        var r = await service.PayAsync(userId, forUserId, msg.Chat.Id, amount, ctx.Ct);
         if (r == null)
         {
             await ctx.Bot.SendMessage(msg.Chat.Id, Loc("pay.not_found"),
@@ -115,7 +115,7 @@ public sealed class AdminHandler(
             return;
         }
 
-        var r = await service.GetUserAsync(forUserId, ctx.Ct);
+        var r = await service.GetUserAsync(forUserId, msg.Chat.Id, ctx.Ct);
         var json = r != null
             ? JsonSerializer.Serialize(r, new JsonSerializerOptions { WriteIndented = true })
             : "null";

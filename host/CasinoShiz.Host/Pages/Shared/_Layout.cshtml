@@ -82,8 +82,11 @@
         <h1>🎰 CasinoShiz</h1>
         <nav>
             <a href="/admin" class="@(Context.Request.Path.Equals("/admin") ? "active" : "")">Dashboard</a>
-            <a href="/admin/users" class="@(Context.Request.Path.StartsWithSegments("/admin/users") ? "active" : "")">Users</a>
+            <a href="/admin/people" class="@(Context.Request.Path.StartsWithSegments("/admin/people") ? "active" : "")">People</a>
+            <a href="/admin/groups" class="@(Context.Request.Path.StartsWithSegments("/admin/groups") ? "active" : "")">Chats</a>
+            <a href="/admin/users" class="@(Context.Request.Path.StartsWithSegments("/admin/users") ? "active" : "")">Wallets</a>
             <a href="/admin/bets" class="@(Context.Request.Path.StartsWithSegments("/admin/bets") ? "active" : "")">Bets</a>
+            <a href="/admin/ledger" class="@(Context.Request.Path.StartsWithSegments("/admin/ledger") ? "active" : "")">Ledger</a>
             <a href="/admin/history" class="@(Context.Request.Path.StartsWithSegments("/admin/history") ? "active" : "")">History</a>
             <a href="/admin/horse" class="@(Context.Request.Path.StartsWithSegments("/admin/horse") ? "active" : "")">Horse</a>
             <a href="/admin/events" class="@(Context.Request.Path.StartsWithSegments("/admin/events") ? "active" : "")">Events</a>

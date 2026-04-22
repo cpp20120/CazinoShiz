@@ -6,7 +6,7 @@ namespace Games.Admin;
 public interface IAdminStore
 {
     Task<IReadOnlyList<UserSummary>> ListUsersAsync(CancellationToken ct);
-    Task<UserSummary?> FindUserAsync(long userId, CancellationToken ct);
+    Task<UserSummary?> FindUserAsync(long userId, long balanceScopeId, CancellationToken ct);
 
     Task<string?> GetOverrideAsync(string originalName, CancellationToken ct);
     Task UpsertOverrideAsync(string originalName, string newName, CancellationToken ct);
@@ -19,6 +19,7 @@ public sealed class AdminStore(INpgsqlConnectionFactory connections) : IAdminSto
     {
         const string sql = """
             SELECT telegram_user_id AS TelegramUserId,
+                   balance_scope_id AS BalanceScopeId,
                    display_name     AS DisplayName,
                    coins            AS Coins,
                    (EXTRACT(EPOCH FROM updated_at) * 1000)::BIGINT AS UpdatedAtUnixMs
@@ -30,19 +31,20 @@ public sealed class AdminStore(INpgsqlConnectionFactory connections) : IAdminSto
         return rows.ToList();
     }
 
-    public async Task<UserSummary?> FindUserAsync(long userId, CancellationToken ct)
+    public async Task<UserSummary?> FindUserAsync(long userId, long balanceScopeId, CancellationToken ct)
     {
         const string sql = """
             SELECT telegram_user_id AS TelegramUserId,
+                   balance_scope_id AS BalanceScopeId,
                    display_name     AS DisplayName,
                    coins            AS Coins,
                    (EXTRACT(EPOCH FROM updated_at) * 1000)::BIGINT AS UpdatedAtUnixMs
-            FROM users WHERE telegram_user_id = @userId
+            FROM users WHERE telegram_user_id = @userId AND balance_scope_id = @balanceScopeId
             """;
 
         await using var conn = await connections.OpenAsync(ct);
         return await conn.QuerySingleOrDefaultAsync<UserSummary>(
-            new CommandDefinition(sql, new { userId }, cancellationToken: ct));
+            new CommandDefinition(sql, new { userId, balanceScopeId }, cancellationToken: ct));
     }
 
     public async Task<string?> GetOverrideAsync(string originalName, CancellationToken ct)

@@ -19,9 +19,24 @@ public sealed class HistoryModel(INpgsqlConnectionFactory connections) : PageMod
     [BindProperty(SupportsGet = true, Name = "user")]
     public string? UserFilter { get; set; }
 
+    [BindProperty(SupportsGet = true)]
+    public long? ChatId { get; set; }
+
+    public IReadOnlyList<ChatPickRow> Chats { get; private set; } = [];
+
     public async Task OnGetAsync(CancellationToken ct)
     {
         await using var conn = await connections.OpenAsync(ct);
+
+        var chats = await conn.QueryAsync<ChatPickRow>(new CommandDefinition(
+            """
+            SELECT k.chat_id AS ChatId,
+                   (k.chat_type || ' · ' || coalesce(k.title, k.username, k.chat_id::text)) AS Label
+            FROM known_chats k
+            ORDER BY k.last_seen_at DESC
+            LIMIT 200
+            """, cancellationToken: ct));
+        Chats = chats.ToList();
 
         // Each emoji game publishes `<module>.throw_completed` / `.roll_completed`
         // with a consistent JSON shape: { UserId, ChatId, Face, Bet, Multiplier, Payout }.
@@ -56,6 +71,7 @@ public sealed class HistoryModel(INpgsqlConnectionFactory connections) : PageMod
                        (payload ->> 'DiceValue')::int,
                        (payload ->> 'HorseId')::int
                    ) AS Face,
+                   COALESCE((payload ->> 'ChatId')::bigint, 0) AS ChatScopeId,
                    payload::text AS PayloadJson
             FROM event_log
             WHERE event_type IN (
@@ -69,11 +85,15 @@ public sealed class HistoryModel(INpgsqlConnectionFactory connections) : PageMod
             )
               AND (@game = '' OR split_part(event_type, '.', 1) = @game)
               AND (@user = '' OR (payload ->> 'UserId') = @user)
+              AND (
+                  @chatId IS NULL
+                  OR (payload ? 'ChatId' AND (payload ->> 'ChatId')::bigint = @chatId)
+              )
             ORDER BY id DESC
             LIMIT 500
             """;
         var rows = await conn.QueryAsync<HistoryRow>(new CommandDefinition(
-            sql, new { game = Game ?? "", user = UserFilter ?? "" }, cancellationToken: ct));
+            sql, new { game = Game ?? "", user = UserFilter ?? "", chatId = ChatId }, cancellationToken: ct));
         Rows = rows.ToList();
 
         foreach (var r in Rows)
@@ -96,4 +116,7 @@ public sealed record HistoryRow(
     int Payout,
     int? Multiplier,
     int? Face,
+    long ChatScopeId,
     string PayloadJson);
+
+public sealed record ChatPickRow(long ChatId, string Label);

@@ -31,5 +31,10 @@ public sealed class HorseMigrations : IModuleMigrations
             ALTER TABLE horse_results ADD COLUMN IF NOT EXISTS file_id TEXT NULL;
             ALTER TABLE horse_results DROP COLUMN IF EXISTS image_data;
             """),
+
+        new Migration("003_bet_balance_scope", """
+            ALTER TABLE horse_bets ADD COLUMN IF NOT EXISTS balance_scope_id BIGINT NOT NULL DEFAULT 0;
+            UPDATE horse_bets SET balance_scope_id = user_id WHERE balance_scope_id = 0;
+            """),
     ];
 }

@@ -7,6 +7,8 @@ namespace CasinoShiz.Tests;
 
 public class RedeemServiceTests
 {
+    private const long DmScope = 5000;
+
     private static RedeemService MakeService(
         InMemoryRedeemStore? store = null,
         FakeEconomicsService? economics = null,
@@ -68,7 +70,7 @@ public class RedeemServiceTests
     public async Task BeginRedeemAsync_InvalidText_ReturnsInvalidCode()
     {
         var svc = MakeService();
-        var result = await svc.BeginRedeemAsync(1, "u", "not-a-uuid", default);
+        var result = await svc.BeginRedeemAsync(1, DmScope, "u", "not-a-uuid", default);
         Assert.Equal(RedeemError.InvalidCode, result.Error);
     }
 
@@ -76,7 +78,7 @@ public class RedeemServiceTests
     public async Task BeginRedeemAsync_EmptyText_ReturnsInvalidCode()
     {
         var svc = MakeService();
-        var result = await svc.BeginRedeemAsync(1, "u", "", default);
+        var result = await svc.BeginRedeemAsync(1, DmScope, "u", "", default);
         Assert.Equal(RedeemError.InvalidCode, result.Error);
     }
 
@@ -84,7 +86,7 @@ public class RedeemServiceTests
     public async Task BeginRedeemAsync_NonExistentCode_ReturnsAlreadyRedeemed()
     {
         var svc = MakeService();
-        var result = await svc.BeginRedeemAsync(1, "u", Guid.NewGuid().ToString(), default);
+        var result = await svc.BeginRedeemAsync(1, DmScope, "u", Guid.NewGuid().ToString(), default);
         Assert.Equal(RedeemError.AlreadyRedeemed, result.Error);
     }
 
@@ -96,7 +98,7 @@ public class RedeemServiceTests
         await store.InsertAsync(code, default);
         var svc = MakeService(store);
 
-        var result = await svc.BeginRedeemAsync(1, "u", code.Code.ToString(), default);
+        var result = await svc.BeginRedeemAsync(1, DmScope, "u", code.Code.ToString(), default);
         Assert.Equal(RedeemError.AlreadyRedeemed, result.Error);
     }
 
@@ -107,7 +109,7 @@ public class RedeemServiceTests
         var svc = MakeService(store);
         var guid = await svc.IssueAdminCodeAsync(userId:5, default);
 
-        var result = await svc.BeginRedeemAsync(userId: 5, "u", guid.ToString(), default);
+        var result = await svc.BeginRedeemAsync(userId: 5, DmScope, "u", guid.ToString(), default);
         Assert.Equal(RedeemError.SelfRedeem, result.Error);
     }
 
@@ -118,7 +120,7 @@ public class RedeemServiceTests
         var svc = MakeService(store);
         var guid = await svc.IssueAdminCodeAsync(userId:1, default);
 
-        var result = await svc.BeginRedeemAsync(userId: 2, "u", guid.ToString(), default);
+        var result = await svc.BeginRedeemAsync(userId: 2, DmScope, "u", guid.ToString(), default);
 
         Assert.Equal(RedeemError.None, result.Error);
         Assert.NotNull(result.Captcha);
@@ -132,7 +134,7 @@ public class RedeemServiceTests
         var svc = MakeService(store, captchaItems: 4);
         var guid = await svc.IssueAdminCodeAsync(userId:1, default);
 
-        var result = await svc.BeginRedeemAsync(userId: 2, "u", guid.ToString(), default);
+        var result = await svc.BeginRedeemAsync(userId: 2, DmScope, "u", guid.ToString(), default);
 
         Assert.Equal(4, result.Captcha!.Items.Length);
     }
@@ -143,7 +145,7 @@ public class RedeemServiceTests
     public async Task CompleteRedeemAsync_NonExistentCode_ReturnsAlreadyRedeemed()
     {
         var svc = MakeService();
-        var result = await svc.CompleteRedeemAsync(1, Guid.NewGuid(), default);
+        var result = await svc.CompleteRedeemAsync(1, DmScope, Guid.NewGuid(), default);
         Assert.Equal(RedeemError.AlreadyRedeemed, result.Error);
     }
 
@@ -155,7 +157,7 @@ public class RedeemServiceTests
         await store.InsertAsync(code, default);
         var svc = MakeService(store);
 
-        var result = await svc.CompleteRedeemAsync(2, code.Code, default);
+        var result = await svc.CompleteRedeemAsync(2, DmScope, code.Code, default);
         Assert.Equal(RedeemError.AlreadyRedeemed, result.Error);
     }
 
@@ -166,7 +168,7 @@ public class RedeemServiceTests
         var svc = MakeService(store);
         var guid = await svc.IssueAdminCodeAsync(1, default);
 
-        var result = await svc.CompleteRedeemAsync(2, guid, default);
+        var result = await svc.CompleteRedeemAsync(2, DmScope, guid, default);
         Assert.Equal(RedeemError.None, result.Error);
     }
 
@@ -178,7 +180,7 @@ public class RedeemServiceTests
         var svc = MakeService(store, econ, coinReward: 75);
         var guid = await svc.IssueAdminCodeAsync(1, default);
 
-        await svc.CompleteRedeemAsync(2, guid, default);
+        await svc.CompleteRedeemAsync(2, DmScope, guid, default);
 
         Assert.Single(econ.Credits);
         Assert.Equal(75, econ.Credits[0].Amount);
@@ -191,7 +193,7 @@ public class RedeemServiceTests
         var svc = MakeService(store, coinReward: 100);
         var guid = await svc.IssueAdminCodeAsync(1, default);
 
-        var result = await svc.CompleteRedeemAsync(2, guid, default);
+        var result = await svc.CompleteRedeemAsync(2, DmScope, guid, default);
         Assert.Equal(100, result.CoinReward);
     }
 
@@ -201,7 +203,7 @@ public class RedeemServiceTests
         var store = new InMemoryRedeemStore();
         var svc = MakeService(store);
         var guid = await svc.IssueAdminCodeAsync(1, default);
-        await svc.CompleteRedeemAsync(2, guid, default);
+        await svc.CompleteRedeemAsync(2, DmScope, guid, default);
 
         var code = await store.FindAsync(guid, default);
         Assert.False(code!.Active);
@@ -213,9 +215,9 @@ public class RedeemServiceTests
         var store = new InMemoryRedeemStore();
         var svc = MakeService(store);
         var guid = await svc.IssueAdminCodeAsync(1, default);
-        await svc.CompleteRedeemAsync(2, guid, default);
+        await svc.CompleteRedeemAsync(2, DmScope, guid, default);
 
-        var second = await svc.CompleteRedeemAsync(3, guid, default);
+        var second = await svc.CompleteRedeemAsync(3, DmScope, guid, default);
         Assert.Equal(RedeemError.AlreadyRedeemed, second.Error);
     }
 
@@ -228,7 +230,7 @@ public class RedeemServiceTests
         var guid = await svc.IssueAdminCodeAsync(1, default);
         bus.Published.Clear(); // clear the IssueAdminCodeAsync event
 
-        await svc.CompleteRedeemAsync(2, guid, default);
+        await svc.CompleteRedeemAsync(2, DmScope, guid, default);
 
         Assert.Single(bus.Published);
         Assert.IsType<RedeemCodeRedeemed>(bus.Published[0]);

@@ -34,19 +34,19 @@ public sealed class BasketballService(
     {
         if (amount <= 0 || amount > _maxBet) return BasketballBetResult.Fail(BasketballBetError.InvalidAmount);
 
-        await economics.EnsureUserAsync(userId, displayName, ct);
-        var balance = await economics.GetBalanceAsync(userId, ct);
+        await economics.EnsureUserAsync(userId, chatId, displayName, ct);
+        var balance = await economics.GetBalanceAsync(userId, chatId, ct);
         if (amount > balance) return BasketballBetResult.Fail(BasketballBetError.NotEnoughCoins, balance);
 
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return BasketballBetResult.Fail(BasketballBetError.AlreadyPending, balance, existing.Amount);
 
-        if (!await economics.TryDebitAsync(userId, amount, "basketball.bet", ct))
+        if (!await economics.TryDebitAsync(userId, chatId, amount, "basketball.bet", ct))
             return BasketballBetResult.Fail(BasketballBetError.NotEnoughCoins, balance);
 
         if (!await bets.InsertAsync(new BasketballBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
         {
-            await economics.CreditAsync(userId, amount, "basketball.bet.refund", ct);
+            await economics.CreditAsync(userId, chatId, amount, "basketball.bet.refund", ct);
             return BasketballBetResult.Fail(BasketballBetError.NotEnoughCoins, balance);
         }
 
@@ -63,15 +63,15 @@ public sealed class BasketballService(
         var bet = await bets.FindAsync(userId, chatId, ct);
         if (bet == null) return new BasketballThrowResult(BasketballThrowOutcome.NoBet);
 
-        await economics.EnsureUserAsync(userId, displayName, ct);
+        await economics.EnsureUserAsync(userId, chatId, displayName, ct);
         var multiplier = Multipliers.TryGetValue(face, out var m) ? m : 0;
         var payout = bet.Amount * multiplier;
 
         if (payout > 0)
-            await economics.CreditAsync(userId, payout, "basketball.payout", ct);
+            await economics.CreditAsync(userId, chatId, payout, "basketball.payout", ct);
 
         await bets.DeleteAsync(userId, chatId, ct);
-        var balance = await economics.GetBalanceAsync(userId, ct);
+        var balance = await economics.GetBalanceAsync(userId, chatId, ct);
 
         analytics.Track("basketball", "throw", new Dictionary<string, object?>
         {

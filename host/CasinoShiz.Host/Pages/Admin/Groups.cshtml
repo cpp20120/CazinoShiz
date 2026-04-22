@@ -1,0 +1,67 @@
+@page "/admin/groups"
+@model CasinoShiz.Host.Pages.Admin.GroupsModel
+@{ ViewData["Title"] = "Chats & groups"; }
+
+<h2>Chats <span class="pill">from bot traffic</span></h2>
+<p class="muted">Chats are recorded on each update (and backfilled from wallet scopes). Use the row links to open Wallets, Events, History, and Ledger for that <code>Chat.Id</code> (same as balance scope in groups).</p>
+
+<div class="card">
+    <form method="get" class="inline">
+        <input type="text" name="Q" value="@Model.Q" placeholder="Search id, title, or @@name…" style="min-width: 280px" />
+        <label>
+            <select name="Dms" onchange="this.form.submit()">
+                @if (Model.Dms) {
+                    <option value="false">Group / supergroup / channel</option>
+                    <option value="true" selected>+ Include DMs</option>
+                } else {
+                    <option value="false" selected>Group / supergroup / channel</option>
+                    <option value="true">+ Include DMs</option>
+                }
+            </select>
+        </label>
+        <button type="submit">Search</button>
+        @if (!string.IsNullOrEmpty(Model.Q) || Model.Dms)
+        {
+            <a href="/admin/groups" class="muted">reset</a>
+        }
+    </form>
+    <p class="muted" style="margin: 8px 0 0 0">By default, direct messages are hidden. Change the dropdown to include DMs.</p>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Chat ID</th>
+                <th>Type</th>
+                <th>Title / name</th>
+                <th>@@name</th>
+                <th>Last seen</th>
+                <th>Admin</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var g in Model.Groups)
+            {
+                <tr>
+                    <td><code>@g.ChatId</code></td>
+                    <td><span class="pill">@g.ChatType</span></td>
+                    <td>@(g.Title ?? "—")</td>
+                    <td class="muted">@(g.Username is { } u ? "@" + u : "—")</td>
+                    <td class="muted">@g.LastSeenAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>
+                        <a href="/admin/users?q=@g.ChatId">Wallets</a>
+                        · <a href="/admin/events?chatId=@g.ChatId">Events</a>
+                        · <a href="/admin/ledger?S=@g.ChatId">Ledger</a>
+                        · <a href="/admin/history?chatId=@g.ChatId">History</a>
+                    </td>
+                </tr>
+            }
+            @if (Model.Groups.Count == 0)
+            {
+                <tr><td colspan="6" class="muted">No chats found. Add the bot to a group and send a message, or use wallet backfill from migration 007.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+<p class="muted">Up to 500 rows. Titles come from Telegram when we have seen a message in that chat.</p>

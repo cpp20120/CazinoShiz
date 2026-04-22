@@ -9,7 +9,8 @@ public sealed class IndexModel(
     INpgsqlConnectionFactory connections,
     IEnumerable<IModule> modules) : PageModel
 {
-    public int UserCount { get; private set; }
+    public int PeopleCount { get; private set; }
+    public int WalletRowCount { get; private set; }
     public long TotalCoins { get; private set; }
     public int EventCount { get; private set; }
     public int PendingBets { get; private set; }
@@ -20,7 +21,9 @@ public sealed class IndexModel(
     {
         await using var conn = await connections.OpenAsync(ct);
 
-        UserCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+        PeopleCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
+            "SELECT count(DISTINCT telegram_user_id)::int FROM users", cancellationToken: ct));
+        WalletRowCount = await conn.ExecuteScalarAsync<int>(new CommandDefinition(
             "SELECT count(*)::int FROM users", cancellationToken: ct));
         TotalCoins = await conn.ExecuteScalarAsync<long?>(new CommandDefinition(
             "SELECT coalesce(sum(coins), 0)::bigint FROM users", cancellationToken: ct)) ?? 0;

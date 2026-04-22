@@ -1,4 +1,5 @@
 using Games.DiceCube;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -6,15 +7,20 @@ namespace CasinoShiz.Tests;
 
 public class DiceCubeServiceTests
 {
+    private static IMemoryCache NewCache() => new MemoryCache(new MemoryCacheOptions());
+
     private static DiceCubeService MakeService(
         FakeEconomicsService? economics = null,
-        InMemoryDiceCubeBetStore? bets = null) =>
+        InMemoryDiceCubeBetStore? bets = null,
+        IMemoryCache? cache = null,
+        DiceCubeOptions? o = null) =>
         new(
             economics ?? new FakeEconomicsService(),
             new NullAnalyticsService(),
             bets ?? new InMemoryDiceCubeBetStore(),
             new NullEventBus(),
-            Options.Create(new DiceCubeOptions()));
+            cache ?? NewCache(),
+            Options.Create(o ?? new DiceCubeOptions()));
 
     [Fact]
     public async Task PlaceBetAsync_ZeroAmount_ReturnsInvalidAmount()
@@ -129,9 +135,9 @@ public class DiceCubeServiceTests
     [InlineData(1, 0)]
     [InlineData(2, 0)]
     [InlineData(3, 0)]
-    [InlineData(4, 2)]
-    [InlineData(5, 3)]
-    [InlineData(6, 5)]
+    [InlineData(4, 1)]
+    [InlineData(5, 2)]
+    [InlineData(6, 3)]
     public async Task RollAsync_ReturnsCorrectMultiplier(int face, int expectedMultiplier)
     {
         var bets = new InMemoryDiceCubeBetStore();
@@ -145,9 +151,9 @@ public class DiceCubeServiceTests
     [InlineData(1, 0)]
     [InlineData(2, 0)]
     [InlineData(3, 0)]
-    [InlineData(4, 100)]
-    [InlineData(5, 150)]
-    [InlineData(6, 250)]
+    [InlineData(4, 50)]
+    [InlineData(5, 100)]
+    [InlineData(6, 150)]
     public async Task RollAsync_ReturnsCorrectPayout(int face, int expectedPayout)
     {
         var bets = new InMemoryDiceCubeBetStore();
@@ -242,7 +248,7 @@ public class DiceCubeServiceTests
     {
         var bus = new NullEventBus();
         var bets = new InMemoryDiceCubeBetStore();
-        var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(), bets, bus, Options.Create(new DiceCubeOptions()));
+        var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(), bets, bus, NewCache(), Options.Create(new DiceCubeOptions()));
         await svc.PlaceBetAsync(1, "u", 100, 50, default);
         await svc.RollAsync(1, "u", 100, 4, default);
         Assert.Single(bus.Published);
@@ -250,15 +256,31 @@ public class DiceCubeServiceTests
     }
 
     [Fact]
-    public async Task Multipliers_ContainsAllSixFaces()
+    public void BuildMultipliers_ContainsAllSixFaces()
     {
+        var m = DiceCubeService.BuildMultipliers(new DiceCubeOptions());
         for (var face = 1; face <= 6; face++)
-            Assert.True(DiceCubeService.Multipliers.ContainsKey(face));
+            Assert.True(m.ContainsKey(face));
     }
 
     [Fact]
-    public async Task Multipliers_Face6_Returns5()
+    public void BuildMultipliers_Default_Face6_Is3()
     {
-        Assert.Equal(5, DiceCubeService.Multipliers[6]);
+        var m = DiceCubeService.BuildMultipliers(new DiceCubeOptions());
+        Assert.Equal(3, m[6]);
+    }
+
+    [Fact]
+    public async Task PlaceBetAsync_CooldownAfterRoll_Blocks()
+    {
+        var cache = NewCache();
+        var o = new DiceCubeOptions { MinSecondsBetweenBets = 30 };
+        var bets = new InMemoryDiceCubeBetStore();
+        var svc = MakeService(bets: bets, cache: cache, o: o);
+        await svc.PlaceBetAsync(1, "u", 100, 10, default);
+        await svc.RollAsync(1, "u", 100, 1, default);
+        var r = await svc.PlaceBetAsync(1, "u", 100, 10, default);
+        Assert.Equal(CubeBetError.Cooldown, r.Error);
+        Assert.InRange(r.CooldownSeconds, 1, 30);
     }
 }

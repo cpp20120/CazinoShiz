@@ -8,8 +8,9 @@ namespace Games.Redeem;
 public interface IRedeemService
 {
     Task<Guid> IssueAdminCodeAsync(long userId, CancellationToken ct);
-    Task<BeginRedeemResult> BeginRedeemAsync(long userId, string displayName, string codeText, CancellationToken ct);
-    Task<CompleteRedeemResult> CompleteRedeemAsync(long userId, Guid codeGuid, CancellationToken ct);
+    Task<BeginRedeemResult> BeginRedeemAsync(
+        long userId, long balanceScopeId, string displayName, string codeText, CancellationToken ct);
+    Task<CompleteRedeemResult> CompleteRedeemAsync(long userId, long balanceScopeId, Guid codeGuid, CancellationToken ct);
     void ReportCaptcha(long userId, string codeText, string pattern, bool passed);
 }
 
@@ -46,7 +47,8 @@ public sealed partial class RedeemService(
         return code.Code;
     }
 
-    public async Task<BeginRedeemResult> BeginRedeemAsync(long userId, string displayName, string codeText, CancellationToken ct)
+    public async Task<BeginRedeemResult> BeginRedeemAsync(
+        long userId, long balanceScopeId, string displayName, string codeText, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(codeText) || !Guid.TryParse(codeText, out var codeGuid))
         {
@@ -79,13 +81,14 @@ public sealed partial class RedeemService(
             return new BeginRedeemResult(RedeemError.SelfRedeem);
         }
 
-        await economics.EnsureUserAsync(userId, displayName, ct);
+        await economics.EnsureUserAsync(userId, balanceScopeId, displayName, ct);
 
         var captcha = CaptchaService.CreateCaptcha(codeText, _opts.CaptchaItems);
         return new BeginRedeemResult(RedeemError.None, codeGuid, captcha);
     }
 
-    public async Task<CompleteRedeemResult> CompleteRedeemAsync(long userId, Guid codeGuid, CancellationToken ct)
+    public async Task<CompleteRedeemResult> CompleteRedeemAsync(
+        long userId, long balanceScopeId, Guid codeGuid, CancellationToken ct)
     {
         var code = await store.FindAsync(codeGuid, ct);
         if (code == null || !code.Active)
@@ -95,7 +98,7 @@ public sealed partial class RedeemService(
         var claimed = await store.MarkRedeemedAsync(codeGuid, userId, now, ct);
         if (!claimed) return new CompleteRedeemResult(RedeemError.AlreadyRedeemed);
 
-        await economics.CreditAsync(userId, _opts.CoinReward, "redeem", ct);
+        await economics.CreditAsync(userId, balanceScopeId, _opts.CoinReward, "redeem", ct);
 
         analytics.Track("redeem", "success", new Dictionary<string, object?>
         {

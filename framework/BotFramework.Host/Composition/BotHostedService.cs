@@ -54,6 +54,16 @@ public sealed partial class BotHostedService(
         else
         {
             LogStartingBotInPollingMode();
+            try
+            {
+                await botClient.DeleteWebhook(cancellationToken: cancellationToken);
+                LogClearedTelegramWebhookForPolling();
+            }
+            catch (Exception ex)
+            {
+                LogDeleteWebhookForPollingFailed(ex);
+            }
+
             _pollingTask = Task.Run(() => RunPollingWithSupervision(_cts.Token), _cts.Token);
         }
     }
@@ -153,6 +163,12 @@ public sealed partial class BotHostedService(
 
     [LoggerMessage(LogLevel.Information, "Starting bot in polling mode")]
     partial void LogStartingBotInPollingMode();
+
+    [LoggerMessage(LogLevel.Information, "Cleared Telegram webhook so getUpdates (polling) can run")]
+    partial void LogClearedTelegramWebhookForPolling();
+
+    [LoggerMessage(LogLevel.Warning, "Could not delete Telegram webhook before polling; getUpdates may return 409 until you call deleteWebhook")]
+    partial void LogDeleteWebhookForPollingFailed(Exception exception);
 
     [LoggerMessage(LogLevel.Error, "Error during polling")]
     partial void LogErrorDuringPolling(Exception exception);

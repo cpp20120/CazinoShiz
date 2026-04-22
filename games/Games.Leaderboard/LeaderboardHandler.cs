@@ -46,7 +46,7 @@ public sealed class LeaderboardHandler(
         var parts = msg.Text!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var limit = parts.Length > 1 && parts[1] == "full" ? 0 : 15;
 
-        var board = await service.GetTopAsync(limit, ctx.Ct);
+        var board = await service.GetTopAsync(limit, msg.Chat.Id, ctx.Ct);
         if (board.Places.Count == 0)
         {
             await ctx.Bot.SendMessage(msg.Chat.Id, Loc("top.empty"),
@@ -78,7 +78,7 @@ public sealed class LeaderboardHandler(
         if (userId == 0) return;
         var displayName = msg.From?.Username ?? msg.From?.FirstName ?? $"User ID: {userId}";
 
-        var bal = await service.GetBalanceAsync(userId, displayName, ctx.Ct);
+        var bal = await service.GetBalanceAsync(userId, msg.Chat.Id, displayName, ctx.Ct);
 
         var text = bal.Visible
             ? string.Format(Loc("balance.visible"), bal.Coins)

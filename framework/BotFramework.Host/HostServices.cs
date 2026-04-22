@@ -22,24 +22,25 @@ namespace BotFramework.Host;
 
 public interface IEconomicsService
 {
-    /// Creates the user row if it doesn't exist yet, seeded with the starting
+    /// <param name="balanceScopeId">Telegram <c>Chat.Id</c> for this wallet (per-group balance). In private chats equals the user's id.</param>
+    /// Creates the wallet row if it doesn't exist yet, seeded with the starting
     /// balance from BotFrameworkOptions.StartingCoins. Always updates the
     /// display name on existing rows so Telegram handle changes propagate.
-    Task EnsureUserAsync(long userId, string displayName, CancellationToken ct);
+    Task EnsureUserAsync(long userId, long balanceScopeId, string displayName, CancellationToken ct);
 
-    Task<int> GetBalanceAsync(long userId, CancellationToken ct);
+    Task<int> GetBalanceAsync(long userId, long balanceScopeId, CancellationToken ct);
 
     /// Returns false without mutating state if the user's balance would go
     /// negative. Throws if the user doesn't exist — callers ensure first.
-    Task<bool> TryDebitAsync(long userId, int amount, string reason, CancellationToken ct);
+    Task<bool> TryDebitAsync(long userId, long balanceScopeId, int amount, string reason, CancellationToken ct);
 
     /// Convenience: TryDebit + throw InsufficientFundsException on false.
-    Task DebitAsync(long userId, int amount, string reason, CancellationToken ct);
+    Task DebitAsync(long userId, long balanceScopeId, int amount, string reason, CancellationToken ct);
 
-    Task CreditAsync(long userId, int amount, string reason, CancellationToken ct);
+    Task CreditAsync(long userId, long balanceScopeId, int amount, string reason, CancellationToken ct);
 
     /// Admin-only: add or subtract any amount, bypassing the non-negative guard.
-    Task AdjustUncheckedAsync(long userId, int delta, CancellationToken ct);
+    Task AdjustUncheckedAsync(long userId, long balanceScopeId, int delta, CancellationToken ct);
 }
 
 /// Modules call Track() with their moduleId + event name + tags. Host decides

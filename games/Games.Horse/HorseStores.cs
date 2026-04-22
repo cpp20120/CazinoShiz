@@ -3,7 +3,8 @@ using Dapper;
 
 namespace Games.Horse;
 
-public sealed record HorseBetRow(Guid Id, string RaceDate, long UserId, int HorseId, int Amount);
+public sealed record HorseBetRow(
+    Guid Id, string RaceDate, long UserId, long BalanceScopeId, int HorseId, int Amount);
 
 public sealed record HorseResultRow(string RaceDate, int Winner, string? FileId);
 
@@ -27,7 +28,11 @@ public sealed class HorseBetStore(INpgsqlConnectionFactory connections) : IHorse
     {
         await using var conn = await connections.OpenAsync(ct);
         var rows = await conn.QueryAsync<HorseBetRow>(new CommandDefinition(
-            "SELECT id AS Id, race_date AS RaceDate, user_id AS UserId, horse_id AS HorseId, amount AS Amount FROM horse_bets WHERE race_date = @raceDate",
+            """
+            SELECT id AS Id, race_date AS RaceDate, user_id AS UserId, balance_scope_id AS BalanceScopeId,
+                   horse_id AS HorseId, amount AS Amount
+            FROM horse_bets WHERE race_date = @raceDate
+            """,
             new { raceDate },
             cancellationToken: ct));
         return [.. rows];
@@ -37,8 +42,8 @@ public sealed class HorseBetStore(INpgsqlConnectionFactory connections) : IHorse
     {
         await using var conn = await connections.OpenAsync(ct);
         await conn.ExecuteAsync(new CommandDefinition("""
-            INSERT INTO horse_bets (id, race_date, user_id, horse_id, amount)
-            VALUES (@Id, @RaceDate, @UserId, @HorseId, @Amount)
+            INSERT INTO horse_bets (id, race_date, user_id, balance_scope_id, horse_id, amount)
+            VALUES (@Id, @RaceDate, @UserId, @BalanceScopeId, @HorseId, @Amount)
             """,
             bet,
             cancellationToken: ct));

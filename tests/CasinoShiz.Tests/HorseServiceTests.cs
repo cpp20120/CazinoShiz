@@ -7,6 +7,8 @@ namespace CasinoShiz.Tests;
 
 public class HorseServiceTests
 {
+    private const long Scope = 1000;
+
     private static HorseService MakeService(
         FakeEconomicsService? economics = null,
         InMemoryHorseBetStore? bets = null,
@@ -100,7 +102,7 @@ public class HorseServiceTests
     public async Task PlaceBetAsync_InvalidHorseId_ReturnsInvalidHorseId(int horseId)
     {
         var svc = MakeService(horseCount: 4);
-        var result = await svc.PlaceBetAsync(1, "u", horseId, 50, default);
+        var result = await svc.PlaceBetAsync(1, "u", Scope, horseId, 50, default);
         Assert.Equal(HorseError.InvalidHorseId, result.Error);
     }
 
@@ -108,7 +110,7 @@ public class HorseServiceTests
     public async Task PlaceBetAsync_ValidHorseId_BoundaryMin_Succeeds()
     {
         var svc = MakeService(horseCount: 4);
-        var result = await svc.PlaceBetAsync(1, "u", horseId: 1, 50, default);
+        var result = await svc.PlaceBetAsync(1, "u", Scope, horseId: 1, 50, default);
         Assert.Equal(HorseError.None, result.Error);
     }
 
@@ -116,7 +118,7 @@ public class HorseServiceTests
     public async Task PlaceBetAsync_ValidHorseId_BoundaryMax_Succeeds()
     {
         var svc = MakeService(horseCount: 4);
-        var result = await svc.PlaceBetAsync(1, "u", horseId: 4, 50, default);
+        var result = await svc.PlaceBetAsync(1, "u", Scope, horseId: 4, 50, default);
         Assert.Equal(HorseError.None, result.Error);
     }
 
@@ -126,7 +128,7 @@ public class HorseServiceTests
     public async Task PlaceBetAsync_InvalidAmount_ReturnsInvalidAmount(int amount)
     {
         var svc = MakeService();
-        var result = await svc.PlaceBetAsync(1, "u", horseId: 1, amount, default);
+        var result = await svc.PlaceBetAsync(1, "u", Scope, horseId: 1, amount, default);
         Assert.Equal(HorseError.InvalidAmount, result.Error);
     }
 
@@ -135,7 +137,7 @@ public class HorseServiceTests
     {
         var econ = new FakeEconomicsService { StartingBalance = 10 };
         var svc = MakeService(economics: econ);
-        var result = await svc.PlaceBetAsync(1, "u", horseId: 1, 100, default);
+        var result = await svc.PlaceBetAsync(1, "u", Scope, horseId: 1, 100, default);
         Assert.Equal(HorseError.InvalidAmount, result.Error);
     }
 
@@ -143,7 +145,7 @@ public class HorseServiceTests
     public async Task PlaceBetAsync_Success_ReturnsNoneError()
     {
         var svc = MakeService();
-        var result = await svc.PlaceBetAsync(1, "u", horseId: 2, 50, default);
+        var result = await svc.PlaceBetAsync(1, "u", Scope, horseId: 2, 50, default);
         Assert.Equal(HorseError.None, result.Error);
     }
 
@@ -152,7 +154,7 @@ public class HorseServiceTests
     {
         var econ = new FakeEconomicsService();
         var svc = MakeService(economics: econ);
-        await svc.PlaceBetAsync(1, "u", horseId: 1, 50, default);
+        await svc.PlaceBetAsync(1, "u", Scope, horseId: 1, 50, default);
         Assert.Single(econ.Debits);
         Assert.Equal(50, econ.Debits[0].Amount);
     }
@@ -162,7 +164,7 @@ public class HorseServiceTests
     {
         var econ = new FakeEconomicsService { StartingBalance = 200 };
         var svc = MakeService(economics: econ);
-        var result = await svc.PlaceBetAsync(1, "u", horseId: 1, 50, default);
+        var result = await svc.PlaceBetAsync(1, "u", Scope, horseId: 1, 50, default);
         Assert.Equal(150, result.RemainingCoins);
     }
 
@@ -170,7 +172,7 @@ public class HorseServiceTests
     public async Task PlaceBetAsync_Success_ReturnsHorseId()
     {
         var svc = MakeService();
-        var result = await svc.PlaceBetAsync(1, "u", horseId: 3, 50, default);
+        var result = await svc.PlaceBetAsync(1, "u", Scope, horseId: 3, 50, default);
         Assert.Equal(3, result.HorseId);
     }
 
@@ -184,7 +186,7 @@ public class HorseServiceTests
             Options.Create(new HorseOptions { HorseCount = 4, MinBetsToRun = 1 }),
             NullLogger<HorseService>.Instance);
 
-        await svc.PlaceBetAsync(1, "u", horseId: 1, 50, default);
+        await svc.PlaceBetAsync(1, "u", Scope, horseId: 1, 50, default);
         Assert.Single(bus.Published);
         Assert.IsType<HorseBetPlaced>(bus.Published[0]);
     }
@@ -212,8 +214,8 @@ public class HorseServiceTests
     {
         var bets = new InMemoryHorseBetStore();
         var svc = MakeService(bets: bets, horseCount: 4);
-        await svc.PlaceBetAsync(1, "u", 1, 100, default);
-        await svc.PlaceBetAsync(2, "u", 2, 50, default);
+        await svc.PlaceBetAsync(1, "u", Scope, 1, 100, default);
+        await svc.PlaceBetAsync(2, "u", Scope, 2, 50, default);
 
         var info = await svc.GetTodayInfoAsync(default);
         Assert.Equal(2, info.BetsCount);
@@ -225,8 +227,8 @@ public class HorseServiceTests
         var bets = new InMemoryHorseBetStore();
         var svc = MakeService(bets: bets, horseCount: 4);
         // Bet 300 on horse 1, 100 on horse 2 → horse 1 is favorite
-        await svc.PlaceBetAsync(1, "u", 1, 300, default);
-        await svc.PlaceBetAsync(2, "u", 2, 100, default);
+        await svc.PlaceBetAsync(1, "u", Scope, 1, 300, default);
+        await svc.PlaceBetAsync(2, "u", Scope, 2, 100, default);
 
         var info = await svc.GetTodayInfoAsync(default);
         // horseId 1 → stored as index 0; horseId 2 → stored as index 1
@@ -248,7 +250,7 @@ public class HorseServiceTests
     {
         var bets = new InMemoryHorseBetStore();
         var svc = MakeService(bets: bets, minBetsToRun: 3, admins: [1L]);
-        await svc.PlaceBetAsync(2, "u", 1, 50, default); // only 1 bet, need 3
+        await svc.PlaceBetAsync(2, "u", Scope, 1, 50, default); // only 1 bet, need 3
         var result = await svc.RunRaceAsync(callerUserId: 1, default);
         Assert.Equal(HorseError.NotEnoughBets, result.Error);
     }
@@ -260,7 +262,7 @@ public class HorseServiceTests
         var bets = new InMemoryHorseBetStore();
         var econ = new FakeEconomicsService();
         var svc = MakeService(economics: econ, bets: bets, horseCount: 1, minBetsToRun: 1, admins: [99L]);
-        await svc.PlaceBetAsync(1, "u", 1, 100, default);
+        await svc.PlaceBetAsync(1, "u", Scope, 1, 100, default);
 
         var result = await svc.RunRaceAsync(callerUserId: 99, default);
         Assert.Equal(HorseError.None, result.Error);
@@ -271,7 +273,7 @@ public class HorseServiceTests
     {
         var bets = new InMemoryHorseBetStore();
         var svc = MakeService(bets: bets, horseCount: 1, minBetsToRun: 1, admins: [99L]);
-        await svc.PlaceBetAsync(1, "u", 1, 100, default);
+        await svc.PlaceBetAsync(1, "u", Scope, 1, 100, default);
 
         var result = await svc.RunRaceAsync(callerUserId: 99, default);
         Assert.Equal(0, result.Winner);
@@ -284,7 +286,7 @@ public class HorseServiceTests
         var bets = new InMemoryHorseBetStore();
         var econ = new FakeEconomicsService();
         var svc = MakeService(economics: econ, bets: bets, horseCount: 1, minBetsToRun: 1, admins: [99L]);
-        await svc.PlaceBetAsync(1, "u", 1, 100, default);
+        await svc.PlaceBetAsync(1, "u", Scope, 1, 100, default);
 
         await svc.RunRaceAsync(callerUserId: 99, default);
 
@@ -297,7 +299,7 @@ public class HorseServiceTests
     {
         var bets = new InMemoryHorseBetStore();
         var svc = MakeService(bets: bets, horseCount: 1, minBetsToRun: 1, admins: [99L]);
-        await svc.PlaceBetAsync(1, "u", 1, 75, default);
+        await svc.PlaceBetAsync(1, "u", Scope, 1, 75, default);
 
         var result = await svc.RunRaceAsync(callerUserId: 99, default);
 
@@ -310,7 +312,7 @@ public class HorseServiceTests
     {
         var bets = new InMemoryHorseBetStore();
         var svc = MakeService(bets: bets, horseCount: 1, minBetsToRun: 1, admins: [99L]);
-        await svc.PlaceBetAsync(1, "u", 1, 50, default);
+        await svc.PlaceBetAsync(1, "u", Scope, 1, 50, default);
 
         var result = await svc.RunRaceAsync(callerUserId: 99, default);
 
@@ -324,8 +326,8 @@ public class HorseServiceTests
         var bets = new InMemoryHorseBetStore();
         var econ = new FakeEconomicsService { StartingBalance = 1_000 };
         var svc = MakeService(economics: econ, bets: bets, horseCount: 1, minBetsToRun: 1, admins: [99L]);
-        await svc.PlaceBetAsync(1, "u1", 1, 100, default);
-        await svc.PlaceBetAsync(2, "u2", 1, 200, default);
+        await svc.PlaceBetAsync(1, "u1", Scope, 1, 100, default);
+        await svc.PlaceBetAsync(2, "u2", Scope, 1, 200, default);
 
         await svc.RunRaceAsync(callerUserId: 99, default);
 
@@ -337,7 +339,7 @@ public class HorseServiceTests
     {
         var bets = new InMemoryHorseBetStore();
         var svc = MakeService(bets: bets, horseCount: 1, minBetsToRun: 1, admins: [99L]);
-        await svc.PlaceBetAsync(1, "u", 1, 50, default);
+        await svc.PlaceBetAsync(1, "u", Scope, 1, 50, default);
         await svc.RunRaceAsync(callerUserId: 99, default);
 
         // Running again should fail with NotEnoughBets since bets were deleted
@@ -351,8 +353,8 @@ public class HorseServiceTests
         var bets = new InMemoryHorseBetStore();
         var econ = new FakeEconomicsService { StartingBalance = 1_000 };
         var svc = MakeService(economics: econ, bets: bets, horseCount: 1, minBetsToRun: 1, admins: [99L]);
-        await svc.PlaceBetAsync(1, "u1", 1, 100, default);
-        await svc.PlaceBetAsync(2, "u2", 1, 50, default);
+        await svc.PlaceBetAsync(1, "u1", Scope, 1, 100, default);
+        await svc.PlaceBetAsync(2, "u2", Scope, 1, 50, default);
 
         var result = await svc.RunRaceAsync(callerUserId: 99, default);
 

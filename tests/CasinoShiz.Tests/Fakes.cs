@@ -15,44 +15,51 @@ namespace CasinoShiz.Tests;
 
 sealed class FakeEconomicsService : IEconomicsService
 {
-    private readonly Dictionary<long, int> _balances = new();
+    private readonly Dictionary<(long UserId, long ScopeId), int> _balances = new();
     public int StartingBalance { get; init; } = 1_000;
-    public List<(long UserId, int Amount, string Reason)> Debits { get; } = [];
-    public List<(long UserId, int Amount, string Reason)> Credits { get; } = [];
+    public List<(long UserId, long ScopeId, int Amount, string Reason)> Debits { get; } = [];
+    public List<(long UserId, long ScopeId, int Amount, string Reason)> Credits { get; } = [];
 
-    public int GetCurrentBalance(long userId) => _balances.GetValueOrDefault(userId, StartingBalance);
+    public int GetCurrentBalance(long userId, long balanceScopeId) =>
+        _balances.GetValueOrDefault((userId, balanceScopeId), StartingBalance);
 
-    public Task EnsureUserAsync(long userId, string displayName, CancellationToken ct) => Task.CompletedTask;
+    public Task EnsureUserAsync(long userId, long balanceScopeId, string displayName, CancellationToken ct) =>
+        Task.CompletedTask;
 
-    public Task<int> GetBalanceAsync(long userId, CancellationToken ct) =>
-        Task.FromResult(_balances.GetValueOrDefault(userId, StartingBalance));
+    public Task<int> GetBalanceAsync(long userId, long balanceScopeId, CancellationToken ct) =>
+        Task.FromResult(_balances.GetValueOrDefault((userId, balanceScopeId), StartingBalance));
 
-    public Task<bool> TryDebitAsync(long userId, int amount, string reason, CancellationToken ct)
+    public Task<bool> TryDebitAsync(
+        long userId, long balanceScopeId, int amount, string reason, CancellationToken ct)
     {
-        var bal = _balances.GetValueOrDefault(userId, StartingBalance);
+        var key = (userId, balanceScopeId);
+        var bal = _balances.GetValueOrDefault(key, StartingBalance);
         if (amount > bal) return Task.FromResult(false);
-        _balances[userId] = bal - amount;
-        Debits.Add((userId, amount, reason));
+        _balances[key] = bal - amount;
+        Debits.Add((userId, balanceScopeId, amount, reason));
         return Task.FromResult(true);
     }
 
-    public Task DebitAsync(long userId, int amount, string reason, CancellationToken ct)
+    public Task DebitAsync(long userId, long balanceScopeId, int amount, string reason, CancellationToken ct)
     {
-        _balances[userId] = _balances.GetValueOrDefault(userId, StartingBalance) - amount;
-        Debits.Add((userId, amount, reason));
+        var key = (userId, balanceScopeId);
+        _balances[key] = _balances.GetValueOrDefault(key, StartingBalance) - amount;
+        Debits.Add((userId, balanceScopeId, amount, reason));
         return Task.CompletedTask;
     }
 
-    public Task CreditAsync(long userId, int amount, string reason, CancellationToken ct)
+    public Task CreditAsync(long userId, long balanceScopeId, int amount, string reason, CancellationToken ct)
     {
-        _balances[userId] = _balances.GetValueOrDefault(userId, StartingBalance) + amount;
-        Credits.Add((userId, amount, reason));
+        var key = (userId, balanceScopeId);
+        _balances[key] = _balances.GetValueOrDefault(key, StartingBalance) + amount;
+        Credits.Add((userId, balanceScopeId, amount, reason));
         return Task.CompletedTask;
     }
 
-    public Task AdjustUncheckedAsync(long userId, int delta, CancellationToken ct)
+    public Task AdjustUncheckedAsync(long userId, long balanceScopeId, int delta, CancellationToken ct)
     {
-        _balances[userId] = _balances.GetValueOrDefault(userId, StartingBalance) + delta;
+        var key = (userId, balanceScopeId);
+        _balances[key] = _balances.GetValueOrDefault(key, StartingBalance) + delta;
         return Task.CompletedTask;
     }
 }
@@ -239,24 +246,26 @@ sealed class InMemoryHorseResultStore : IHorseResultStore
 
 sealed class InMemoryLeaderboardStore : ILeaderboardStore
 {
-    private readonly List<(long UserId, string Name, int Coins, long UpdatedAtMs)> _users = [];
+    private readonly List<(long UserId, long ScopeId, string Name, int Coins, long UpdatedAtMs)> _users = [];
 
-    public void Seed(long userId, string name, int coins, long updatedAtMs) =>
-        _users.Add((userId, name, coins, updatedAtMs));
+    public void Seed(long userId, long scopeId, string name, int coins, long updatedAtMs) =>
+        _users.Add((userId, scopeId, name, coins, updatedAtMs));
 
-    public Task<IReadOnlyList<LeaderboardUser>> ListActiveAsync(long sinceUnixMs, CancellationToken ct)
+    public Task<IReadOnlyList<LeaderboardUser>> ListActiveAsync(
+        long sinceUnixMs, long balanceScopeId, CancellationToken ct)
     {
         var active = _users
-            .Where(u => u.UpdatedAtMs >= sinceUnixMs)
+            .Where(u => u.ScopeId == balanceScopeId && u.UpdatedAtMs >= sinceUnixMs)
             .OrderByDescending(u => u.Coins)
-            .Select(u => new LeaderboardUser(u.UserId, u.Name, u.Coins, u.UpdatedAtMs))
+            .Select(u => new LeaderboardUser(u.UserId, u.ScopeId, u.Name, u.Coins, u.UpdatedAtMs))
             .ToList();
         return Task.FromResult<IReadOnlyList<LeaderboardUser>>(active);
     }
 
-    public Task<(int Coins, long UpdatedAtUnixMs)?> FindAsync(long userId, CancellationToken ct)
+    public Task<(int Coins, long UpdatedAtUnixMs)?> FindAsync(
+        long userId, long balanceScopeId, CancellationToken ct)
     {
-        var u = _users.LastOrDefault(x => x.UserId == userId);
+        var u = _users.LastOrDefault(x => x.UserId == userId && x.ScopeId == balanceScopeId);
         if (u == default) return Task.FromResult<(int, long)?>(null);
         return Task.FromResult<(int, long)?>((u.Coins, u.UpdatedAtMs));
     }
@@ -266,19 +275,18 @@ sealed class InMemoryLeaderboardStore : ILeaderboardStore
 
 sealed class InMemoryAdminStore(FakeEconomicsService? econ = null) : IAdminStore
 {
-    private readonly Dictionary<long, UserSummary> _users = new();
+    private readonly Dictionary<(long UserId, long ScopeId), UserSummary> _users = new();
     private readonly Dictionary<string, string> _overrides = new();
 
-    public void Seed(UserSummary user) => _users[user.TelegramUserId] = user;
+    public void Seed(UserSummary user) => _users[(user.TelegramUserId, user.BalanceScopeId)] = user;
 
     public Task<IReadOnlyList<UserSummary>> ListUsersAsync(CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<UserSummary>>([.. _users.Values.OrderByDescending(u => u.Coins)]);
 
-    public Task<UserSummary?> FindUserAsync(long userId, CancellationToken ct)
+    public Task<UserSummary?> FindUserAsync(long userId, long balanceScopeId, CancellationToken ct)
     {
-        if (!_users.TryGetValue(userId, out var u)) return Task.FromResult<UserSummary?>(null);
-        // Reflect latest balance from the economics service if linked
-        if (econ != null) u = u with { Coins = econ.GetCurrentBalance(userId) };
+        if (!_users.TryGetValue((userId, balanceScopeId), out var u)) return Task.FromResult<UserSummary?>(null);
+        if (econ != null) u = u with { Coins = econ.GetCurrentBalance(userId, balanceScopeId) };
         return Task.FromResult<UserSummary?>(u);
     }
 

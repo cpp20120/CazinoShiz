@@ -27,25 +27,27 @@ public sealed class UsersModel(
         await LoadAsync(ct);
     }
 
-    public async Task<IActionResult> OnPostSetAsync(long userId, int coins, CancellationToken ct)
+    public async Task<IActionResult> OnPostSetAsync(
+        long userId, long balanceScopeId, int coins, CancellationToken ct)
     {
         var actor = HttpContext.Session.GetAdminSession();
         if (actor?.Role != AdminRole.SuperAdmin)
             return StatusCode(403);
 
-        var current = await economics.GetBalanceAsync(userId, ct);
-        var delta = coins - current;
-        if (delta != 0)
-            await economics.AdjustUncheckedAsync(userId, delta, ct);
+        var current = await economics.GetBalanceAsync(userId, balanceScopeId, ct);
+        var d = coins - current;
+        if (d != 0)
+            await economics.AdjustUncheckedAsync(userId, balanceScopeId, d, ct);
 
         await audit.LogAsync(actor.UserId, actor.Name, "users.set_coins",
-            new { targetUserId = userId, coins }, ct);
+            new { targetUserId = userId, balanceScopeId, coins }, ct);
 
-        TempData["Flash"] = $"User {userId} → {coins} coins";
+        TempData["Flash"] = $"User {userId} scope {balanceScopeId} → {coins} coins";
         return RedirectToPage(new { q = Q });
     }
 
-    public async Task<IActionResult> OnPostAdjustAsync(long userId, int delta, CancellationToken ct)
+    public async Task<IActionResult> OnPostAdjustAsync(
+        long userId, long balanceScopeId, int delta, CancellationToken ct)
     {
         var actor = HttpContext.Session.GetAdminSession();
         if (actor?.Role != AdminRole.SuperAdmin)
@@ -57,13 +59,14 @@ public sealed class UsersModel(
             return RedirectToPage(new { q = Q });
         }
 
-        await economics.AdjustUncheckedAsync(userId, delta, ct);
-        var newCoins = await economics.GetBalanceAsync(userId, ct);
+        await economics.AdjustUncheckedAsync(userId, balanceScopeId, delta, ct);
+        var newCoins = await economics.GetBalanceAsync(userId, balanceScopeId, ct);
 
         await audit.LogAsync(actor.UserId, actor.Name, "users.adjust_coins",
-            new { targetUserId = userId, delta, newCoins }, ct);
+            new { targetUserId = userId, balanceScopeId, delta, newCoins }, ct);
 
-        TempData["Flash"] = $"User {userId}: {(delta > 0 ? "+" : "")}{delta} → {newCoins} coins";
+        TempData["Flash"] =
+            $"User {userId} scope {balanceScopeId}: {(delta > 0 ? "+" : "")}{delta} → {newCoins} coins";
         return RedirectToPage(new { q = Q });
     }
 
@@ -71,10 +74,12 @@ public sealed class UsersModel(
     {
         await using var conn = await connections.OpenAsync(ct);
         const string sql = """
-            SELECT telegram_user_id AS UserId, display_name AS DisplayName,
+            SELECT telegram_user_id AS UserId, balance_scope_id AS BalanceScopeId, display_name AS DisplayName,
                    coins AS Coins, created_at AS CreatedAt, updated_at AS UpdatedAt
             FROM users
-            WHERE (@q = '' OR display_name ILIKE '%' || @q || '%' OR telegram_user_id::text = @q)
+            WHERE (@q = '' OR display_name ILIKE '%' || @q || '%'
+                  OR telegram_user_id::text = @q
+                  OR balance_scope_id::text = @q)
             ORDER BY coins DESC
             LIMIT 500
             """;
@@ -86,4 +91,5 @@ public sealed class UsersModel(
     }
 }
 
-public sealed record UserRow(long UserId, string DisplayName, int Coins, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
+public sealed record UserRow(
+    long UserId, long BalanceScopeId, string DisplayName, int Coins, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);

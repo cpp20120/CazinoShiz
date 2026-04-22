@@ -72,8 +72,8 @@ public sealed partial class SecretHitlerService(
         try
         {
             var buyIn = _opts.BuyIn;
-            await economics.EnsureUserAsync(userId, displayName, ct);
-            var balance = await economics.GetBalanceAsync(userId, ct);
+            await economics.EnsureUserAsync(userId, chatId, displayName, ct);
+            var balance = await economics.GetBalanceAsync(userId, chatId, ct);
             if (balance < buyIn) return CreateFail(ShError.NotEnoughCoins);
             if (await players.AnyForUserAsync(userId, ct)) return CreateFail(ShError.AlreadyInGame);
 
@@ -103,7 +103,7 @@ public sealed partial class SecretHitlerService(
                 JoinedAt = now,
             };
 
-            if (!await economics.TryDebitAsync(userId, buyIn, "sh.create", ct))
+            if (!await economics.TryDebitAsync(userId, chatId, buyIn, "sh.create", ct))
                 return CreateFail(ShError.NotEnoughCoins);
 
             await games.InsertAsync(game, ct);
@@ -131,8 +131,8 @@ public sealed partial class SecretHitlerService(
         try
         {
             var buyIn = _opts.BuyIn;
-            await economics.EnsureUserAsync(userId, displayName, ct);
-            var balance = await economics.GetBalanceAsync(userId, ct);
+            await economics.EnsureUserAsync(userId, chatId, displayName, ct);
+            var balance = await economics.GetBalanceAsync(userId, chatId, ct);
             if (balance < buyIn) return JoinFail(ShError.NotEnoughCoins);
             if (await players.AnyForUserAsync(userId, ct)) return JoinFail(ShError.AlreadyInGame);
 
@@ -159,7 +159,7 @@ public sealed partial class SecretHitlerService(
                 IsAlive = true,
                 JoinedAt = now,
             };
-            if (!await economics.TryDebitAsync(userId, buyIn, "sh.join", ct))
+            if (!await economics.TryDebitAsync(userId, chatId, buyIn, "sh.join", ct))
                 return JoinFail(ShError.NotEnoughCoins);
 
             await players.InsertAsync(newPlayer, ct);
@@ -408,7 +408,7 @@ public sealed partial class SecretHitlerService(
 
             if (game.Status == ShStatus.Active) return LeaveFail(ShError.GameInProgress);
 
-            await economics.CreditAsync(userId, game.BuyIn, "sh.leave", ct);
+            await economics.CreditAsync(userId, me.ChatId, game.BuyIn, "sh.leave", ct);
             game.Pot = Math.Max(0, game.Pot - game.BuyIn);
 
             await players.DeleteAsync(me.InviteCode, me.Position, ct);
@@ -469,7 +469,7 @@ public sealed partial class SecretHitlerService(
         {
             var payout = share + (remainder > 0 ? 1 : 0);
             if (remainder > 0) remainder--;
-            await economics.CreditAsync(w.UserId, payout, "sh.winnings", ct);
+            await economics.CreditAsync(w.UserId, w.ChatId, payout, "sh.winnings", ct);
             payouts.Add((w.UserId, payout));
         }
         game.Pot = 0;

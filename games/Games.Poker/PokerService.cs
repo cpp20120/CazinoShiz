@@ -86,8 +86,8 @@ public sealed partial class PokerService(
         await gate.WaitAsync(ct);
         try
         {
-            await economics.EnsureUserAsync(userId, displayName, ct);
-            var balance = await economics.GetBalanceAsync(userId, ct);
+            await economics.EnsureUserAsync(userId, chatId, displayName, ct);
+            var balance = await economics.GetBalanceAsync(userId, chatId, ct);
             if (balance < _opts.BuyIn)
             {
                 LogPokerCreateNotEnoughCoins(userId, balance);
@@ -125,7 +125,7 @@ public sealed partial class PokerService(
                 JoinedAt = now,
             };
 
-            if (!await economics.TryDebitAsync(userId, _opts.BuyIn, "poker.create", ct))
+            if (!await economics.TryDebitAsync(userId, chatId, _opts.BuyIn, "poker.create", ct))
                 return Fail(PokerError.NotEnoughCoins);
 
             await tables.InsertAsync(table, ct);
@@ -152,8 +152,8 @@ public sealed partial class PokerService(
         await gate.WaitAsync(ct);
         try
         {
-            await economics.EnsureUserAsync(userId, displayName, ct);
-            var balance = await economics.GetBalanceAsync(userId, ct);
+            await economics.EnsureUserAsync(userId, chatId, displayName, ct);
+            var balance = await economics.GetBalanceAsync(userId, chatId, ct);
             if (balance < _opts.BuyIn) return JoinFail(PokerError.NotEnoughCoins);
             if (await seats.AnyForUserAsync(userId, ct)) return JoinFail(PokerError.AlreadySeated);
 
@@ -180,7 +180,7 @@ public sealed partial class PokerService(
                 ChatId = chatId,
                 JoinedAt = now,
             };
-            if (!await economics.TryDebitAsync(userId, _opts.BuyIn, "poker.join", ct))
+            if (!await economics.TryDebitAsync(userId, chatId, _opts.BuyIn, "poker.join", ct))
                 return JoinFail(PokerError.NotEnoughCoins);
             await seats.InsertAsync(seat, ct);
 
@@ -331,7 +331,7 @@ public sealed partial class PokerService(
 
             var table = await tables.FindAsync(seat.InviteCode, ct);
             if (seat.Stack > 0)
-                await economics.CreditAsync(userId, seat.Stack, "poker.leave", ct);
+                await economics.CreditAsync(userId, seat.ChatId, seat.Stack, "poker.leave", ct);
 
             if (table != null && table.Status == PokerTableStatus.HandActive && seat.Status == PokerSeatStatus.Seated)
             {
@@ -419,7 +419,7 @@ public sealed partial class PokerService(
             {
                 var showdown = transition.Showdown!.ToList();
                 foreach (var entry in showdown.Where(e => e.Won > 0))
-                    await economics.CreditAsync(entry.Seat.UserId, entry.Won, "poker.win", ct);
+                    await economics.CreditAsync(entry.Seat.UserId, entry.Seat.ChatId, entry.Won, "poker.win", ct);
 
                 string reason = transition.Kind switch
                 {

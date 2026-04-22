@@ -33,19 +33,19 @@ public sealed class DartsService(
     {
         if (amount <= 0 || amount > _maxBet) return DartsBetResult.Fail(DartsBetError.InvalidAmount);
 
-        await economics.EnsureUserAsync(userId, displayName, ct);
-        var balance = await economics.GetBalanceAsync(userId, ct);
+        await economics.EnsureUserAsync(userId, chatId, displayName, ct);
+        var balance = await economics.GetBalanceAsync(userId, chatId, ct);
         if (amount > balance) return DartsBetResult.Fail(DartsBetError.NotEnoughCoins, balance);
 
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return DartsBetResult.Fail(DartsBetError.AlreadyPending, balance, existing.Amount);
 
-        if (!await economics.TryDebitAsync(userId, amount, "darts.bet", ct))
+        if (!await economics.TryDebitAsync(userId, chatId, amount, "darts.bet", ct))
             return DartsBetResult.Fail(DartsBetError.NotEnoughCoins, balance);
 
         if (!await bets.InsertAsync(new DartsBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
         {
-            await economics.CreditAsync(userId, amount, "darts.bet.refund", ct);
+            await economics.CreditAsync(userId, chatId, amount, "darts.bet.refund", ct);
             return DartsBetResult.Fail(DartsBetError.AlreadyPending, balance);
         }
 
@@ -62,15 +62,15 @@ public sealed class DartsService(
         var bet = await bets.FindAsync(userId, chatId, ct);
         if (bet == null) return new DartsThrowResult(DartsThrowOutcome.NoBet);
 
-        await economics.EnsureUserAsync(userId, displayName, ct);
+        await economics.EnsureUserAsync(userId, chatId, displayName, ct);
         var multiplier = Multipliers.TryGetValue(face, out var m) ? m : 0;
         var payout = bet.Amount * multiplier;
 
         if (payout > 0)
-            await economics.CreditAsync(userId, payout, "darts.payout", ct);
+            await economics.CreditAsync(userId, chatId, payout, "darts.payout", ct);
 
         await bets.DeleteAsync(userId, chatId, ct);
-        var balance = await economics.GetBalanceAsync(userId, ct);
+        var balance = await economics.GetBalanceAsync(userId, chatId, ct);
 
         analytics.Track("darts", "throw", new Dictionary<string, object?>
         {

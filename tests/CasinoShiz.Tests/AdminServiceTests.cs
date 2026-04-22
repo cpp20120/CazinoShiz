@@ -15,8 +15,10 @@ public class AdminServiceTests
             new NullAnalyticsService(),
             NullLogger<AdminService>.Instance);
 
+    private const long TestScope = 200;
+
     private static UserSummary MakeUser(long id, string name = "TestUser", int coins = 500) =>
-        new(id, name, coins, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        new(id, TestScope, name, coins, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
 
     // ── UserSyncAsync ────────────────────────────────────────────────────────
 
@@ -52,7 +54,7 @@ public class AdminServiceTests
         store.Seed(MakeUser(10, coins: 500));
         var svc = MakeService(store, econ);
 
-        await svc.PayAsync(99, targetUserId: 10, amount: 200, default);
+        await svc.PayAsync(99, targetUserId: 10, TestScope, amount: 200, default);
 
         Assert.Single(econ.Credits);
         Assert.Equal(200, econ.Credits[0].Amount);
@@ -66,7 +68,7 @@ public class AdminServiceTests
         store.Seed(MakeUser(10, coins: 500));
         var svc = MakeService(store, econ);
 
-        await svc.PayAsync(99, targetUserId: 10, amount: -100, default);
+        await svc.PayAsync(99, targetUserId: 10, TestScope, amount: -100, default);
 
         Assert.Single(econ.Debits);
         Assert.Equal(100, econ.Debits[0].Amount);
@@ -80,7 +82,7 @@ public class AdminServiceTests
         store.Seed(MakeUser(10, "Alice", coins: 500));
         var svc = MakeService(store, econ);
 
-        var result = await svc.PayAsync(99, 10, 100, default);
+        var result = await svc.PayAsync(99, 10, TestScope, 100, default);
 
         Assert.NotNull(result);
         Assert.Equal("Alice", result!.DisplayName);
@@ -97,7 +99,7 @@ public class AdminServiceTests
         store.Seed(MakeUser(10, "Bob", coins: 500));
         var svc = MakeService(store, econ);
 
-        var result = await svc.PayAsync(99, 10, -200, default);
+        var result = await svc.PayAsync(99, 10, TestScope, -200, default);
 
         Assert.NotNull(result);
         Assert.Equal(500, result!.OldCoins);
@@ -112,7 +114,7 @@ public class AdminServiceTests
         // No user seeded — after credit the store still has nothing, so PayAsync returns null
         var svc = MakeService(store, econ);
 
-        var result = await svc.PayAsync(99, targetUserId: 77, amount: 50, default);
+        var result = await svc.PayAsync(99, targetUserId: 77, TestScope, amount: 50, default);
 
         // Credits still happen even if store returns null after
         Assert.Single(econ.Credits);
@@ -127,10 +129,9 @@ public class AdminServiceTests
         store.Seed(MakeUser(10, coins: 500));
         var svc = MakeService(store, econ);
 
-        await svc.PayAsync(99, 10, 0, default);
+        await svc.PayAsync(99, 10, TestScope, 0, default);
 
-        Assert.Single(econ.Credits); // 0 amount credit goes through (amount >= 0 branch)
-        Assert.Equal(0, econ.Credits[0].Amount);
+        Assert.Empty(econ.Credits);
     }
 
     // ── GetUserAsync ──────────────────────────────────────────────────────────
@@ -142,7 +143,7 @@ public class AdminServiceTests
         store.Seed(MakeUser(5, "Charlie", 800));
         var svc = MakeService(store);
 
-        var user = await svc.GetUserAsync(5, default);
+        var user = await svc.GetUserAsync(5, TestScope, default);
 
         Assert.NotNull(user);
         Assert.Equal("Charlie", user!.DisplayName);
@@ -153,7 +154,7 @@ public class AdminServiceTests
     public async Task GetUserAsync_NonExistentUser_ReturnsNull()
     {
         var svc = MakeService();
-        var user = await svc.GetUserAsync(999, default);
+        var user = await svc.GetUserAsync(999, TestScope, default);
         Assert.Null(user);
     }
 
