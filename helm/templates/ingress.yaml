@@ -3,6 +3,8 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "casinoshiz.fullname" . }}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
   labels:
     {{- include "casinoshiz.labels" . | nindent 4 }}
 spec:

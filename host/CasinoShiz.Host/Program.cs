@@ -24,6 +24,7 @@ using Games.Leaderboard;
 using Games.Poker;
 using Games.Redeem;
 using Games.SecretHitler;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -42,6 +43,18 @@ builder.AddBotFramework()
     .AddModule<RedeemModule>()
     .AddModule<LeaderboardModule>()
     .AddModule<AdminModule>();
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor |
+        ForwardedHeaders.XForwardedProto;
+
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+    
+});
+
 
 var app = builder.Build();
 

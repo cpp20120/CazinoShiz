@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/casinoshiz
+  IMAGE: ghcr.io/cpp20120/casinoshiz
 
 jobs:
   build-push:
