@@ -14,4 +14,9 @@ public sealed class HorseGifCache
     public byte[]? Get(string raceDate) => _byDate.TryGetValue(raceDate, out var v) ? v : null;
 
     public IEnumerable<string> Dates => _byDate.Keys;
+    
+    public async Task<byte[]?> GetAsync(string raceDate, CancellationToken ct = default)
+    {
+        return await Task.FromResult(Get(raceDate));
+    }
 }

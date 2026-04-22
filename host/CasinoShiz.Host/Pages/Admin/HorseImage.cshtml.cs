@@ -11,7 +11,7 @@ public sealed class HorseImageModel(HorseGifCache gifCache) : PageModel
 
         if (kind == "gif")
         {
-            var bytes = gifCache.Get(date);
+            var bytes = await gifCache.GetAsync(date, ct);
             if (bytes is null) return NotFound();
             return File(bytes, "image/gif");
         }
