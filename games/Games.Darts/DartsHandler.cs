@@ -159,7 +159,10 @@ public sealed partial class DartsHandler(
         }
         finally
         {
-            BotMiniGameDiceOwner.Unbind(chatId, msg.MessageId);
+            if (msg.From is { IsBot: true })
+                BotMiniGameDiceOwner.MarkCompleted(chatId, msg.MessageId);
+            else
+                BotMiniGameDiceOwner.Unbind(chatId, msg.MessageId);
             DartsDiceRoundBinding.Unbind(chatId, msg.MessageId);
         }
     }

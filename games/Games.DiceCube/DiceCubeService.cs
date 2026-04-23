@@ -34,7 +34,8 @@ public sealed class DiceCubeService(
     IDiceCubeBetStore bets,
     IDomainEventBus events,
     IMemoryCache cache,
-    IOptions<DiceCubeOptions> options) : IDiceCubeService
+    IOptions<DiceCubeOptions> options,
+    IMiniGameSessionGhostHeal ghostHeal) : IDiceCubeService
 {
     private readonly DiceCubeOptions _opt = options.Value;
     private readonly int _maxBet = options.Value.MaxBet;
@@ -71,11 +72,19 @@ public sealed class DiceCubeService(
             }
         }
 
-        if (await bets.FindAsync(userId, chatId, ct) == null)
-            BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.DiceCube);
-
-        if (!BotMiniGameSession.TryBeginPlaceBet(userId, chatId, MiniGameIds.DiceCube, out var blocker))
-            return new CubeBetResult(CubeBetError.BusyOtherGame, 0, balance, 0, 0, blocker);
+        var session = await BotMiniGamePlaceBetSession.TryBeginWithGhostHealAsync(
+            userId,
+            chatId,
+            MiniGameIds.DiceCube,
+            async c =>
+            {
+                if (await bets.FindAsync(userId, chatId, c) == null)
+                    BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.DiceCube);
+            },
+            ghostHeal,
+            ct);
+        if (!session.Ok)
+            return new CubeBetResult(CubeBetError.BusyOtherGame, 0, balance, 0, 0, session.Blocker);
 
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return CubeBetResult.Fail(CubeBetError.AlreadyPending, balance, existing.Amount);

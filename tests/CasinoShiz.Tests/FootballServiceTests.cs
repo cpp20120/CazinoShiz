@@ -12,13 +12,15 @@ public class FootballServiceTests
 
     private static FootballService MakeService(
         FakeEconomicsService? economics = null,
-        InMemoryFootballBetStore? bets = null) =>
+        InMemoryFootballBetStore? bets = null,
+        IMiniGameSessionGhostHeal? ghostHeal = null) =>
         new(
             economics ?? new FakeEconomicsService(),
             new NullAnalyticsService(),
             bets ?? new InMemoryFootballBetStore(),
             new NullEventBus(),
-            Options.Create(new FootballOptions()));
+            Options.Create(new FootballOptions()),
+            ghostHeal ?? new NullMiniGameSessionGhostHeal());
 
     [Theory]
     [InlineData(1, 0)]
@@ -93,7 +95,8 @@ public class FootballServiceTests
     {
         var bus = new NullEventBus();
         var bets = new InMemoryFootballBetStore();
-        var svc = new FootballService(new FakeEconomicsService(), new NullAnalyticsService(), bets, bus, Options.Create(new FootballOptions()));
+        var svc = new FootballService(new FakeEconomicsService(), new NullAnalyticsService(), bets, bus,
+            Options.Create(new FootballOptions()), new NullMiniGameSessionGhostHeal());
         await svc.PlaceBetAsync(1, "u", 100, 50, default);
         await svc.ThrowAsync(1, "u", 100, 4, default);
         Assert.Single(bus.Published);

@@ -22,7 +22,8 @@ public sealed class BowlingService(
     IAnalyticsService analytics,
     IBowlingBetStore bets,
     IDomainEventBus events,
-    IOptions<BowlingOptions> options) : IBowlingService
+    IOptions<BowlingOptions> options,
+    IMiniGameSessionGhostHeal ghostHeal) : IBowlingService
 {
     private readonly int _maxBet = options.Value.MaxBet;
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
@@ -38,8 +39,19 @@ public sealed class BowlingService(
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
         if (amount > balance) return BowlingBetResult.Fail(BowlingBetError.NotEnoughCoins, balance);
 
-        if (!BotMiniGameSession.TryBeginPlaceBet(userId, chatId, MiniGameIds.Bowling, out var blocker))
-            return new BowlingBetResult(BowlingBetError.BusyOtherGame, 0, balance, 0, blocker);
+        var session = await BotMiniGamePlaceBetSession.TryBeginWithGhostHealAsync(
+            userId,
+            chatId,
+            MiniGameIds.Bowling,
+            async c =>
+            {
+                if (await bets.FindAsync(userId, chatId, c) == null)
+                    BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Bowling);
+            },
+            ghostHeal,
+            ct);
+        if (!session.Ok)
+            return new BowlingBetResult(BowlingBetError.BusyOtherGame, 0, balance, 0, session.Blocker);
 
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return BowlingBetResult.Fail(BowlingBetError.AlreadyPending, balance, existing.Amount);

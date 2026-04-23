@@ -22,14 +22,16 @@ public class DiceCubeServiceTests
         FakeEconomicsService? economics = null,
         InMemoryDiceCubeBetStore? bets = null,
         IMemoryCache? cache = null,
-        DiceCubeOptions? o = null) =>
+        DiceCubeOptions? o = null,
+        IMiniGameSessionGhostHeal? ghostHeal = null) =>
         new(
             economics ?? new FakeEconomicsService(),
             new NullAnalyticsService(),
             bets ?? new InMemoryDiceCubeBetStore(),
             new NullEventBus(),
             cache ?? NewCache(),
-            Options.Create(o ?? new DiceCubeOptions()));
+            Options.Create(o ?? new DiceCubeOptions()),
+            ghostHeal ?? new NullMiniGameSessionGhostHeal());
 
     [Fact]
     public async Task PlaceBetAsync_PendingOtherMiniGame_ReturnsBusyOtherGame()
@@ -39,7 +41,7 @@ public class DiceCubeServiceTests
             new FakeEconomicsService(),
             new NullAnalyticsService(),
             new InMemoryDartsRoundStore(),
-            new InMemoryDiceCubeBetStore(),
+            new NullMiniGameSessionGhostHeal(),
             new NullEventBus(),
             new DartsRollQueue(),
             Options.Create(new DartsOptions()));
@@ -59,7 +61,7 @@ public class DiceCubeServiceTests
             econ,
             new NullAnalyticsService(),
             dRounds,
-            new InMemoryDiceCubeBetStore(),
+            new NullMiniGameSessionGhostHeal(),
             new NullEventBus(),
             new DartsRollQueue(),
             Options.Create(new DartsOptions()));
@@ -319,7 +321,8 @@ public class DiceCubeServiceTests
     {
         var bus = new NullEventBus();
         var bets = new InMemoryDiceCubeBetStore();
-        var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(), bets, bus, NewCache(), Options.Create(new DiceCubeOptions()));
+        var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(), bets, bus, NewCache(),
+            Options.Create(new DiceCubeOptions()), new NullMiniGameSessionGhostHeal());
         await svc.PlaceBetAsync(1, "u", 100, 50, default);
         await svc.RollAsync(1, "u", 100, 4, default);
         Assert.Single(bus.Published);

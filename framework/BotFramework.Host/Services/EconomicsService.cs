@@ -106,8 +106,13 @@ public sealed partial class EconomicsService(
     public async Task<LedgerRevertResult> RevertLedgerEntryAsync(long economicsLedgerId, CancellationToken ct)
     {
         const string select = """
-            SELECT id, telegram_user_id, balance_scope_id, delta, reason
-            FROM economics_ledger WHERE id = @id
+            SELECT id AS Id,
+                   telegram_user_id AS TelegramUserId,
+                   balance_scope_id AS BalanceScopeId,
+                   delta AS Delta,
+                   reason AS Reason
+            FROM economics_ledger
+            WHERE id = @id
             """;
         var revReason = $"ledger.revert#{economicsLedgerId}";
         await using var conn = await connections.OpenAsync(ct);

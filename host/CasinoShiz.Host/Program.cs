@@ -11,7 +11,9 @@
 // leaks here — modules own their own ConfigureServices.
 // ─────────────────────────────────────────────────────────────────────────────
 
+using CasinoShiz.Host;
 using BotFramework.Host.Composition;
+using BotFramework.Sdk;
 using Games.Admin;
 using Games.Basketball;
 using Games.Blackjack;
@@ -31,6 +33,7 @@ using Microsoft.AspNetCore.Builder;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSingleton<CasinoShiz.Host.Pages.Admin.HorseGifCache>();
+builder.Services.AddScoped<IMiniGameSessionGhostHeal, MiniGameSessionGhostHeal>();
 
 builder.AddBotFramework()
     .AddModule<DiceModule>()

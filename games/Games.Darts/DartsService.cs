@@ -6,7 +6,6 @@
 
 using BotFramework.Host;
 using BotFramework.Sdk;
-using Games.DiceCube;
 using Microsoft.Extensions.Options;
 
 namespace Games.Darts;
@@ -25,7 +24,7 @@ public sealed class DartsService(
     IEconomicsService economics,
     IAnalyticsService analytics,
     IDartsRoundStore rounds,
-    IDiceCubeBetStore diceCubeBets,
+    IMiniGameSessionGhostHeal ghostHeal,
     IDomainEventBus events,
     IDartsRollQueue rollQueue,
     IOptions<DartsOptions> options) : IDartsService
@@ -45,18 +44,19 @@ public sealed class DartsService(
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
         if (amount > balance) return DartsBetResult.Fail(DartsBetError.NotEnoughCoins, balance);
 
-        if (!BotMiniGameSession.TryBeginPlaceBet(userId, chatId, MiniGameIds.Darts, out var blocker))
-        {
-            if (blocker == MiniGameIds.DiceCube
-                && await diceCubeBets.FindAsync(userId, chatId, ct) == null)
+        var session = await BotMiniGamePlaceBetSession.TryBeginWithGhostHealAsync(
+            userId,
+            chatId,
+            MiniGameIds.Darts,
+            async c =>
             {
-                BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.DiceCube);
-                if (!BotMiniGameSession.TryBeginPlaceBet(userId, chatId, MiniGameIds.Darts, out blocker))
-                    return new DartsBetResult(DartsBetError.BusyOtherGame, 0, balance, 0, blocker);
-            }
-            else
-                return new DartsBetResult(DartsBetError.BusyOtherGame, 0, balance, 0, blocker);
-        }
+                if (await rounds.CountActiveByUserChatAsync(userId, chatId, c) == 0)
+                    BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Darts);
+            },
+            ghostHeal,
+            ct);
+        if (!session.Ok)
+            return new DartsBetResult(DartsBetError.BusyOtherGame, 0, balance, 0, session.Blocker);
 
         if (!await economics.TryDebitAsync(userId, chatId, amount, "darts.bet", ct))
             return DartsBetResult.Fail(DartsBetError.NotEnoughCoins, balance);

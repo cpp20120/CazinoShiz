@@ -21,14 +21,14 @@ public class DartsServiceTests
     private static DartsService MakeService(
         FakeEconomicsService? economics = null,
         InMemoryDartsRoundStore? rounds = null,
-        IDiceCubeBetStore? diceCube = null,
+        IMiniGameSessionGhostHeal? ghostHeal = null,
         IDartsRollQueue? queue = null,
         NullEventBus? bus = null) =>
         new(
             economics ?? new FakeEconomicsService(),
             new NullAnalyticsService(),
             rounds ?? new InMemoryDartsRoundStore(),
-            diceCube ?? new InMemoryDiceCubeBetStore(),
+            ghostHeal ?? new NullMiniGameSessionGhostHeal(),
             bus ?? new NullEventBus(),
             queue ?? new DartsRollQueue(),
             Options.Create(new DartsOptions()));
@@ -45,7 +45,8 @@ public class DartsServiceTests
     {
         BotMiniGameSession.RegisterPlacedBet(1, 100, MiniGameIds.DiceCube);
         var diceStore = new InMemoryDiceCubeBetStore();
-        var svc = MakeService(diceCube: diceStore);
+        var heal = new LocalMiniGameSessionGhostHeal(diceCube: diceStore);
+        var svc = MakeService(ghostHeal: heal);
         var result = await svc.PlaceBetAsync(1, "u", 100, 10, CmdMsg, default);
         Assert.Equal(DartsBetError.None, result.Error);
     }

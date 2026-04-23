@@ -12,6 +12,7 @@ namespace BotFramework.Sdk;
 public static class BotMiniGameDiceOwner
 {
     private static readonly ConcurrentDictionary<(long ChatId, int MessageId), Entry> Map = new();
+    private static readonly ConcurrentDictionary<(long ChatId, int MessageId), long> Completed = new();
 
     private sealed record Entry(long UserId, string DisplayName, long UntilTicks);
 
@@ -22,9 +23,23 @@ public static class BotMiniGameDiceOwner
     public static void Unbind(long chatId, int messageId) =>
         Map.TryRemove((chatId, messageId), out _);
 
+    /// <summary>Ignore later duplicate/edited updates for a bot dice we already settled.</summary>
+    public static void MarkCompleted(long chatId, int messageId)
+    {
+        Unbind(chatId, messageId);
+        Completed[(chatId, messageId)] = Environment.TickCount64 + 120_000;
+    }
+
     /// <summary>Same as <see cref="MiniGameDicePlayer.TryResolvePlayer"/> plus bound bot dice.</summary>
     public static bool TryResolveDicePlayer(Message diceMessage, out long userId, out string displayName)
     {
+        if (diceMessage.From is { IsBot: true } && IsCompleted(diceMessage.Chat.Id, diceMessage.MessageId))
+        {
+            userId = 0;
+            displayName = "";
+            return false;
+        }
+
         if (MiniGameDicePlayer.TryResolvePlayer(diceMessage, out userId, out displayName))
             return true;
 
@@ -48,6 +63,19 @@ public static class BotMiniGameDiceOwner
 
         userId = row.UserId;
         displayName = row.DisplayName;
+        return true;
+    }
+
+    private static bool IsCompleted(long chatId, int messageId)
+    {
+        if (!Completed.TryGetValue((chatId, messageId), out var untilTicks))
+            return false;
+        if (Environment.TickCount64 > untilTicks)
+        {
+            Completed.TryRemove((chatId, messageId), out _);
+            return false;
+        }
+
         return true;
     }
 }

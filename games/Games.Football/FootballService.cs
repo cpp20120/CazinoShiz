@@ -20,7 +20,8 @@ public sealed class FootballService(
     IAnalyticsService analytics,
     IFootballBetStore bets,
     IDomainEventBus events,
-    IOptions<FootballOptions> options) : IFootballService
+    IOptions<FootballOptions> options,
+    IMiniGameSessionGhostHeal ghostHeal) : IFootballService
 {
     private readonly int _maxBet = options.Value.MaxBet;
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
@@ -36,8 +37,19 @@ public sealed class FootballService(
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
         if (amount > balance) return FootballBetResult.Fail(FootballBetError.NotEnoughCoins, balance);
 
-        if (!BotMiniGameSession.TryBeginPlaceBet(userId, chatId, MiniGameIds.Football, out var blocker))
-            return new FootballBetResult(FootballBetError.BusyOtherGame, 0, balance, 0, blocker);
+        var session = await BotMiniGamePlaceBetSession.TryBeginWithGhostHealAsync(
+            userId,
+            chatId,
+            MiniGameIds.Football,
+            async c =>
+            {
+                if (await bets.FindAsync(userId, chatId, c) == null)
+                    BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Football);
+            },
+            ghostHeal,
+            ct);
+        if (!session.Ok)
+            return new FootballBetResult(FootballBetError.BusyOtherGame, 0, balance, 0, session.Blocker);
 
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return FootballBetResult.Fail(FootballBetError.AlreadyPending, balance, existing.Amount);

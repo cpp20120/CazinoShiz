@@ -134,7 +134,13 @@ public sealed partial class DiceCubeHandler(
             {
                 var diceSent = await ctx.Bot.SendDice(chatId, emoji: DiceEmoji, replyParameters: reply,
                     cancellationToken: ctx.Ct);
-                BotMiniGameDiceOwner.Bind(chatId, diceSent.MessageId, userId, displayName);
+                if (diceSent.Dice is { Value: > 0 })
+                {
+                    var diceReply = new ReplyParameters { MessageId = diceSent.MessageId };
+                    await HandleRollAsync(ctx, diceSent, userId, displayName, chatId, diceReply);
+                }
+                else
+                    BotMiniGameDiceOwner.Bind(chatId, diceSent.MessageId, userId, displayName);
             }
             catch (Exception ex)
             {
@@ -184,7 +190,10 @@ public sealed partial class DiceCubeHandler(
         finally
         {
             BotMiniGameRollGate.Clear(RollGateId, userId, chatId);
-            BotMiniGameDiceOwner.Unbind(chatId, msg.MessageId);
+            if (msg.From is { IsBot: true })
+                BotMiniGameDiceOwner.MarkCompleted(chatId, msg.MessageId);
+            else
+                BotMiniGameDiceOwner.Unbind(chatId, msg.MessageId);
         }
     }
 
