@@ -206,6 +206,8 @@ public static class BotFrameworkBuilderExtensions
 
         // Cross-cutting services every module shares.
         services.AddSingleton<IEconomicsService, EconomicsService>();
+        services.Configure<DailyBonusOptions>(configuration.GetSection(DailyBonusOptions.SectionName));
+        services.AddSingleton<IDailyBonusService, DailyBonusService>();
 
         services.Configure<ClickHouseOptions>(configuration.GetSection(ClickHouseOptions.SectionName));
         services.AddSingleton<ClickHouseAnalyticsService>();

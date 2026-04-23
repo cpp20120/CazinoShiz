@@ -50,6 +50,29 @@ public interface IEconomicsService
     Task<LedgerRevertResult> RevertLedgerEntryAsync(long economicsLedgerId, CancellationToken ct);
 }
 
+public enum DailyBonusClaimStatus
+{
+    Claimed,
+    AlreadyClaimedToday,
+    Disabled,
+    /// <summary>Balance 0; day not recorded — user can claim after earning coins the same day.</summary>
+    IneligibleEmptyBalance,
+    /// <summary>Percent × balance rounded down to 0; day not recorded.</summary>
+    IneligiblePercentRoundsToZero,
+}
+
+public readonly record struct DailyBonusClaimResult(
+    DailyBonusClaimStatus Status,
+    int BonusCoins = 0,
+    int NewBalance = 0);
+
+/// <summary>Once per configured local day: credit <see cref="DailyBonusOptions.PercentOfBalance"/> of balance (capped), minimal "bonus" not a prize.</summary>
+public interface IDailyBonusService
+{
+    Task<DailyBonusClaimResult> TryClaimAsync(
+        long userId, long balanceScopeId, string displayName, CancellationToken ct);
+}
+
 public enum LedgerRevertStatus
 {
     Ok,

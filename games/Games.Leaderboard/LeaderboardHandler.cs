@@ -8,10 +8,12 @@ namespace Games.Leaderboard;
 
 [Command("/top")]
 [Command("/balance")]
+[Command("/daily")]
 [Command("/help")]
 [Command("/__debug")]
 public sealed class LeaderboardHandler(
     ILeaderboardService service,
+    IDailyBonusService dailyBonus,
     ILocalizer localizer) : IUpdateHandler
 {
     public async Task HandleAsync(UpdateContext ctx)
@@ -27,6 +29,8 @@ public sealed class LeaderboardHandler(
             await HandleTopAsync(ctx, msg);
         else if (msg.Text.StartsWith("/balance"))
             await HandleBalanceAsync(ctx, msg);
+        else if (msg.Text.StartsWith("/daily"))
+            await HandleDailyAsync(ctx, msg);
     }
 
     private Task HandleDebugAsync(UpdateContext ctx, Message msg) =>
@@ -83,6 +87,29 @@ public sealed class LeaderboardHandler(
         var text = bal.Visible
             ? string.Format(Loc("balance.visible"), bal.Coins)
             : string.Format(Loc("balance.hidden"), bal.Coins);
+
+        await ctx.Bot.SendMessage(msg.Chat.Id, text,
+            parseMode: ParseMode.Html,
+            replyParameters: new ReplyParameters { MessageId = msg.MessageId },
+            cancellationToken: ctx.Ct);
+    }
+
+    private async Task HandleDailyAsync(UpdateContext ctx, Message msg)
+    {
+        var userId = msg.From?.Id ?? 0;
+        if (userId == 0) return;
+        var displayName = msg.From?.Username ?? msg.From?.FirstName ?? $"User ID: {userId}";
+
+        var r = await dailyBonus.TryClaimAsync(userId, msg.Chat.Id, displayName, ctx.Ct);
+        var text = r.Status switch
+        {
+            DailyBonusClaimStatus.Claimed => string.Format(Loc("daily.claimed"), r.BonusCoins, r.NewBalance),
+            DailyBonusClaimStatus.AlreadyClaimedToday => Loc("daily.already"),
+            DailyBonusClaimStatus.Disabled => Loc("daily.disabled"),
+            DailyBonusClaimStatus.IneligibleEmptyBalance => Loc("daily.empty_balance"),
+            DailyBonusClaimStatus.IneligiblePercentRoundsToZero => Loc("daily.too_small"),
+            _ => Loc("daily.disabled"),
+        };
 
         await ctx.Bot.SendMessage(msg.Chat.Id, text,
             parseMode: ParseMode.Html,

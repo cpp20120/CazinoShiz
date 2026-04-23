@@ -135,5 +135,10 @@ internal sealed class FrameworkMigrations : IModuleMigrations
             GROUP BY u.balance_scope_id
             ON CONFLICT (chat_id) DO NOTHING;
             """),
+
+        new Migration("008_users_last_daily_bonus", """
+            ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS last_daily_bonus_on DATE;
+            """),
     ];
 }

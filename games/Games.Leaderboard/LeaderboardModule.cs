@@ -21,6 +21,7 @@ public sealed class LeaderboardModule : IModule
     [
         new BotCommand("/top", "leaderboard.cmd.top"),
         new BotCommand("/balance", "leaderboard.cmd.balance"),
+        new BotCommand("/daily", "leaderboard.cmd.daily"),
         new BotCommand("/help", "leaderboard.cmd.help"),
     ];
 
@@ -31,6 +32,7 @@ public sealed class LeaderboardModule : IModule
             ["display_name"] = "Топ",
             ["cmd.top"] = "Топ игроков",
             ["cmd.balance"] = "Мой баланс",
+            ["cmd.daily"] = "Ежедневный бонус (малый % от баланса)",
             ["cmd.help"] = "Помощь",
 
             ["top.header"] = "🏆 <b>Топ игроков</b>",
@@ -41,9 +43,16 @@ public sealed class LeaderboardModule : IModule
             ["balance.visible"] = "💰 Твой баланс: <b>{0}</b>",
             ["balance.hidden"] = "💰 Твой баланс: <b>{0}</b>\n<i>Ты скрыт из топа из-за неактивности.</i>",
 
+            ["daily.claimed"] = "🎁 Ежедневный бонус: <b>+{0}</b> монет (крошка от баланса, с потолком). Баланс: <b>{1}</b>.",
+            ["daily.already"] = "Сегодня бонус уже получен. Загляни завтра!",
+            ["daily.disabled"] = "Ежедневный бонус выключен.",
+            ["daily.empty_balance"] = "С нулевого баланса бонус не начислится — сначала поиграй.",
+            ["daily.too_small"] = "Мало, чтобы сделать хоть 1 монету (подними баланс). Можно снова написать /daily сегодня — попытка не сожгла день.",
+
             ["help"] = "🎰 <b>CasinoShiz</b>\n\n"
                 + "/top — таблица лидеров\n"
                 + "/balance — твой баланс\n"
+                + "/daily — маленький ежедневный бонус (процент с потолком)\n"
                 + "/redeem <i>код</i> — активировать код\n\n"
                 + "Игры: /sh · /poker · /blackjack · /horse · /dicecube · /darts · /football · /basketball · /bowling\n"
                 + "Слоты: отправь 🎰 в чат\n\n"
