@@ -1,7 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // DartsService — place a dart bet, resolve on 🎯 throw.
-// Payout table: 4→x2, 5→x3, 6 (bullseye)→x6. Mirrors DiceCube's shape but with
-// a sharper reward curve on the bullseye.
+// Payout: 4→x1, 5→x2, 6 (bullseye)→x2. Uniform d6 ⇒ EV 5/6 of stake (house +EV).
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
@@ -26,7 +25,7 @@ public sealed class DartsService(
     private readonly int _maxBet = options.Value.MaxBet;
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
-        [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 3, [6] = 6,
+        [1] = 0, [2] = 0, [3] = 0, [4] = 1, [5] = 2, [6] = 2,
     };
 
     public async Task<DartsBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)

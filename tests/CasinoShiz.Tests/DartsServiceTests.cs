@@ -1,3 +1,4 @@
+using Games.DiceCube;
 using Games.Darts;
 using Microsoft.Extensions.Options;
 using Xunit;
@@ -129,9 +130,9 @@ public class DartsServiceTests
     [InlineData(1, 0)]
     [InlineData(2, 0)]
     [InlineData(3, 0)]
-    [InlineData(4, 2)]
-    [InlineData(5, 3)]
-    [InlineData(6, 6)]
+    [InlineData(4, 1)]
+    [InlineData(5, 2)]
+    [InlineData(6, 2)]
     public async Task ThrowAsync_ReturnsCorrectMultiplier(int face, int expectedMultiplier)
     {
         var bets = new InMemoryDartsBetStore();
@@ -145,9 +146,9 @@ public class DartsServiceTests
     [InlineData(1, 0)]
     [InlineData(2, 0)]
     [InlineData(3, 0)]
-    [InlineData(4, 100)]
-    [InlineData(5, 150)]
-    [InlineData(6, 300)]
+    [InlineData(4, 50)]
+    [InlineData(5, 100)]
+    [InlineData(6, 100)]
     public async Task ThrowAsync_ReturnsCorrectPayout(int face, int expectedPayout)
     {
         var bets = new InMemoryDartsBetStore();
@@ -158,10 +159,11 @@ public class DartsServiceTests
     }
 
     [Fact]
-    public async Task ThrowAsync_Bullseye_Pays6x_NotSameAsDiceCube()
+    public void DartsBullseye_DiceCube_Face6_SameDefaultMultiplier()
     {
-        // Darts bullseye (face 6) pays 6x; DiceCube face 6 pays 3x (configurable)
-        Assert.Equal(6, DartsService.Multipliers[6]);
+        var d = DartsService.Multipliers[6];
+        var c = DiceCubeService.BuildMultipliers(new DiceCubeOptions())[6];
+        Assert.Equal(c, d);
     }
 
     [Theory]

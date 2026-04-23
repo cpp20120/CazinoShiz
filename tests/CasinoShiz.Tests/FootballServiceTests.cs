@@ -21,7 +21,7 @@ public class FootballServiceTests
     [InlineData(2, 0)]
     [InlineData(3, 0)]
     [InlineData(4, 2)]
-    [InlineData(5, 3)]
+    [InlineData(5, 2)]
     public async Task ThrowAsync_ReturnsCorrectMultiplier(int face, int expectedMultiplier)
     {
         var bets = new InMemoryFootballBetStore();
@@ -36,7 +36,7 @@ public class FootballServiceTests
     [InlineData(2, 0)]
     [InlineData(3, 0)]
     [InlineData(4, 100)]
-    [InlineData(5, 150)]
+    [InlineData(5, 100)]
     public async Task ThrowAsync_ReturnsCorrectPayout(int face, int expectedPayout)
     {
         var bets = new InMemoryFootballBetStore();

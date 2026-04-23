@@ -137,7 +137,7 @@ public class DiceCubeServiceTests
     [InlineData(3, 0)]
     [InlineData(4, 1)]
     [InlineData(5, 2)]
-    [InlineData(6, 3)]
+    [InlineData(6, 2)]
     public async Task RollAsync_ReturnsCorrectMultiplier(int face, int expectedMultiplier)
     {
         var bets = new InMemoryDiceCubeBetStore();
@@ -153,7 +153,7 @@ public class DiceCubeServiceTests
     [InlineData(3, 0)]
     [InlineData(4, 50)]
     [InlineData(5, 100)]
-    [InlineData(6, 150)]
+    [InlineData(6, 100)]
     public async Task RollAsync_ReturnsCorrectPayout(int face, int expectedPayout)
     {
         var bets = new InMemoryDiceCubeBetStore();
@@ -264,10 +264,10 @@ public class DiceCubeServiceTests
     }
 
     [Fact]
-    public void BuildMultipliers_Default_Face6_Is3()
+    public void BuildMultipliers_Default_Face6_Is2()
     {
         var m = DiceCubeService.BuildMultipliers(new DiceCubeOptions());
-        Assert.Equal(3, m[6]);
+        Assert.Equal(2, m[6]);
     }
 
     [Fact]

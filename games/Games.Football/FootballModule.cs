@@ -32,7 +32,7 @@ public sealed class FootballModule : IModule
             ["cmd.football"] = "Поставить на футбол (⚽)",
             ["usage"] = "Используй: <code>/football bet &lt;сумма&gt;</code>, затем кинь мяч ⚽",
             ["bet.usage"] = "Укажи ставку: <code>/football bet 50</code>",
-            ["bet.accepted"] = "Ставка {0} принята. Теперь кинь мяч ⚽\nВыплаты: 4→x2, 5→x3",
+            ["bet.accepted"] = "Ставка {0} принята. Теперь кинь мяч ⚽\nВыплаты: 4→x2, 5→x2",
             ["bet.invalid"] = "Неверная сумма ставки",
             ["bet.not_enough"] = "Недостаточно монет (баланс: {0})",
             ["bet.already_pending"] = "У тебя уже есть ставка {0} в этом чате — кинь мяч ⚽",

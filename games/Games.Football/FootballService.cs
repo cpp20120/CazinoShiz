@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // FootballService — bet, then resolve on Telegram's ⚽ dice (values 1–5).
-// Payout: 1–3 → x0, 4 → x2, 5 → x3. Uniform faces ⇒ EV 0.2·(2+3) = 1.0 (fair).
+// Payout: 1–3 → x0, 4 → x2, 5 → x2. Uniform 1..5 ⇒ EV 0.8 of stake.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
@@ -25,7 +25,7 @@ public sealed class FootballService(
     private readonly int _maxBet = options.Value.MaxBet;
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
-        [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 3,
+        [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 2,
     };
 
     public async Task<FootballBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)

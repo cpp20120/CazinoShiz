@@ -1,9 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // DiceCubeService — place a cube bet, resolve on 🎲 throw.
 //
-// Payout: credit = bet × mult(face). Faces 1–3 pay 0. Mults 4/5/6 are configured
-// (defaults 1,2,3) so a fair 1..6 die has ~0 expected change vs the old 2,3,5
-// which was strongly +EV for the player.
+// Payout: credit = bet × mult(face). Defaults 1,2,2 ⇒ uniform d6 EV = 5/6 of stake
+// (house +EV; old 1,2,3 was break-even for the house).
 //
 // MinSecondsBetweenBets: optional per-(user, chat) delay after a completed roll
 // before the next /dice bet to reduce leaderboard / chat spam.

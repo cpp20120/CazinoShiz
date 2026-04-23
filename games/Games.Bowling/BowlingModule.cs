@@ -32,7 +32,7 @@ public sealed class BowlingModule : IModule
             ["cmd.bowling"] = "Поставить на боулинг",
             ["usage"] = "Используй: <code>/bowling bet &lt;сумма&gt;</code>, затем кинь шар 🎳",
             ["bet.usage"] = "Укажи ставку: <code>/bowling bet 50</code>",
-            ["bet.accepted"] = "Ставка {0} принята. Теперь кинь шар 🎳\nВыплаты: 4→x2, 5→x3, 6 (страйк)→x6",
+            ["bet.accepted"] = "Ставка {0} принята. Теперь кинь шар 🎳\nВыплаты: 4→x1, 5→x2, 6 (страйк)→x2",
             ["bet.invalid"] = "Неверная сумма ставки",
             ["bet.not_enough"] = "Недостаточно монет (баланс: {0})",
             ["bet.already_pending"] = "У тебя уже есть ставка {0} в этом чате — кинь шар 🎳",

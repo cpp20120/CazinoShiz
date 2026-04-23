@@ -2,7 +2,7 @@
 // BasketballService — place a 🏀 bet, resolve on throw.
 // Telegram basketball dice values 1–5:
 //   1-2 = rebound off rim/miss, 3 = bounces off ring, 4 = scored, 5 = clean swish.
-// Payout: 4→x2 (scored), 5→x3 (swish). Everything else burns the bet.
+// Payout: 4→x2, 5→x2. Uniform 1..5 die ⇒ EV 0.8 of stake.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
@@ -27,7 +27,7 @@ public sealed class BasketballService(
     private readonly int _maxBet = options.Value.MaxBet;
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
-        [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 3,
+        [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 2,
     };
 
     public async Task<BasketballBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)

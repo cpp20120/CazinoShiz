@@ -2,7 +2,7 @@
 // BowlingService — place a 🎳 bet, resolve on roll.
 // Telegram bowling dice values 1–6:
 //   1 = gutter, 2–3 = few pins, 4 = several pins, 5 = most pins, 6 = strike.
-// Payout: 4→x2, 5→x3, 6 (strike)→x6. Everything else burns the bet.
+// Payout: 4→x1, 5→x2, 6 (strike)→x2 (uniform d6 EV 5/6 of stake; house +EV).
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
@@ -24,7 +24,7 @@ public sealed class BowlingService(
 {
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
-        [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 3, [6] = 6,
+        [1] = 0, [2] = 0, [3] = 0, [4] = 1, [5] = 2, [6] = 2,
     };
 
     public async Task<BowlingBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)

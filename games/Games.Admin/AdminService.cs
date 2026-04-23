@@ -50,11 +50,11 @@ public sealed partial class AdminService(
         var displayName = before?.DisplayName ?? $"User ID: {targetUserId}";
         await economics.EnsureUserAsync(targetUserId, balanceScopeId, displayName, ct);
 
-        if (amount >= 0)
+        if (amount > 0)
         {
             await economics.CreditAsync(targetUserId, balanceScopeId, amount, "admin.pay", ct);
         }
-        else
+        else if (amount < 0)
         {
             await economics.DebitAsync(targetUserId, balanceScopeId, -amount, "admin.pay", ct);
         }

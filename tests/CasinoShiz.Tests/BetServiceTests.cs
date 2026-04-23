@@ -17,7 +17,7 @@ public class DiceCubeMultiplierTests
     [InlineData(3, 0)]
     [InlineData(4, 1)]
     [InlineData(5, 2)]
-    [InlineData(6, 3)]
+    [InlineData(6, 2)]
     public void Multipliers_CorrectByFace(int face, int expected)
     {
         var m = DiceCubeService.BuildMultipliers(new DiceCubeOptions());
@@ -64,7 +64,7 @@ public class DiceCubeMultiplierTests
     }
 
     [Fact]
-    public async Task RollAsync_WithBetFace6_CreditsX3()
+    public async Task RollAsync_WithBetFace6_CreditsX2()
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryDiceCubeBetStore();
@@ -72,8 +72,8 @@ public class DiceCubeMultiplierTests
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.RollAsync(1, "u", 100, face: 6, default);
         Assert.Equal(CubeRollOutcome.Rolled, result.Outcome);
-        Assert.Equal(3, result.Multiplier);
-        Assert.Equal(300, result.Payout);
+        Assert.Equal(2, result.Multiplier);
+        Assert.Equal(200, result.Payout);
     }
 
     [Fact]
@@ -97,7 +97,7 @@ public class BasketballMultiplierTests
     [InlineData(2, 0)]
     [InlineData(3, 0)]
     [InlineData(4, 2)]
-    [InlineData(5, 3)]
+    [InlineData(5, 2)]
     public void Multipliers_CorrectByFace(int face, int expected)
     {
         Assert.Equal(expected, BasketballService.Multipliers[face]);
@@ -113,7 +113,7 @@ public class BasketballMultiplierTests
     }
 
     [Fact]
-    public async Task ThrowAsync_WithBetFace5_CreditsX3()
+    public async Task ThrowAsync_WithBetFace5_CreditsX2()
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryBasketballBetStore();
@@ -121,8 +121,8 @@ public class BasketballMultiplierTests
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.ThrowAsync(1, "u", 100, face: 5, default);
         Assert.Equal(BasketballThrowOutcome.Thrown, result.Outcome);
-        Assert.Equal(3, result.Multiplier);
-        Assert.Equal(300, result.Payout);
+        Assert.Equal(2, result.Multiplier);
+        Assert.Equal(200, result.Payout);
     }
 
     [Fact]
@@ -144,16 +144,16 @@ public class BowlingMultiplierTests
     [InlineData(1, 0)]
     [InlineData(2, 0)]
     [InlineData(3, 0)]
-    [InlineData(4, 2)]
-    [InlineData(5, 3)]
-    [InlineData(6, 6)]
+    [InlineData(4, 1)]
+    [InlineData(5, 2)]
+    [InlineData(6, 2)]
     public void Multipliers_CorrectByFace(int face, int expected)
     {
         Assert.Equal(expected, BowlingService.Multipliers[face]);
     }
 
     [Fact]
-    public async Task RollAsync_Strike_CreditsX6()
+    public async Task RollAsync_Strike_CreditsX2()
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryBowlingBetStore();
@@ -161,7 +161,7 @@ public class BowlingMultiplierTests
         await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         var result = await svc.RollAsync(1, "u", 100, face: 6, default);
         Assert.Equal(BowlingRollOutcome.Rolled, result.Outcome);
-        Assert.Equal(300, result.Payout);
+        Assert.Equal(100, result.Payout);
     }
 
     [Fact]
@@ -182,16 +182,16 @@ public class DartsMultiplierTests
     [InlineData(1, 0)]
     [InlineData(2, 0)]
     [InlineData(3, 0)]
-    [InlineData(4, 2)]
-    [InlineData(5, 3)]
-    [InlineData(6, 6)]
+    [InlineData(4, 1)]
+    [InlineData(5, 2)]
+    [InlineData(6, 2)]
     public void Multipliers_CorrectByFace(int face, int expected)
     {
         Assert.Equal(expected, DartsService.Multipliers[face]);
     }
 
     [Fact]
-    public async Task ThrowAsync_Bullseye_CreditsX6()
+    public async Task ThrowAsync_Bullseye_CreditsX2()
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryDartsBetStore();
@@ -199,7 +199,7 @@ public class DartsMultiplierTests
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.ThrowAsync(1, "u", 100, face: 6, default);
         Assert.Equal(DartsThrowOutcome.Thrown, result.Outcome);
-        Assert.Equal(600, result.Payout);
+        Assert.Equal(200, result.Payout);
     }
 
     [Fact]
@@ -219,14 +219,14 @@ public class FootballMultiplierTests
     [InlineData(2, 0)]
     [InlineData(3, 0)]
     [InlineData(4, 2)]
-    [InlineData(5, 3)]
+    [InlineData(5, 2)]
     public void Multipliers_CorrectByFace(int face, int expected)
     {
         Assert.Equal(expected, FootballService.Multipliers[face]);
     }
 
     [Fact]
-    public async Task ThrowAsync_GoalFace5_CreditsX3()
+    public async Task ThrowAsync_GoalFace5_CreditsX2()
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryFootballBetStore();
@@ -234,7 +234,7 @@ public class FootballMultiplierTests
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.ThrowAsync(1, "u", 100, face: 5, default);
         Assert.Equal(FootballThrowOutcome.Thrown, result.Outcome);
-        Assert.Equal(300, result.Payout);
+        Assert.Equal(200, result.Payout);
     }
 
     [Fact]
