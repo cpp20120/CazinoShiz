@@ -46,7 +46,8 @@ public sealed class LeaderboardModule : IModule
                 + "/balance — твой баланс\n"
                 + "/redeem <i>код</i> — активировать код\n\n"
                 + "Игры: /sh · /poker · /blackjack · /horse · /dicecube · /darts · /football · /basketball · /bowling\n"
-                + "Слоты: отправь 🎰 в чат"
+                + "Слоты: отправь 🎰 в чат\n\n"
+                + "🐎 Скачки — правила: /horse help"
         }),
     ];
 }

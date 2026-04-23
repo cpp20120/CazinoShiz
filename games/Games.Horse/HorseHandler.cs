@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// HorseHandler — dispatches /horse (bet/result/info/help) and /horserun.
+// HorseHandler — dispatches /horse (bet/result/info/help; bare /horse = help) and /horserun.
 // /horserun is silently rejected for non-admins; the admin list lives in
 // HorseOptions.Admins (bound from configuration).
 //
@@ -54,8 +54,10 @@ public sealed partial class HorseHandler(
             case "bet": await HandleBetAsync(ctx, msg, userId, parts); break;
             case "result": await HandleResultAsync(ctx, msg); break;
             case "info": await HandleInfoAsync(ctx, msg); break;
+            case "":
             case "help":
-                await ctx.Bot.SendMessage(msg.Chat.Id, string.Format(Loc("help"), _opts.HorseCount),
+                await ctx.Bot.SendMessage(msg.Chat.Id,
+                    string.Format(Loc("help"), _opts.HorseCount, _opts.MinBetsToRun),
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
                 break;
             default:
