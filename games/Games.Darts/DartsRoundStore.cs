@@ -30,12 +30,41 @@ public sealed class DartsRoundStore(INpgsqlConnectionFactory connections) : IDar
     {
         await using var conn = await connections.OpenAsync(ct);
         var row = await conn.QuerySingleOrDefaultAsync<DartsRoundRow>(new CommandDefinition("""
-            SELECT id, user_id, chat_id, amount, created_at, status, bot_message_id, reply_to_message_id
-            FROM darts_rounds WHERE id = @roundId
+            SELECT id AS Id,
+                   user_id AS UserId,
+                   chat_id AS ChatId,
+                   amount AS Amount,
+                   created_at AS CreatedAt,
+                   status AS Status,
+                   bot_message_id AS BotMessageId,
+                   reply_to_message_id AS ReplyToMessageId
+            FROM darts_rounds
+            WHERE id = @roundId
             """,
             new { roundId },
             cancellationToken: ct));
         return row?.ToRound();
+    }
+
+    public async Task<IReadOnlyList<DartsRound>> ListQueuedAsync(CancellationToken ct)
+    {
+        await using var conn = await connections.OpenAsync(ct);
+        var rows = await conn.QueryAsync<DartsRoundRow>(new CommandDefinition("""
+            SELECT id AS Id,
+                   user_id AS UserId,
+                   chat_id AS ChatId,
+                   amount AS Amount,
+                   created_at AS CreatedAt,
+                   status AS Status,
+                   bot_message_id AS BotMessageId,
+                   reply_to_message_id AS ReplyToMessageId
+            FROM darts_rounds
+            WHERE status = @queued
+            ORDER BY id
+            """,
+            new { queued = (short)DartsRoundStatus.Queued },
+            cancellationToken: ct));
+        return rows.Select(r => r.ToRound()).ToArray();
     }
 
     public async Task<bool> TryMarkAwaitingOutcomeAsync(long roundId, int botMessageId, CancellationToken ct)
@@ -100,16 +129,17 @@ public sealed class DartsRoundStore(INpgsqlConnectionFactory connections) : IDar
             cancellationToken: ct));
     }
 
-    private sealed record DartsRoundRow(
-        long Id,
-        long UserId,
-        long ChatId,
-        int Amount,
-        DateTimeOffset CreatedAt,
-        short Status,
-        int? BotMessageId,
-        int ReplyToMessageId)
+    private sealed class DartsRoundRow
     {
+        public long Id { get; init; }
+        public long UserId { get; init; }
+        public long ChatId { get; init; }
+        public int Amount { get; init; }
+        public DateTimeOffset CreatedAt { get; init; }
+        public short Status { get; init; }
+        public int? BotMessageId { get; init; }
+        public int ReplyToMessageId { get; init; }
+
         public DartsRound ToRound() => new(
             Id,
             UserId,

@@ -180,6 +180,10 @@ sealed class InMemoryDartsRoundStore : IDartsRoundStore
     public Task<DartsRound?> FindByIdAsync(long roundId, CancellationToken ct) =>
         Task.FromResult(_rounds.GetValueOrDefault(roundId));
 
+    public Task<IReadOnlyList<DartsRound>> ListQueuedAsync(CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<DartsRound>>(
+            [.. _rounds.Values.Where(r => r.Status == DartsRoundStatus.Queued).OrderBy(r => r.Id)]);
+
     public Task<bool> TryMarkAwaitingOutcomeAsync(long roundId, int botMessageId, CancellationToken ct)
     {
         if (!_rounds.TryGetValue(roundId, out var row) || row.Status != DartsRoundStatus.Queued)
@@ -208,6 +212,19 @@ sealed class InMemoryDartsRoundStore : IDartsRoundStore
             r.UserId == userId && r.ChatId == chatId
             && (r.Status == DartsRoundStatus.Queued || r.Status == DartsRoundStatus.AwaitingOutcome));
         return Task.FromResult(n);
+    }
+}
+
+sealed class RecordingDartsRollQueue : IDartsRollQueue
+{
+    public List<DartsRollJob> Enqueued { get; } = [];
+
+    public void Enqueue(in DartsRollJob job) => Enqueued.Add(job);
+
+    public async ValueTask<DartsRollJob> ReadAsync(CancellationToken ct)
+    {
+        await Task.Delay(Timeout.Infinite, ct);
+        throw new InvalidOperationException("unreachable");
     }
 }
 
@@ -341,8 +358,10 @@ sealed class InMemoryAdminStore(FakeEconomicsService? econ = null) : IAdminStore
 {
     private readonly Dictionary<(long UserId, long ScopeId), UserSummary> _users = new();
     private readonly Dictionary<string, string> _overrides = new();
+    private readonly List<PendingChatBet> _pendingMiniGameBets = [];
 
     public void Seed(UserSummary user) => _users[(user.TelegramUserId, user.BalanceScopeId)] = user;
+    public void SeedPending(PendingChatBet bet) => _pendingMiniGameBets.Add(bet);
 
     public Task<IReadOnlyList<UserSummary>> ListUsersAsync(CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<UserSummary>>([.. _users.Values.OrderByDescending(u => u.Coins)]);
@@ -352,6 +371,13 @@ sealed class InMemoryAdminStore(FakeEconomicsService? econ = null) : IAdminStore
         if (!_users.TryGetValue((userId, balanceScopeId), out var u)) return Task.FromResult<UserSummary?>(null);
         if (econ != null) u = u with { Coins = econ.GetCurrentBalance(userId, balanceScopeId) };
         return Task.FromResult<UserSummary?>(u);
+    }
+
+    public Task<IReadOnlyList<PendingChatBet>> DeletePendingMiniGameBetsAsync(long chatId, CancellationToken ct)
+    {
+        var deleted = _pendingMiniGameBets.Where(x => x.ChatId == chatId).ToList();
+        _pendingMiniGameBets.RemoveAll(x => x.ChatId == chatId);
+        return Task.FromResult<IReadOnlyList<PendingChatBet>>(deleted);
     }
 
     public Task<string?> GetOverrideAsync(string originalName, CancellationToken ct) =>

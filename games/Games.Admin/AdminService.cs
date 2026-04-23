@@ -1,4 +1,6 @@
 using BotFramework.Host;
+using BotFramework.Sdk;
+using Games.Darts;
 
 namespace Games.Admin;
 
@@ -8,10 +10,13 @@ public interface IAdminService
     /// <param name="balanceScopeId">Chat where the /run pay is executed — coins apply to that wallet.</param>
     Task<PayResult?> PayAsync(long callerId, long targetUserId, long balanceScopeId, int amount, CancellationToken ct);
     Task<UserSummary?> GetUserAsync(long targetUserId, long balanceScopeId, CancellationToken ct);
+    Task<ClearChatBetsResult> ClearChatBetsAsync(long callerId, long chatId, CancellationToken ct);
     Task<RenameResult> RenameAsync(string oldName, string newName, CancellationToken ct);
     void ReportNotAdmin(long userId);
     void ReportUserInfo(long callerId, string targetId);
 }
+
+public sealed record ClearChatBetsResult(int ClearedCount, int TotalRefunded);
 
 public sealed partial class AdminService(
     IAdminStore store,
@@ -76,6 +81,50 @@ public sealed partial class AdminService(
 
     public Task<UserSummary?> GetUserAsync(long targetUserId, long balanceScopeId, CancellationToken ct) =>
         store.FindUserAsync(targetUserId, balanceScopeId, ct);
+
+    public async Task<ClearChatBetsResult> ClearChatBetsAsync(long callerId, long chatId, CancellationToken ct)
+    {
+        var deleted = await store.DeletePendingMiniGameBetsAsync(chatId, ct);
+        foreach (var bet in deleted)
+        {
+            await economics.CreditAsync(bet.UserId, bet.ChatId, bet.Amount, $"admin.clearbets.{bet.GameId}", ct);
+            BotMiniGameSession.ClearCompletedRound(bet.UserId, bet.ChatId, bet.GameId);
+            switch (bet.GameId)
+            {
+                case MiniGameIds.DiceCube:
+                    BotMiniGameRollGate.Clear("dicecube", bet.UserId, bet.ChatId);
+                    break;
+                case MiniGameIds.Football:
+                    BotMiniGameRollGate.Clear("football", bet.UserId, bet.ChatId);
+                    break;
+                case MiniGameIds.Basketball:
+                    BotMiniGameRollGate.Clear("basketball", bet.UserId, bet.ChatId);
+                    break;
+                case MiniGameIds.Bowling:
+                    BotMiniGameRollGate.Clear("bowling", bet.UserId, bet.ChatId);
+                    break;
+                case MiniGameIds.Darts:
+                    BotMiniGameRollGate.Clear("darts", bet.UserId, bet.ChatId);
+                    if (bet.BotMessageId is { } botMessageId)
+                    {
+                        DartsDiceRoundBinding.Unbind(bet.ChatId, botMessageId);
+                        BotMiniGameDiceOwner.MarkCompleted(bet.ChatId, botMessageId);
+                    }
+                    break;
+            }
+        }
+
+        var refunded = deleted.Sum(x => x.Amount);
+        analytics.Track("admin", "command", new Dictionary<string, object?>
+        {
+            ["command"] = "clearbets",
+            ["caller_id"] = callerId,
+            ["chat_id"] = chatId,
+            ["cleared_count"] = deleted.Count,
+            ["total_refunded"] = refunded,
+        });
+        return new ClearChatBetsResult(deleted.Count, refunded);
+    }
 
     public async Task<RenameResult> RenameAsync(string oldName, string newName, CancellationToken ct)
     {

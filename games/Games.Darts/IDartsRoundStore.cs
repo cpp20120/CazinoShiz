@@ -4,6 +4,7 @@ public interface IDartsRoundStore
 {
     Task<long> InsertQueuedAsync(DartsRound row, CancellationToken ct);
     Task<DartsRound?> FindByIdAsync(long roundId, CancellationToken ct);
+    Task<IReadOnlyList<DartsRound>> ListQueuedAsync(CancellationToken ct);
     Task<bool> TryMarkAwaitingOutcomeAsync(long roundId, int botMessageId, CancellationToken ct);
     Task DeleteAsync(long roundId, CancellationToken ct);
     /// <summary>Rounds in this chat still in flight that finish before <paramref name="roundId"/>.</summary>

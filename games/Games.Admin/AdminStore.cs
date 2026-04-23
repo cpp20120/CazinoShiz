@@ -8,9 +8,20 @@ public interface IAdminStore
     Task<IReadOnlyList<UserSummary>> ListUsersAsync(CancellationToken ct);
     Task<UserSummary?> FindUserAsync(long userId, long balanceScopeId, CancellationToken ct);
 
+    Task<IReadOnlyList<PendingChatBet>> DeletePendingMiniGameBetsAsync(long chatId, CancellationToken ct);
+
     Task<string?> GetOverrideAsync(string originalName, CancellationToken ct);
     Task UpsertOverrideAsync(string originalName, string newName, CancellationToken ct);
     Task<bool> DeleteOverrideAsync(string originalName, CancellationToken ct);
+}
+
+public sealed class PendingChatBet
+{
+    public string GameId { get; init; } = "";
+    public long UserId { get; init; }
+    public long ChatId { get; init; }
+    public int Amount { get; init; }
+    public int? BotMessageId { get; init; }
 }
 
 public sealed class AdminStore(INpgsqlConnectionFactory connections) : IAdminStore
@@ -45,6 +56,53 @@ public sealed class AdminStore(INpgsqlConnectionFactory connections) : IAdminSto
         await using var conn = await connections.OpenAsync(ct);
         return await conn.QuerySingleOrDefaultAsync<UserSummary>(
             new CommandDefinition(sql, new { userId, balanceScopeId }, cancellationToken: ct));
+    }
+
+    public async Task<IReadOnlyList<PendingChatBet>> DeletePendingMiniGameBetsAsync(long chatId, CancellationToken ct)
+    {
+        await using var conn = await connections.OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var deleted = new List<PendingChatBet>();
+        deleted.AddRange(await conn.QueryAsync<PendingChatBet>(new CommandDefinition("""
+            DELETE FROM dicecube_bets
+            WHERE chat_id = @chatId
+            RETURNING 'dicecube' AS GameId, user_id AS UserId, chat_id AS ChatId, amount AS Amount, NULL::integer AS BotMessageId
+            """,
+            new { chatId }, transaction: tx, cancellationToken: ct)));
+        deleted.AddRange(await conn.QueryAsync<PendingChatBet>(new CommandDefinition("""
+            DELETE FROM football_bets
+            WHERE chat_id = @chatId
+            RETURNING 'football' AS GameId, user_id AS UserId, chat_id AS ChatId, amount AS Amount, NULL::integer AS BotMessageId
+            """,
+            new { chatId }, transaction: tx, cancellationToken: ct)));
+        deleted.AddRange(await conn.QueryAsync<PendingChatBet>(new CommandDefinition("""
+            DELETE FROM basketball_bets
+            WHERE chat_id = @chatId
+            RETURNING 'basketball' AS GameId, user_id AS UserId, chat_id AS ChatId, amount AS Amount, NULL::integer AS BotMessageId
+            """,
+            new { chatId }, transaction: tx, cancellationToken: ct)));
+        deleted.AddRange(await conn.QueryAsync<PendingChatBet>(new CommandDefinition("""
+            DELETE FROM bowling_bets
+            WHERE chat_id = @chatId
+            RETURNING 'bowling' AS GameId, user_id AS UserId, chat_id AS ChatId, amount AS Amount, NULL::integer AS BotMessageId
+            """,
+            new { chatId }, transaction: tx, cancellationToken: ct)));
+        deleted.AddRange(await conn.QueryAsync<PendingChatBet>(new CommandDefinition("""
+            DELETE FROM darts_rounds
+            WHERE chat_id = @chatId AND status IN (@queued, @awaiting)
+            RETURNING 'darts' AS GameId, user_id AS UserId, chat_id AS ChatId, amount AS Amount, bot_message_id AS BotMessageId
+            """,
+            new
+            {
+                chatId,
+                queued = (short)Games.Darts.DartsRoundStatus.Queued,
+                awaiting = (short)Games.Darts.DartsRoundStatus.AwaitingOutcome,
+            },
+            transaction: tx, cancellationToken: ct)));
+
+        await tx.CommitAsync(ct);
+        return deleted;
     }
 
     public async Task<string?> GetOverrideAsync(string originalName, CancellationToken ct)

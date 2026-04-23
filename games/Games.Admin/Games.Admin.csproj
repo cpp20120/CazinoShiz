@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\framework\BotFramework.Sdk\BotFramework.Sdk.csproj" />
     <ProjectReference Include="..\..\framework\BotFramework.Host\BotFramework.Host.csproj" />
+    <ProjectReference Include="..\Games.Darts\Games.Darts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Microsoft.Extensions.Logging" />

@@ -1,6 +1,8 @@
 using BotFramework.Sdk;
 using Games.DiceCube;
 using Games.Darts;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -297,9 +299,39 @@ public class DartsServiceTests
     }
 
     [Fact]
-    public async Task Multipliers_ContainsAllSixFaces()
+    public void Multipliers_ContainsAllSixFaces()
     {
         for (var face = 1; face <= 6; face++)
             Assert.True(DartsService.Multipliers.ContainsKey(face));
+    }
+
+    [Fact]
+    public async Task DispatcherJob_RequeuesPersistedQueuedRounds_OnStartup()
+    {
+        var rounds = new InMemoryDartsRoundStore();
+        var roundId = await rounds.InsertQueuedAsync(
+            new DartsRound(0, 42, 100, 25, DateTimeOffset.UtcNow, DartsRoundStatus.Queued, null, CmdMsg),
+            default);
+        var queue = new RecordingDartsRollQueue();
+        var services = new ServiceCollection()
+            .AddSingleton<IDartsRoundStore>(rounds)
+            .BuildServiceProvider();
+        var job = new DartsRollDispatcherJob(
+            queue,
+            services,
+            null!,
+            NullLogger<DartsRollDispatcherJob>.Instance);
+
+        using var cts = new CancellationTokenSource();
+        var run = job.RunAsync(cts.Token);
+        await Task.Delay(20);
+        await cts.CancelAsync();
+        await run;
+
+        var queued = Assert.Single(queue.Enqueued);
+        Assert.Equal(roundId, queued.RoundId);
+        Assert.Equal(100, queued.ChatId);
+        Assert.Equal(42, queued.UserId);
+        Assert.Equal(CmdMsg, queued.ReplyToMessageId);
     }
 }

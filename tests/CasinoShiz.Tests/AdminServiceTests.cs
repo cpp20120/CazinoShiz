@@ -1,4 +1,5 @@
 using Games.Admin;
+using BotFramework.Sdk;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -156,6 +157,39 @@ public class AdminServiceTests
         var svc = MakeService();
         var user = await svc.GetUserAsync(999, TestScope, default);
         Assert.Null(user);
+    }
+
+    [Fact]
+    public async Task ClearChatBetsAsync_RefundsAllDeletedPendingBets()
+    {
+        BotMiniGameSession.DangerousResetAllForTests();
+        var econ = new FakeEconomicsService { StartingBalance = 500 };
+        var store = new InMemoryAdminStore(econ);
+        store.SeedPending(new PendingChatBet { GameId = MiniGameIds.DiceCube, UserId = 10, ChatId = TestScope, Amount = 20 });
+        store.SeedPending(new PendingChatBet { GameId = MiniGameIds.Darts, UserId = 11, ChatId = TestScope, Amount = 30, BotMessageId = 999 });
+        var svc = MakeService(store, econ);
+
+        var result = await svc.ClearChatBetsAsync(99, TestScope, default);
+
+        Assert.Equal(2, result.ClearedCount);
+        Assert.Equal(50, result.TotalRefunded);
+        Assert.Equal(2, econ.Credits.Count);
+        Assert.Contains(econ.Credits, x => x.UserId == 10 && x.ScopeId == TestScope && x.Amount == 20);
+        Assert.Contains(econ.Credits, x => x.UserId == 11 && x.ScopeId == TestScope && x.Amount == 30);
+    }
+
+    [Fact]
+    public async Task ClearChatBetsAsync_ClearsMiniGameSessionForDeletedRows()
+    {
+        BotMiniGameSession.DangerousResetAllForTests();
+        var store = new InMemoryAdminStore();
+        store.SeedPending(new PendingChatBet { GameId = MiniGameIds.Football, UserId = 10, ChatId = TestScope, Amount = 15 });
+        BotMiniGameSession.RegisterPlacedBet(10, TestScope, MiniGameIds.Football);
+        var svc = MakeService(store);
+
+        await svc.ClearChatBetsAsync(99, TestScope, default);
+
+        Assert.True(BotMiniGameSession.TryBeginPlaceBet(10, TestScope, MiniGameIds.Basketball, out _));
     }
 
     // ── RenameAsync ───────────────────────────────────────────────────────────

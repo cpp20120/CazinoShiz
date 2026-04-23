@@ -31,18 +31,24 @@ public sealed class AdminHandler(
             return;
         }
 
+        var parts = StripFirst(msg.Text).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var action = parts.Length > 0 ? parts[0] : "";
+        var reply = new ReplyParameters { MessageId = msg.MessageId };
+
+        if (string.Equals(action, "whoami", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleWhoAmIAsync(ctx, msg, userId, reply);
+            return;
+        }
+
         if (!_opts.Admins.Contains(userId))
         {
             await ctx.Bot.SendMessage(msg.Chat.Id, Loc("err.not_admin"),
-                replyParameters: new ReplyParameters { MessageId = msg.MessageId },
+                replyParameters: reply,
                 cancellationToken: ctx.Ct);
             service.ReportNotAdmin(userId);
             return;
         }
-
-        var parts = StripFirst(msg.Text).Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var action = parts.Length > 0 ? parts[0] : "";
-        var reply = new ReplyParameters { MessageId = msg.MessageId };
 
         switch (action)
         {
@@ -72,6 +78,10 @@ public sealed class AdminHandler(
 
             case "getUser":
                 await HandleGetUserAsync(ctx, msg, parts[1..]);
+                break;
+
+            case "clearbets":
+                await HandleClearBetsAsync(ctx, msg, userId);
                 break;
 
             default:
@@ -120,6 +130,29 @@ public sealed class AdminHandler(
             ? JsonSerializer.Serialize(r, new JsonSerializerOptions { WriteIndented = true })
             : "null";
         await ctx.Bot.SendMessage(msg.Chat.Id, json, replyParameters: reply, cancellationToken: ctx.Ct);
+    }
+
+    private async Task HandleWhoAmIAsync(UpdateContext ctx, Message msg, long userId, ReplyParameters reply)
+    {
+        var username = msg.From?.Username is { Length: > 0 } u ? $"@{u}" : "none";
+        var firstName = msg.From?.FirstName ?? "unknown";
+        var isAdmin = _opts.Admins.Contains(userId);
+        await ctx.Bot.SendMessage(
+            msg.Chat.Id,
+            string.Format(Loc("whoami.result"), userId, msg.Chat.Id, username, firstName, isAdmin ? "yes" : "no"),
+            parseMode: ParseMode.Html,
+            replyParameters: reply,
+            cancellationToken: ctx.Ct);
+    }
+
+    private async Task HandleClearBetsAsync(UpdateContext ctx, Message msg, long userId)
+    {
+        var reply = new ReplyParameters { MessageId = msg.MessageId };
+        var result = await service.ClearChatBetsAsync(userId, msg.Chat.Id, ctx.Ct);
+        var text = result.ClearedCount == 0
+            ? Loc("clearbets.empty")
+            : string.Format(Loc("clearbets.done"), result.ClearedCount, result.TotalRefunded);
+        await ctx.Bot.SendMessage(msg.Chat.Id, text, replyParameters: reply, cancellationToken: ctx.Ct);
     }
 
     private async Task HandleRenameAsync(UpdateContext ctx, Message msg, long userId)
