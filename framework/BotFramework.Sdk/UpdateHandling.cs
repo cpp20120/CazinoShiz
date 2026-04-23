@@ -61,6 +61,9 @@ public sealed class UpdateContext(
 
     public string? Text => Update.Message?.Text;
     public string? CallbackData => Update.CallbackQuery?.Data;
+
+    /// <summary>Regular or edited chat message (dice finals may arrive as <see cref="Update.EditedMessage"/>).</summary>
+    public Message? MessageOrEdited => Update.Message ?? Update.EditedMessage;
 }
 
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
@@ -95,7 +98,8 @@ public sealed class MessageDiceAttribute(string emoji) : RouteAttribute
     public override int Priority => 250;
     public override string Name => $"dice:{Emoji}";
     public override bool Matches(Update update) =>
-        update.Message?.Dice?.Emoji == Emoji;
+        update.Message?.Dice?.Emoji == Emoji
+        || update.EditedMessage?.Dice?.Emoji == Emoji;
 }
 
 public sealed class ChannelPostAttribute : RouteAttribute

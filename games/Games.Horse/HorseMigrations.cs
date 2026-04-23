@@ -36,5 +36,11 @@ public sealed class HorseMigrations : IModuleMigrations
             ALTER TABLE horse_bets ADD COLUMN IF NOT EXISTS balance_scope_id BIGINT NOT NULL DEFAULT 0;
             UPDATE horse_bets SET balance_scope_id = user_id WHERE balance_scope_id = 0;
             """),
+
+        new Migration("004_horse_results_per_scope", """
+            ALTER TABLE horse_results ADD COLUMN IF NOT EXISTS balance_scope_id BIGINT NOT NULL DEFAULT 0;
+            ALTER TABLE horse_results DROP CONSTRAINT IF EXISTS horse_results_pkey;
+            ALTER TABLE horse_results ADD PRIMARY KEY (race_date, balance_scope_id);
+            """),
     ];
 }

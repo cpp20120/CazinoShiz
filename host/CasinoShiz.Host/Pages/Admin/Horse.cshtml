@@ -55,20 +55,24 @@
     else
     {
         <table>
-            <thead><tr><th>Date</th><th>Winner</th><th>Frame</th></tr></thead>
+            <thead><tr><th>Date</th><th>Scope</th><th>Winner</th><th>Frame</th></tr></thead>
             <tbody>
                 @foreach (var r in Model.Past)
                 {
+                    var scopeLabel = r.BalanceScopeId == 0 ? "global" : r.BalanceScopeId.ToString();
                     <tr>
                         <td><code>@r.RaceDate</code></td>
+                        <td><code>@scopeLabel</code></td>
                         <td>🐎 #@(r.Winner + 1)</td>
                         <td>
-                            @if (Model.DatesWithGif.Contains(r.RaceDate))
+                            @if (r.BalanceScopeId == 0 && Model.DatesWithGif.Contains(r.RaceDate))
                             {
-                                <a href="/admin/horse/image?date=@r.RaceDate&kind=gif">GIF</a>
-                                <span class="muted"> · </span>
+                                <a href="/admin/horse/image?date=@r.RaceDate&kind=gif">GIF (cache)</a>
                             }
-                            <a href="/admin/horse/image?date=@r.RaceDate&kind=png">last frame</a>
+                            else
+                            {
+                                <span class="muted">—</span>
+                            }
                         </td>
                     </tr>
                 }

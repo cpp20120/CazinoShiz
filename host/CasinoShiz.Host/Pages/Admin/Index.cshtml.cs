@@ -32,7 +32,7 @@ public sealed class IndexModel(
 
         var pendingSql = string.Join(" + ", new[]
         {
-            "(SELECT count(*) FROM darts_bets)",
+            "(SELECT count(*) FROM darts_rounds)",
             "(SELECT count(*) FROM dicecube_bets)",
             "(SELECT count(*) FROM basketball_bets)",
             "(SELECT count(*) FROM bowling_bets)",

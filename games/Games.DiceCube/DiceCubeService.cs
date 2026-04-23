@@ -23,6 +23,9 @@ public interface IDiceCubeService
 
     Task<CubeBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct);
     Task<CubeRollResult> RollAsync(long userId, string displayName, long chatId, int face, CancellationToken ct);
+
+    /// <summary>Refund and clear pending bet when bot SendDice fails after debit.</summary>
+    Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct);
 }
 
 public sealed class DiceCubeService(
@@ -68,6 +71,12 @@ public sealed class DiceCubeService(
             }
         }
 
+        if (await bets.FindAsync(userId, chatId, ct) == null)
+            BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.DiceCube);
+
+        if (!BotMiniGameSession.TryBeginPlaceBet(userId, chatId, MiniGameIds.DiceCube, out var blocker))
+            return new CubeBetResult(CubeBetError.BusyOtherGame, 0, balance, 0, 0, blocker);
+
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return CubeBetResult.Fail(CubeBetError.AlreadyPending, balance, existing.Amount);
 
@@ -80,12 +89,14 @@ public sealed class DiceCubeService(
             return CubeBetResult.Fail(CubeBetError.AlreadyPending, balance);
         }
 
+        BotMiniGameSession.RegisterPlacedBet(userId, chatId, MiniGameIds.DiceCube);
+
         analytics.Track("dicecube", "bet", new Dictionary<string, object?>
         {
             ["user_id"] = userId, ["chat_id"] = chatId, ["amount"] = amount,
         });
 
-        return new CubeBetResult(CubeBetError.None, amount, balance - amount, 0, 0);
+        return new CubeBetResult(CubeBetError.None, amount, balance - amount, 0, 0, null);
     }
 
     public async Task<CubeRollResult> RollAsync(long userId, string displayName, long chatId, int face, CancellationToken ct)
@@ -101,6 +112,7 @@ public sealed class DiceCubeService(
             await economics.CreditAsync(userId, chatId, payout, "dicecube.payout", ct);
 
         await bets.DeleteAsync(userId, chatId, ct);
+        BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.DiceCube);
         if (_opt.MinSecondsBetweenBets > 0)
         {
             cache.Set(
@@ -126,5 +138,15 @@ public sealed class DiceCubeService(
             ct);
 
         return new CubeRollResult(CubeRollOutcome.Rolled, face, bet.Amount, multiplier, payout, balance);
+    }
+
+    public async Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var bet = await bets.FindAsync(userId, chatId, ct);
+        if (bet == null) return;
+
+        await economics.CreditAsync(userId, chatId, bet.Amount, "dicecube.bot_dice.failed", ct);
+        await bets.DeleteAsync(userId, chatId, ct);
+        BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.DiceCube);
     }
 }

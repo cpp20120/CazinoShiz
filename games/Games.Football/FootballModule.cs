@@ -30,16 +30,20 @@ public sealed class FootballModule : IModule
         {
             ["display_name"] = "Футбол",
             ["cmd.football"] = "Поставить на футбол (⚽)",
-            ["usage"] = "Используй: <code>/football bet &lt;сумма&gt;</code>, затем кинь мяч ⚽",
-            ["bet.usage"] = "Укажи ставку: <code>/football bet 50</code>",
-            ["bet.accepted"] = "Ставка {0} принята. Теперь кинь мяч ⚽\nВыплаты: 4→x2, 5→x2",
+            ["usage"] = "⚽ <b>Футбол</b>\n"
+                + "<code>/football</code> или <code>/football bet</code> — ставка по умолчанию <b>{0}</b> (как при явной сумме).\n"
+                + "<code>/football bet &lt;сумма&gt;</code> — своя ставка. Справка: <code>/football help</code>",
+            ["bet.usage"] = "Неверная сумма. Примеры: <code>/football</code>, <code>/football bet</code> (={0}) или <code>/football bet 50</code>",
+            ["bet.accepted"] = "Ставка {0} принята. Сейчас бот кинет ⚽ — свой ⚽ не отправляй.\nВыплаты: 4→x2, 5→x2",
+            ["roll.wait_bot"] = "Эта ставка ждёт бросок <b>от бота</b>. Свой ⚽ не отправляй — один бросок на ставку.",
             ["bet.invalid"] = "Неверная сумма ставки",
             ["bet.not_enough"] = "Недостаточно монет (баланс: {0})",
-            ["bet.already_pending"] = "У тебя уже есть ставка {0} в этом чате — кинь мяч ⚽",
+            ["bet.already_pending"] = "У тебя уже есть ставка {0} в этом чате — дождись броска бота ⚽",
+            ["bet.busy_other"] = "Сначала дождись броска бота в {0} — в этом чате только одна активная мини-игра.",
             ["bet.failed"] = "Не удалось принять ставку",
-            ["throw.no_bet"] = "Сначала сделай ставку: <code>/football bet &lt;сумма&gt;</code>",
-            ["throw.win"] = "Выпало <b>{0}</b> — x{1}! Ты забираешь <b>{2}</b> монет. Баланс: {3}",
-            ["throw.lose"] = "Выпало <b>{0}</b> — увы, твоя ставка {1} сгорела. Баланс: {2}",
+            ["throw.no_bet"] = "Сначала сделай ставку: <code>/football</code>, <code>/football bet</code> или <code>/football bet &lt;сумма&gt;</code>.",
+            ["throw.win"] = "Выпало <b>{0}</b> — x{1}. Ставка: {2} · выплата: <b>{3}</b> · чистыми: <b>+{4}</b>. Баланс: {5}",
+            ["throw.lose"] = "Выпало <b>{0}</b>. <b>Проигрыш: −{1}</b> монет (ставка сгорела). Баланс: {2}",
         }),
     ];
 }

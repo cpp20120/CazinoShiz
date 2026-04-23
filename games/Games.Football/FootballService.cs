@@ -36,6 +36,9 @@ public sealed class FootballService(
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
         if (amount > balance) return FootballBetResult.Fail(FootballBetError.NotEnoughCoins, balance);
 
+        if (!BotMiniGameSession.TryBeginPlaceBet(userId, chatId, MiniGameIds.Football, out var blocker))
+            return new FootballBetResult(FootballBetError.BusyOtherGame, 0, balance, 0, blocker);
+
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return FootballBetResult.Fail(FootballBetError.AlreadyPending, balance, existing.Amount);
 
@@ -48,12 +51,14 @@ public sealed class FootballService(
             return FootballBetResult.Fail(FootballBetError.AlreadyPending, balance);
         }
 
+        BotMiniGameSession.RegisterPlacedBet(userId, chatId, MiniGameIds.Football);
+
         analytics.Track("football", "bet", new Dictionary<string, object?>
         {
             ["user_id"] = userId, ["chat_id"] = chatId, ["amount"] = amount,
         });
 
-        return new FootballBetResult(FootballBetError.None, amount, balance - amount);
+        return new FootballBetResult(FootballBetError.None, amount, balance - amount, 0, null);
     }
 
     public async Task<FootballThrowResult> ThrowAsync(long userId, string displayName, long chatId, int face, CancellationToken ct)
@@ -69,6 +74,7 @@ public sealed class FootballService(
             await economics.CreditAsync(userId, chatId, payout, "football.payout", ct);
 
         await bets.DeleteAsync(userId, chatId, ct);
+        BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Football);
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
 
         analytics.Track("football", "throw", new Dictionary<string, object?>

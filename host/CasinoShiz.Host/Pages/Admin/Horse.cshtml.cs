@@ -49,7 +49,7 @@ public sealed partial class HorseModel(
 
         var callerId = actor.UserId;
 
-        var outcome = await horse.RunRaceAsync(callerId, ct);
+        var outcome = await horse.RunRaceAsync(callerId, HorseRunKind.Global, 0, ct);
         if (outcome.Error != HorseError.None)
         {
             TempData["FlashError"] = $"Race rejected: {outcome.Error}";
@@ -133,16 +133,16 @@ public sealed partial class HorseModel(
 
     private async Task LoadAsync(CancellationToken ct)
     {
-        var info = await horse.GetTodayInfoAsync(ct);
+        var info = await horse.GetTodayInfoAsync(balanceScopeIdOnly: null, ct);
         BetsToday = info.BetsCount;
         Koefs = info.Koefs;
 
         await using var conn = await connections.OpenAsync(ct);
         var rows = await conn.QueryAsync<PastRace>(new CommandDefinition("""
-            SELECT race_date AS RaceDate, winner AS Winner
+            SELECT race_date AS RaceDate, balance_scope_id AS BalanceScopeId, winner AS Winner
             FROM horse_results
-            ORDER BY race_date DESC
-            LIMIT 30
+            ORDER BY race_date DESC, balance_scope_id ASC
+            LIMIT 60
             """, cancellationToken: ct));
         Past = rows.ToList();
         DatesWithGif = gifCache.Dates.ToList();
@@ -153,4 +153,4 @@ public sealed partial class HorseModel(
     }
 }
 
-public sealed record PastRace(string RaceDate, int Winner);
+public sealed record PastRace(string RaceDate, long BalanceScopeId, int Winner);

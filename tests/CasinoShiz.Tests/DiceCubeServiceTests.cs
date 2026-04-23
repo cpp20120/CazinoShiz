@@ -1,3 +1,5 @@
+using BotFramework.Sdk;
+using Games.Darts;
 using Games.DiceCube;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
@@ -5,8 +7,15 @@ using Xunit;
 
 namespace CasinoShiz.Tests;
 
+[Collection("MiniGameSession")]
 public class DiceCubeServiceTests
 {
+    public DiceCubeServiceTests()
+    {
+        BotMiniGameSession.DangerousResetAllForTests();
+        DartsDiceRoundBinding.DangerousResetAllForTests();
+    }
+
     private static IMemoryCache NewCache() => new MemoryCache(new MemoryCacheOptions());
 
     private static DiceCubeService MakeService(
@@ -21,6 +30,55 @@ public class DiceCubeServiceTests
             new NullEventBus(),
             cache ?? NewCache(),
             Options.Create(o ?? new DiceCubeOptions()));
+
+    [Fact]
+    public async Task PlaceBetAsync_PendingOtherMiniGame_ReturnsBusyOtherGame()
+    {
+        var svc = MakeService();
+        var darts = new DartsService(
+            new FakeEconomicsService(),
+            new NullAnalyticsService(),
+            new InMemoryDartsRoundStore(),
+            new InMemoryDiceCubeBetStore(),
+            new NullEventBus(),
+            new DartsRollQueue(),
+            Options.Create(new DartsOptions()));
+        await darts.PlaceBetAsync(1, "u", 100, 50, 1, default);
+        var result = await svc.PlaceBetAsync(1, "u", 100, 30, default);
+        Assert.Equal(CubeBetError.BusyOtherGame, result.Error);
+        Assert.Equal(MiniGameIds.Darts, result.BlockingGameId);
+    }
+
+    [Fact]
+    public async Task PlaceBetAsync_AfterOtherMiniGameResolves_AllowsBet()
+    {
+        var econ = new FakeEconomicsService();
+        var svc = MakeService(economics: econ);
+        var dRounds = new InMemoryDartsRoundStore();
+        var darts = new DartsService(
+            econ,
+            new NullAnalyticsService(),
+            dRounds,
+            new InMemoryDiceCubeBetStore(),
+            new NullEventBus(),
+            new DartsRollQueue(),
+            Options.Create(new DartsOptions()));
+        var dp = await darts.PlaceBetAsync(1, "u", 100, 50, 1, default);
+        Assert.True(await dRounds.TryMarkAwaitingOutcomeAsync(dp.RoundId, 4242, default));
+        DartsDiceRoundBinding.Bind(100, 4242, dp.RoundId);
+        await darts.ThrowAsync(dp.RoundId, 1, "u", 100, 4242, 4, default);
+        var result = await svc.PlaceBetAsync(1, "u", 100, 30, default);
+        Assert.Equal(CubeBetError.None, result.Error);
+    }
+
+    [Fact]
+    public async Task PlaceBetAsync_NoPendingRow_ClearsStaleDiceCubeSession()
+    {
+        BotMiniGameSession.RegisterPlacedBet(1, 100, MiniGameIds.DiceCube);
+        var svc = MakeService();
+        var result = await svc.PlaceBetAsync(1, "u", 100, 30, default);
+        Assert.Equal(CubeBetError.None, result.Error);
+    }
 
     [Fact]
     public async Task PlaceBetAsync_ZeroAmount_ReturnsInvalidAmount()
@@ -109,6 +167,19 @@ public class DiceCubeServiceTests
         await svc.PlaceBetAsync(1, "u", 100, 50, default);
         var result = await svc.PlaceBetAsync(1, "u", 100, 30, default);
         Assert.Equal(50, result.PendingAmount);
+    }
+
+    [Fact]
+    public async Task AbortPendingBetAfterSendDiceFailedAsync_RefundsAndAllowsNewBet()
+    {
+        var econ = new FakeEconomicsService { StartingBalance = 200 };
+        var bets = new InMemoryDiceCubeBetStore();
+        var svc = MakeService(economics: econ, bets: bets);
+        await svc.PlaceBetAsync(1, "u", 100, 50, default);
+        await svc.AbortPendingBetAfterSendDiceFailedAsync(1, 100, default);
+        Assert.Contains(econ.Credits, c => c is { Amount: 50, Reason: "dicecube.bot_dice.failed" });
+        var again = await svc.PlaceBetAsync(1, "u", 100, 40, default);
+        Assert.Equal(CubeBetError.None, again.Error);
     }
 
     [Fact]

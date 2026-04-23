@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // HorseHandler — dispatches /horse (bet/result/info/help; bare /horse = help) and /horserun.
-// /horserun is silently rejected for non-admins; the admin list lives in
-// HorseOptions.Admins (bound from configuration).
+// /horserun (in a group): this chat's pool only. /horserun global: all chats merged (same as web admin).
+// /horserun from private chat: global. /horserun is silently rejected for non-admins.
 //
 // Winner announcement happens 20s after the GIF drops. The update's ct is
 // tied to the per-update scope (polling iteration or webhook request) — it
@@ -103,7 +103,29 @@ public sealed partial class HorseHandler(
         var chatId = msg.Chat.Id;
         var reply = new ReplyParameters { MessageId = msg.MessageId };
 
-        var outcome = await service.RunRaceAsync(userId, ctx.Ct);
+        var parts = msg.Text!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var sub = parts.Length > 1 ? parts[1] : "";
+        var global = sub.Equals("global", StringComparison.OrdinalIgnoreCase)
+            || sub.Equals("all", StringComparison.OrdinalIgnoreCase);
+        HorseRunKind kind;
+        long scopeForRun;
+        if (global)
+        {
+            kind = HorseRunKind.Global;
+            scopeForRun = 0;
+        }
+        else if (msg.Chat.Type is ChatType.Group or ChatType.Supergroup)
+        {
+            kind = HorseRunKind.ThisChat;
+            scopeForRun = chatId;
+        }
+        else
+        {
+            kind = HorseRunKind.Global;
+            scopeForRun = 0;
+        }
+
+        var outcome = await service.RunRaceAsync(userId, kind, scopeForRun, ctx.Ct);
         if (outcome.Error == HorseError.NotAdmin) return;
         if (outcome.Error == HorseError.NotEnoughBets)
         {
@@ -122,8 +144,9 @@ public sealed partial class HorseHandler(
 
         var raceDate = HorseTimeHelper.GetRaceDate();
         var fileId = gifMessage.Animation?.FileId;
+        var resultScope = kind == HorseRunKind.Global ? 0L : chatId;
         if (fileId != null)
-            await service.SaveFileIdAsync(raceDate, fileId, ctx.Ct);
+            await service.SaveFileIdAsync(raceDate, resultScope, fileId, ctx.Ct);
 
         var announceCt = lifetime.ApplicationStopping;
         var bot = ctx.Bot;
@@ -150,7 +173,7 @@ public sealed partial class HorseHandler(
     private async Task HandleResultAsync(UpdateContext ctx, Message msg)
     {
         var reply = new ReplyParameters { MessageId = msg.MessageId };
-        var r = await service.GetTodayResultAsync(ctx.Ct);
+        var r = await service.GetTodayResultAsync(msg.Chat.Id, ctx.Ct);
 
         if (r.Winner.HasValue && r.FileId != null)
         {
@@ -167,7 +190,7 @@ public sealed partial class HorseHandler(
 
     private async Task HandleInfoAsync(UpdateContext ctx, Message msg)
     {
-        var info = await service.GetTodayInfoAsync(ctx.Ct);
+        var info = await service.GetTodayInfoAsync(msg.Chat.Id, ctx.Ct);
         var parts = new List<string> { string.Format(Loc("info.stakes_count"), info.BetsCount) };
         if (info.BetsCount > 0)
         {

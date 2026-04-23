@@ -38,6 +38,9 @@ public sealed class BasketballService(
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
         if (amount > balance) return BasketballBetResult.Fail(BasketballBetError.NotEnoughCoins, balance);
 
+        if (!BotMiniGameSession.TryBeginPlaceBet(userId, chatId, MiniGameIds.Basketball, out var blocker))
+            return new BasketballBetResult(BasketballBetError.BusyOtherGame, 0, balance, 0, blocker);
+
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return BasketballBetResult.Fail(BasketballBetError.AlreadyPending, balance, existing.Amount);
 
@@ -47,15 +50,17 @@ public sealed class BasketballService(
         if (!await bets.InsertAsync(new BasketballBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
         {
             await economics.CreditAsync(userId, chatId, amount, "basketball.bet.refund", ct);
-            return BasketballBetResult.Fail(BasketballBetError.NotEnoughCoins, balance);
+            return BasketballBetResult.Fail(BasketballBetError.AlreadyPending, balance);
         }
+
+        BotMiniGameSession.RegisterPlacedBet(userId, chatId, MiniGameIds.Basketball);
 
         analytics.Track("basketball", "bet", new Dictionary<string, object?>
         {
             ["user_id"] = userId, ["chat_id"] = chatId, ["amount"] = amount,
         });
 
-        return new BasketballBetResult(BasketballBetError.None, amount, balance - amount);
+        return new BasketballBetResult(BasketballBetError.None, amount, balance - amount, 0, null);
     }
 
     public async Task<BasketballThrowResult> ThrowAsync(long userId, string displayName, long chatId, int face, CancellationToken ct)
@@ -71,6 +76,7 @@ public sealed class BasketballService(
             await economics.CreditAsync(userId, chatId, payout, "basketball.payout", ct);
 
         await bets.DeleteAsync(userId, chatId, ct);
+        BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Basketball);
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
 
         analytics.Track("basketball", "throw", new Dictionary<string, object?>

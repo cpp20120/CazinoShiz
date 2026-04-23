@@ -6,7 +6,7 @@ namespace Games.Bowling;
 public interface IBowlingBetStore
 {
     Task<BowlingBet?> FindAsync(long userId, long chatId, CancellationToken ct);
-    Task InsertAsync(BowlingBet bet, CancellationToken ct);
+    Task<bool> InsertAsync(BowlingBet bet, CancellationToken ct);
     Task DeleteAsync(long userId, long chatId, CancellationToken ct);
 }
 
@@ -23,15 +23,17 @@ public sealed class BowlingBetStore(INpgsqlConnectionFactory connections) : IBow
             cancellationToken: ct));
     }
 
-    public async Task InsertAsync(BowlingBet bet, CancellationToken ct)
+    public async Task<bool> InsertAsync(BowlingBet bet, CancellationToken ct)
     {
         await using var conn = await connections.OpenAsync(ct);
-        await conn.ExecuteAsync(new CommandDefinition("""
+        var rows = await conn.ExecuteAsync(new CommandDefinition("""
             INSERT INTO bowling_bets (user_id, chat_id, amount, created_at)
             VALUES (@UserId, @ChatId, @Amount, @CreatedAt)
+            ON CONFLICT (user_id, chat_id) DO NOTHING
             """,
             bet,
             cancellationToken: ct));
+        return rows > 0;
     }
 
     public async Task DeleteAsync(long userId, long chatId, CancellationToken ct)

@@ -496,7 +496,7 @@ See `games/Games.SecretHitler/` migrations. Deck serialized as `L`/`F` strings. 
 
 #### `horse_bets` / `horse_results`
 
-Day-scoped, keyed on `race_date` (`MM-dd-yyyy` UTC+7). Results hold the winner horse index + GIF bytes.
+Day-scoped on `race_date` (`MM-dd-yyyy` UTC+7). Bets include `balance_scope_id` (Telegram chat). Results are keyed on `(race_date, balance_scope_id)`; scope `0` is the **global** merged race (all chats). Other scopes are per-group races. `file_id` stores the Telegram animation reference.
 
 #### `redeem_codes`
 
@@ -516,13 +516,13 @@ All UI in Russian. Command names are ASCII.
 | Command | Effect |
 |---|---|
 | `🎰` | Spin the slot machine — `Games:dice:Cost` + gas, fixed prize table |
-| `/dice bet <amount>` + `🎲` | Place stake, roll cube. Defaults: 4→×1, 5→×2, 6→×2 (`Games:dicecube:Mult*`) |
-| `/darts bet <amount>` + `🎯` | Place stake, throw. 4→×1, 5→×2, 6→×2 |
-| `/football` + ⚽ / `/basket` + 🏀 | 4→×2, 5→×2 (uniform 1…5) |
-| `/bowling` + 🎳 | 4→×1, 5→×2, 6 (strike)→×2 |
+| `/dice bet <amount>` | Bot sends `🎲` after bet (reply to you); you can still send your own `🎲`. 4→×1, 5→×2, 6→×2 (`Games:dicecube:Mult*`) |
+| `/darts bet <amount>` | Bot sends `🎯` or you throw. 4→×1, 5→×2, 6→×2 |
+| `/football bet` / `/basket bet` | Bot sends ⚽/🏀 or you throw. 4→×2, 5→×2 (uniform 1…5) |
+| `/bowling bet` | Bot sends `🎳` or you throw. 4→×1, 5→×2, 6 (strike)→×2 |
 | `/horse bet <1-N> <amount>` | Bet on today's race |
-| `/horse info` | Today's bets + koefs |
-| `/horse result` | Today's winner GIF |
+| `/horse info` | This chat's pool: stakes + koefs |
+| `/horse result` | This chat's last race GIF, else today's global race |
 | `/poker …` | Texas Hold'em — create / join / start / fold / call / raise / check / leave |
 | `/blackjack <bet>` | Start a hand; inline keyboard drives hit / stand / double |
 | `/sh …` | Secret Hitler (5–10 players) — create / join / start / nominate / vote / leave |
@@ -536,7 +536,8 @@ All UI in Russian. Command names are ASCII.
 
 | Command | Effect |
 |---|---|
-| `/horserun` | Run today's race, render GIF, pay winners |
+| `/horserun` | In a **group/supergroup**: run race for **this chat's** pool only. In **private**: global (all chats). |
+| `/horserun global` (or `all`) | Global merged race (same as `/admin/horse` run) |
 | `/codegen [count]` | Generate freespin codes |
 | `/run pay <id> <amount>` | Manual coin adjustment |
 | `/run userinfo` | Reply to message → Telegram user ID |

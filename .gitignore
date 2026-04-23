@@ -30,3 +30,8 @@ experiments/
 coverage-report/
 coverage-results*/
 TestResults/
+
+
+.cursor
+.vscode
+test.txt

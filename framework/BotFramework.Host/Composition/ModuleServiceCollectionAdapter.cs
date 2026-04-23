@@ -46,6 +46,12 @@ public sealed class ModuleServiceCollectionAdapter(
         return this;
     }
 
+    public IModuleServiceCollection AddSingleton<TImplementation>() where TImplementation : class
+    {
+        services.AddSingleton<TImplementation>();
+        return this;
+    }
+
     public IModuleServiceCollection RegisterAggregate<TAggregate>(PersistenceStrategy strategy)
         where TAggregate : IAggregateRoot
     {

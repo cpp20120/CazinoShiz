@@ -150,27 +150,7 @@ sealed class InMemoryBowlingBetStore : IBowlingBetStore
     public Task<BowlingBet?> FindAsync(long userId, long chatId, CancellationToken ct) =>
         Task.FromResult(_bets.GetValueOrDefault((userId, chatId)));
 
-    public Task InsertAsync(BowlingBet bet, CancellationToken ct)
-    {
-        _bets[(bet.UserId, bet.ChatId)] = bet;
-        return Task.CompletedTask;
-    }
-
-    public Task DeleteAsync(long userId, long chatId, CancellationToken ct)
-    {
-        _bets.Remove((userId, chatId));
-        return Task.CompletedTask;
-    }
-}
-
-sealed class InMemoryDartsBetStore : IDartsBetStore
-{
-    private readonly Dictionary<(long, long), DartsBet> _bets = new();
-
-    public Task<DartsBet?> FindAsync(long userId, long chatId, CancellationToken ct) =>
-        Task.FromResult(_bets.GetValueOrDefault((userId, chatId)));
-
-    public Task<bool> InsertAsync(DartsBet bet, CancellationToken ct)
+    public Task<bool> InsertAsync(BowlingBet bet, CancellationToken ct)
     {
         if (_bets.ContainsKey((bet.UserId, bet.ChatId))) return Task.FromResult(false);
         _bets[(bet.UserId, bet.ChatId)] = bet;
@@ -181,6 +161,53 @@ sealed class InMemoryDartsBetStore : IDartsBetStore
     {
         _bets.Remove((userId, chatId));
         return Task.CompletedTask;
+    }
+}
+
+sealed class InMemoryDartsRoundStore : IDartsRoundStore
+{
+    private readonly Dictionary<long, DartsRound> _rounds = new();
+    private long _nextId = 1;
+
+    public Task<long> InsertQueuedAsync(DartsRound row, CancellationToken ct)
+    {
+        var id = _nextId++;
+        var withId = row with { Id = id };
+        _rounds[id] = withId;
+        return Task.FromResult(id);
+    }
+
+    public Task<DartsRound?> FindByIdAsync(long roundId, CancellationToken ct) =>
+        Task.FromResult(_rounds.GetValueOrDefault(roundId));
+
+    public Task<bool> TryMarkAwaitingOutcomeAsync(long roundId, int botMessageId, CancellationToken ct)
+    {
+        if (!_rounds.TryGetValue(roundId, out var row) || row.Status != DartsRoundStatus.Queued)
+            return Task.FromResult(false);
+        _rounds[roundId] = row with { Status = DartsRoundStatus.AwaitingOutcome, BotMessageId = botMessageId };
+        return Task.FromResult(true);
+    }
+
+    public Task DeleteAsync(long roundId, CancellationToken ct)
+    {
+        _rounds.Remove(roundId);
+        return Task.CompletedTask;
+    }
+
+    public Task<int> CountRollsAheadInChatAsync(long chatId, long roundId, CancellationToken ct)
+    {
+        var n = _rounds.Values.Count(r =>
+            r.ChatId == chatId && r.Id < roundId
+            && (r.Status == DartsRoundStatus.Queued || r.Status == DartsRoundStatus.AwaitingOutcome));
+        return Task.FromResult(n);
+    }
+
+    public Task<int> CountActiveByUserChatAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var n = _rounds.Values.Count(r =>
+            r.UserId == userId && r.ChatId == chatId
+            && (r.Status == DartsRoundStatus.Queued || r.Status == DartsRoundStatus.AwaitingOutcome));
+        return Task.FromResult(n);
     }
 }
 
@@ -233,6 +260,11 @@ sealed class InMemoryHorseBetStore : IHorseBetStore
     public Task<IReadOnlyList<HorseBetRow>> ListByRaceDateAsync(string raceDate, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<HorseBetRow>>(_bets.Where(b => b.RaceDate == raceDate).ToList());
 
+    public Task<IReadOnlyList<HorseBetRow>> ListByRaceDateAndScopeAsync(
+        string raceDate, long balanceScopeId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<HorseBetRow>>(_bets
+            .Where(b => b.RaceDate == raceDate && b.BalanceScopeId == balanceScopeId).ToList());
+
     public Task InsertAsync(HorseBetRow bet, CancellationToken ct)
     {
         _bets.Add(bet);
@@ -244,25 +276,32 @@ sealed class InMemoryHorseBetStore : IHorseBetStore
         _bets.RemoveAll(b => b.RaceDate == raceDate);
         return Task.CompletedTask;
     }
+
+    public Task DeleteByRaceDateAndScopeAsync(string raceDate, long balanceScopeId, CancellationToken ct)
+    {
+        _bets.RemoveAll(b => b.RaceDate == raceDate && b.BalanceScopeId == balanceScopeId);
+        return Task.CompletedTask;
+    }
 }
 
 sealed class InMemoryHorseResultStore : IHorseResultStore
 {
-    private readonly Dictionary<string, HorseResultRow> _results = new();
+    private readonly Dictionary<(string RaceDate, long Scope), HorseResultRow> _results = new();
 
-    public Task<HorseResultRow?> FindAsync(string raceDate, CancellationToken ct) =>
-        Task.FromResult(_results.GetValueOrDefault(raceDate));
+    public Task<HorseResultRow?> FindAsync(string raceDate, long balanceScopeId, CancellationToken ct) =>
+        Task.FromResult(_results.GetValueOrDefault((raceDate, balanceScopeId)));
 
     public Task UpsertAsync(HorseResultRow result, CancellationToken ct)
     {
-        _results[result.RaceDate] = result;
+        _results[(result.RaceDate, result.BalanceScopeId)] = result;
         return Task.CompletedTask;
     }
 
-    public Task SaveFileIdAsync(string raceDate, string fileId, CancellationToken ct)
+    public Task SaveFileIdAsync(string raceDate, long balanceScopeId, string fileId, CancellationToken ct)
     {
-        if (_results.TryGetValue(raceDate, out var r))
-            _results[raceDate] = r with { FileId = fileId };
+        var key = (raceDate, balanceScopeId);
+        if (_results.TryGetValue(key, out var r))
+            _results[key] = r with { FileId = fileId };
         return Task.CompletedTask;
     }
 }

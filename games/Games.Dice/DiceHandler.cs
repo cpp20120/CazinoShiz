@@ -26,10 +26,13 @@ public sealed partial class DiceHandler(
 {
     public async Task HandleAsync(UpdateContext ctx)
     {
-        var msg = ctx.Update.Message!;
+        var msg = ctx.MessageOrEdited;
+        if (msg?.Dice?.Emoji != "🎰") return;
+        if (msg.Dice is not { Value: > 0 }) return;
+
         var dice = msg.Dice!;
         var userId = msg.From?.Id ?? 0;
-        if (userId == 0) return;
+        if (userId == 0 || msg.From?.IsBot == true) return;
 
         var chatId = msg.Chat.Id;
         var reply = new ReplyParameters { MessageId = msg.MessageId };

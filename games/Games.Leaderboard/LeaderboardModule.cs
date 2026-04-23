@@ -54,8 +54,9 @@ public sealed class LeaderboardModule : IModule
                 + "/balance — твой баланс\n"
                 + "/daily — маленький ежедневный бонус (процент с потолком)\n"
                 + "/redeem <i>код</i> — активировать код\n\n"
-                + "Игры: /sh · /poker · /blackjack · /horse · /dicecube · /darts · /football · /basketball · /bowling\n"
+                + "Игры: /sh · /poker · /blackjack · /horse · /dice · /darts · /football · /basket · /bowling\n"
                 + "Слоты: отправь 🎰 в чат\n\n"
+                + "Куб / дартс / футбол / баскет / боулинг: голая команда (<code>/dice</code>, <code>/darts</code>, …) или <code>… bet</code> <b>без суммы</b> — ставка по умолчанию: 🎲 <b>{0}</b>, 🎯 <b>{1}</b>, ⚽ <b>{2}</b>, 🏀 <b>{3}</b>, 🎳 <b>{4}</b> (как при явной сумме). Справка: <code>/dice help</code> и т.д.\n\n"
                 + "🐎 Скачки — правила: /horse help"
         }),
     ];

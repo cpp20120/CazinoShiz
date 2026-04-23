@@ -1,5 +1,6 @@
 using BotFramework.Host;
 using BotFramework.Sdk;
+using Microsoft.Extensions.Configuration;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -14,7 +15,8 @@ namespace Games.Leaderboard;
 public sealed class LeaderboardHandler(
     ILeaderboardService service,
     IDailyBonusService dailyBonus,
-    ILocalizer localizer) : IUpdateHandler
+    ILocalizer localizer,
+    IConfiguration configuration) : IUpdateHandler
 {
     public async Task HandleAsync(UpdateContext ctx)
     {
@@ -39,11 +41,25 @@ public sealed class LeaderboardHandler(
             replyParameters: new ReplyParameters { MessageId = msg.MessageId },
             cancellationToken: ctx.Ct);
 
-    private Task HandleHelpAsync(UpdateContext ctx, Message msg) =>
-        ctx.Bot.SendMessage(msg.Chat.Id, Loc("help"),
+    private Task HandleHelpAsync(UpdateContext ctx, Message msg)
+    {
+        var diceDef = ReadPositiveInt(configuration, "Games:dicecube:DefaultBet", 10);
+        var dartsDef = ReadPositiveInt(configuration, "Games:darts:DefaultBet", 10);
+        var footballDef = ReadPositiveInt(configuration, "Games:football:DefaultBet", 10);
+        var basketDef = ReadPositiveInt(configuration, "Games:basketball:DefaultBet", 10);
+        var bowlingDef = ReadPositiveInt(configuration, "Games:bowling:DefaultBet", 10);
+        var text = string.Format(Loc("help"), diceDef, dartsDef, footballDef, basketDef, bowlingDef);
+        return ctx.Bot.SendMessage(msg.Chat.Id, text,
             parseMode: ParseMode.Html,
             replyParameters: new ReplyParameters { MessageId = msg.MessageId },
             cancellationToken: ctx.Ct);
+    }
+
+    private static int ReadPositiveInt(IConfiguration cfg, string key, int fallback)
+    {
+        var s = cfg[key];
+        return int.TryParse(s, out var v) && v > 0 ? v : fallback;
+    }
 
     private async Task HandleTopAsync(UpdateContext ctx, Message msg)
     {

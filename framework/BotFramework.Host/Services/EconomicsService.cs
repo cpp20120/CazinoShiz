@@ -124,7 +124,11 @@ public sealed partial class EconomicsService(
             return new LedgerRevertResult(LedgerRevertStatus.AlreadyReverted, 0);
 
         // Compensation = undo that line: append (-delta) with a reason that is unique per target id.
-        var correction = -row.Delta;
+        // Use long: -int.MinValue overflows int (would throw in checked / corrupt in unchecked).
+        var undoLong = -(long)row.Delta;
+        if (undoLong is > int.MaxValue or < int.MinValue)
+            return new LedgerRevertResult(LedgerRevertStatus.CorrectionOutOfRange, 0);
+        var correction = (int)undoLong;
         if (correction == 0)
         {
             var bal0 = await GetBalanceAsync(row.TelegramUserId, row.BalanceScopeId, ct);

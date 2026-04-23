@@ -7,6 +7,7 @@ public enum CubeBetError
     NotEnoughCoins,
     AlreadyPending,
     Cooldown,
+    BusyOtherGame,
 }
 
 public enum CubeRollOutcome
@@ -20,13 +21,14 @@ public sealed record CubeBetResult(
     int Amount = 0,
     int Balance = 0,
     int PendingAmount = 0,
-    int CooldownSeconds = 0)
+    int CooldownSeconds = 0,
+    string? BlockingGameId = null)
 {
     public static CubeBetResult Fail(CubeBetError err, int balance = 0, int pendingAmount = 0) =>
-        new(err, 0, balance, pendingAmount, 0);
+        new(err, 0, balance, pendingAmount, 0, null);
 
     public static CubeBetResult CooldownWait(int balance, int waitSeconds) =>
-        new(CubeBetError.Cooldown, 0, balance, 0, Math.Max(1, waitSeconds));
+        new(CubeBetError.Cooldown, 0, balance, 0, Math.Max(1, waitSeconds), null);
 }
 
 public sealed record CubeRollResult(

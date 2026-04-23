@@ -40,36 +40,49 @@ public sealed class LedgerModel(
         if (actor?.Role != AdminRole.SuperAdmin)
             return Forbid();
 
-        var result = await economics.RevertLedgerEntryAsync(ledgerId, ct);
-        switch (result.Status)
+        try
         {
-            case LedgerRevertStatus.Ok:
-                await audit.LogAsync(actor.UserId, actor.Name, "ledger.revert", new
-                {
-                    economicsLedgerId = ledgerId,
-                    newBalance = result.NewBalance,
-                }, ct);
-                TempData["Flash"] = $"Reverted ledger line #{ledgerId} — balance now {result.NewBalance}.";
-                break;
-            case LedgerRevertStatus.AlreadyReverted:
-                TempData["FlashError"] = true;
-                TempData["Flash"] = $"Line #{ledgerId} was already reverted.";
-                break;
-            case LedgerRevertStatus.NotFound:
-                TempData["FlashError"] = true;
-                TempData["Flash"] = $"Ledger line #{ledgerId} not found.";
-                break;
-            case LedgerRevertStatus.UserMissing:
-                TempData["FlashError"] = true;
-                TempData["Flash"] = $"User row missing for line #{ledgerId} (cannot apply correction).";
-                break;
-            case LedgerRevertStatus.NoEffect:
-                TempData["Flash"] = $"Line #{ledgerId} has zero delta — nothing to reverse.";
-                break;
-            default:
-                TempData["FlashError"] = true;
-                TempData["Flash"] = "Revert failed.";
-                break;
+            var result = await economics.RevertLedgerEntryAsync(ledgerId, ct);
+            switch (result.Status)
+            {
+                case LedgerRevertStatus.Ok:
+                    await audit.LogAsync(actor.UserId, actor.Name, "ledger.revert", new
+                    {
+                        economicsLedgerId = ledgerId,
+                        newBalance = result.NewBalance,
+                    }, ct);
+                    TempData["Flash"] = $"Reverted ledger line #{ledgerId} — balance now {result.NewBalance}.";
+                    break;
+                case LedgerRevertStatus.AlreadyReverted:
+                    TempData["FlashError"] = true;
+                    TempData["Flash"] = $"Line #{ledgerId} was already reverted.";
+                    break;
+                case LedgerRevertStatus.NotFound:
+                    TempData["FlashError"] = true;
+                    TempData["Flash"] = $"Ledger line #{ledgerId} not found.";
+                    break;
+                case LedgerRevertStatus.UserMissing:
+                    TempData["FlashError"] = true;
+                    TempData["Flash"] = $"User row missing for line #{ledgerId} (cannot apply correction).";
+                    break;
+                case LedgerRevertStatus.NoEffect:
+                    TempData["Flash"] = $"Line #{ledgerId} has zero delta — nothing to reverse.";
+                    break;
+                case LedgerRevertStatus.CorrectionOutOfRange:
+                    TempData["FlashError"] = true;
+                    TempData["Flash"] =
+                        $"Line #{ledgerId} cannot be reverted automatically (delta out of reversible range).";
+                    break;
+                default:
+                    TempData["FlashError"] = true;
+                    TempData["Flash"] = "Revert failed.";
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            TempData["FlashError"] = true;
+            TempData["Flash"] = $"Revert error: {ex.Message}";
         }
 
         return RedirectToPage(new { U, S });

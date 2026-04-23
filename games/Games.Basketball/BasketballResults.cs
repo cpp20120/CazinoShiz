@@ -6,6 +6,7 @@ public enum BasketballBetError
     InvalidAmount,
     NotEnoughCoins,
     AlreadyPending,
+    BusyOtherGame,
 }
 
 public enum BasketballThrowOutcome
@@ -18,10 +19,11 @@ public sealed record BasketballBetResult(
     BasketballBetError Error,
     int Amount = 0,
     int Balance = 0,
-    int PendingAmount = 0)
+    int PendingAmount = 0,
+    string? BlockingGameId = null)
 {
     public static BasketballBetResult Fail(BasketballBetError err, int balance = 0, int pendingAmount = 0) =>
-        new(err, 0, balance, pendingAmount);
+        new(err, 0, balance, pendingAmount, null);
 }
 
 public sealed record BasketballThrowResult(

@@ -62,6 +62,9 @@ public interface IModuleServiceCollection
     IModuleServiceCollection AddScoped<TService, TImpl>() where TImpl : class, TService;
     IModuleServiceCollection AddSingleton<TService, TImpl>() where TImpl : class, TService;
 
+    /// <summary>Registers a concrete type as its own singleton implementation (e.g. background workers).</summary>
+    IModuleServiceCollection AddSingleton<TImplementation>() where TImplementation : class;
+
     /// Registers a domain aggregate with its persistence strategy. Host picks
     /// the right IRepository<TAggregate> implementation based on the strategy.
     IModuleServiceCollection RegisterAggregate<TAggregate>(PersistenceStrategy strategy)

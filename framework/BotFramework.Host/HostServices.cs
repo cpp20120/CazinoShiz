@@ -84,6 +84,8 @@ public enum LedgerRevertStatus
     UserMissing,
     /// <summary>Line had <c>delta = 0</c>; nothing to reverse.</summary>
     NoEffect,
+    /// <summary><c>-delta</c> does not fit in <see cref="int"/> (data edge case).</summary>
+    CorrectionOutOfRange,
 }
 
 public readonly record struct LedgerRevertResult(LedgerRevertStatus Status, int NewBalance = 0);

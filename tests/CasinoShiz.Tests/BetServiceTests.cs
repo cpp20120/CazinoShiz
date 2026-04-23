@@ -1,3 +1,4 @@
+using BotFramework.Sdk;
 using Games.Basketball;
 using Games.Bowling;
 using Games.Darts;
@@ -9,8 +10,11 @@ using Xunit;
 
 namespace CasinoShiz.Tests;
 
+[Collection("MiniGameSession")]
 public class DiceCubeMultiplierTests
 {
+    public DiceCubeMultiplierTests() => BotMiniGameSession.DangerousResetAllForTests();
+
     [Theory]
     [InlineData(1, 0)]
     [InlineData(2, 0)]
@@ -92,6 +96,8 @@ public class DiceCubeMultiplierTests
 
 public class BasketballMultiplierTests
 {
+    public BasketballMultiplierTests() => BotMiniGameSession.DangerousResetAllForTests();
+
     [Theory]
     [InlineData(1, 0)]
     [InlineData(2, 0)]
@@ -138,8 +144,11 @@ public class BasketballMultiplierTests
     }
 }
 
+[Collection("MiniGameSession")]
 public class BowlingMultiplierTests
 {
+    public BowlingMultiplierTests() => BotMiniGameSession.DangerousResetAllForTests();
+
     [Theory]
     [InlineData(1, 0)]
     [InlineData(2, 0)]
@@ -157,7 +166,8 @@ public class BowlingMultiplierTests
     {
         var econ = new FakeEconomicsService();
         var store = new InMemoryBowlingBetStore();
-        var svc = new BowlingService(econ, new NullAnalyticsService(), store, new NullEventBus());
+        var svc = new BowlingService(econ, new NullAnalyticsService(), store, new NullEventBus(),
+            Options.Create(new BowlingOptions()));
         await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         var result = await svc.RollAsync(1, "u", 100, face: 6, default);
         Assert.Equal(BowlingRollOutcome.Rolled, result.Outcome);
@@ -169,15 +179,22 @@ public class BowlingMultiplierTests
     {
         var store = new InMemoryBowlingBetStore();
         var svc = new BowlingService(new FakeEconomicsService(), new NullAnalyticsService(),
-            store, new NullEventBus());
+            store, new NullEventBus(), Options.Create(new BowlingOptions()));
         await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         Assert.Equal(BowlingBetError.AlreadyPending, result.Error);
     }
 }
 
+[Collection("MiniGameSession")]
 public class DartsMultiplierTests
 {
+    public DartsMultiplierTests()
+    {
+        BotMiniGameSession.DangerousResetAllForTests();
+        DartsDiceRoundBinding.DangerousResetAllForTests();
+    }
+
     [Theory]
     [InlineData(1, 0)]
     [InlineData(2, 0)]
@@ -194,10 +211,13 @@ public class DartsMultiplierTests
     public async Task ThrowAsync_Bullseye_CreditsX2()
     {
         var econ = new FakeEconomicsService();
-        var store = new InMemoryDartsBetStore();
-        var svc = new DartsService(econ, new NullAnalyticsService(), store, new NullEventBus(), Options.Create(new DartsOptions()));
-        await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
-        var result = await svc.ThrowAsync(1, "u", 100, face: 6, default);
+        var store = new InMemoryDartsRoundStore();
+        var svc = new DartsService(econ, new NullAnalyticsService(), store, new InMemoryDiceCubeBetStore(),
+            new NullEventBus(), new DartsRollQueue(), Options.Create(new DartsOptions()));
+        var pr = await svc.PlaceBetAsync(1, "u", 100, amount: 100, 1, default);
+        Assert.True(await store.TryMarkAwaitingOutcomeAsync(pr.RoundId, 8001, default));
+        DartsDiceRoundBinding.Bind(100, 8001, pr.RoundId);
+        var result = await svc.ThrowAsync(pr.RoundId, 1, "u", 100, 8001, face: 6, default);
         Assert.Equal(DartsThrowOutcome.Thrown, result.Outcome);
         Assert.Equal(200, result.Payout);
     }
@@ -206,14 +226,18 @@ public class DartsMultiplierTests
     public async Task ThrowAsync_NoBet_ReturnsNoBet()
     {
         var svc = new DartsService(new FakeEconomicsService(), new NullAnalyticsService(),
-            new InMemoryDartsBetStore(), new NullEventBus(), Options.Create(new DartsOptions()));
-        var result = await svc.ThrowAsync(1, "u", 100, face: 6, default);
+            new InMemoryDartsRoundStore(), new InMemoryDiceCubeBetStore(), new NullEventBus(), new DartsRollQueue(),
+            Options.Create(new DartsOptions()));
+        var result = await svc.ThrowAsync(999, 1, "u", 100, 1, face: 6, default);
         Assert.Equal(DartsThrowOutcome.NoBet, result.Outcome);
     }
 }
 
+[Collection("MiniGameSession")]
 public class FootballMultiplierTests
 {
+    public FootballMultiplierTests() => BotMiniGameSession.DangerousResetAllForTests();
+
     [Theory]
     [InlineData(1, 0)]
     [InlineData(2, 0)]

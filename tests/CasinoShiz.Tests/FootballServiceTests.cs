@@ -1,11 +1,15 @@
+using BotFramework.Sdk;
 using Games.Football;
 using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace CasinoShiz.Tests;
 
+[Collection("MiniGameSession")]
 public class FootballServiceTests
 {
+    public FootballServiceTests() => BotMiniGameSession.DangerousResetAllForTests();
+
     private static FootballService MakeService(
         FakeEconomicsService? economics = null,
         InMemoryFootballBetStore? bets = null) =>

@@ -24,10 +24,17 @@ public interface IHorseService
 {
     Task<BetResult> PlaceBetAsync(
         long userId, string displayName, long balanceScopeId, int horseId, int amount, CancellationToken ct);
-    Task<RaceInfo> GetTodayInfoAsync(CancellationToken ct);
-    Task<TodayRaceResult> GetTodayResultAsync(CancellationToken ct);
-    Task<RaceOutcome> RunRaceAsync(long callerUserId, CancellationToken ct);
-    Task SaveFileIdAsync(string raceDate, string fileId, CancellationToken ct);
+
+    /// <param name="balanceScopeIdOnly">If null, aggregate every chat (admin). Else this Telegram chat only.</param>
+    Task<RaceInfo> GetTodayInfoAsync(long? balanceScopeIdOnly, CancellationToken ct);
+
+    /// <summary>Local result for this chat, else today's global result (scope 0).</summary>
+    Task<TodayRaceResult> GetTodayResultAsync(long viewerBalanceScopeId, CancellationToken ct);
+
+    Task<RaceOutcome> RunRaceAsync(
+        long callerUserId, HorseRunKind kind, long chatScopeId, CancellationToken ct);
+
+    Task SaveFileIdAsync(string raceDate, long balanceScopeId, string fileId, CancellationToken ct);
 }
 
 public sealed partial class HorseService(
@@ -80,10 +87,12 @@ public sealed partial class HorseService(
         return new BetResult(HorseError.None, horseId, amount, balance - amount);
     }
 
-    public async Task<RaceInfo> GetTodayInfoAsync(CancellationToken ct)
+    public async Task<RaceInfo> GetTodayInfoAsync(long? balanceScopeIdOnly, CancellationToken ct)
     {
         var raceDate = HorseTimeHelper.GetRaceDate();
-        var bets = await betStore.ListByRaceDateAsync(raceDate, ct);
+        var bets = balanceScopeIdOnly is { } scope
+            ? await betStore.ListByRaceDateAndScopeAsync(raceDate, scope, ct)
+            : await betStore.ListByRaceDateAsync(raceDate, ct);
 
         var stakes = new Dictionary<int, int>();
         for (var i = 0; i < _opts.HorseCount; i++) stakes[i] = 0;
@@ -92,19 +101,24 @@ public sealed partial class HorseService(
         return new RaceInfo(bets.Count, GetKoefs(stakes));
     }
 
-    public async Task<TodayRaceResult> GetTodayResultAsync(CancellationToken ct)
+    public async Task<TodayRaceResult> GetTodayResultAsync(long viewerBalanceScopeId, CancellationToken ct)
     {
         var raceDate = HorseTimeHelper.GetRaceDate();
-        var result = await resultStore.FindAsync(raceDate, ct);
-        return result == null
+        var local = await resultStore.FindAsync(raceDate, viewerBalanceScopeId, ct);
+        if (local != null)
+            return new TodayRaceResult(local.Winner, local.FileId);
+
+        var global = await resultStore.FindAsync(raceDate, 0, ct);
+        return global == null
             ? new TodayRaceResult(null, null)
-            : new TodayRaceResult(result.Winner, result.FileId);
+            : new TodayRaceResult(global.Winner, global.FileId);
     }
 
-    public Task SaveFileIdAsync(string raceDate, string fileId, CancellationToken ct)
-        => resultStore.SaveFileIdAsync(raceDate, fileId, ct);
+    public Task SaveFileIdAsync(string raceDate, long balanceScopeId, string fileId, CancellationToken ct)
+        => resultStore.SaveFileIdAsync(raceDate, balanceScopeId, fileId, ct);
 
-    public async Task<RaceOutcome> RunRaceAsync(long callerUserId, CancellationToken ct)
+    public async Task<RaceOutcome> RunRaceAsync(
+        long callerUserId, HorseRunKind kind, long chatScopeId, CancellationToken ct)
     {
         if (!_opts.Admins.Contains(callerUserId))
         {
@@ -113,7 +127,10 @@ public sealed partial class HorseService(
         }
 
         var raceDate = HorseTimeHelper.GetRaceDate();
-        var bets = await betStore.ListByRaceDateAsync(raceDate, ct);
+        var resultScope = kind == HorseRunKind.Global ? 0L : chatScopeId;
+        var bets = kind == HorseRunKind.Global
+            ? await betStore.ListByRaceDateAsync(raceDate, ct)
+            : await betStore.ListByRaceDateAndScopeAsync(raceDate, chatScopeId, ct);
 
         if (bets.Count < _opts.MinBetsToRun) return RaceFail(HorseError.NotEnoughBets);
 
@@ -130,7 +147,7 @@ public sealed partial class HorseService(
             return GifEncoder.RenderFramesToGif(frames, width, height);
         }, ct);
 
-        await resultStore.UpsertAsync(new HorseResultRow(raceDate, winner, null), ct);
+        await resultStore.UpsertAsync(new HorseResultRow(raceDate, resultScope, winner, null), ct);
 
         var transactions = Payoff(bets, ks, winner);
 
@@ -153,14 +170,21 @@ public sealed partial class HorseService(
                 wonByUser.GetValueOrDefault(g.Key, 0)))
             .ToList();
 
-        await betStore.DeleteByRaceDateAsync(raceDate, ct);
+        if (kind == HorseRunKind.Global)
+            await betStore.DeleteByRaceDateAsync(raceDate, ct);
+        else
+            await betStore.DeleteByRaceDateAndScopeAsync(raceDate, chatScopeId, ct);
 
         var pot = bets.Sum(b => b.Amount);
         LogHorseRaceFinished(winner + 1, bets.Count, transactions.Count, pot);
         analytics.Track("horse", "run", new Dictionary<string, object?>
         {
-            ["race_date"] = raceDate, ["winner"] = winner + 1,
-            ["bets_count"] = bets.Count, ["pot"] = pot,
+            ["race_date"] = raceDate,
+            ["winner"] = winner + 1,
+            ["bets_count"] = bets.Count,
+            ["pot"] = pot,
+            ["run_kind"] = kind.ToString(),
+            ["result_scope"] = resultScope,
         });
         await events.PublishAsync(new HorseRaceFinished(raceDate, winner + 1, bets.Count,
             transactions.Count, pot, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()), ct);

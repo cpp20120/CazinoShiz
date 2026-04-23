@@ -23,7 +23,8 @@ public sealed class BetsModel(INpgsqlConnectionFactory connections) : PageModel
             SELECT game, user_id AS UserId, amount, chat_id AS ChatId,
                    note, created_at AS CreatedAt
             FROM (
-                SELECT 'darts'      AS game, user_id, amount, chat_id, NULL::text AS note, created_at FROM darts_bets
+                SELECT 'darts' AS game, user_id, amount, chat_id,
+                       ('id=' || id::text || ' s=' || status::text)::text AS note, created_at FROM darts_rounds
                 UNION ALL
                 SELECT 'dicecube'   AS game, user_id, amount, chat_id, NULL::text AS note, created_at FROM dicecube_bets
                 UNION ALL
@@ -46,7 +47,7 @@ public sealed class BetsModel(INpgsqlConnectionFactory connections) : PageModel
         Rows = rows.ToList();
 
         var counts = await conn.QueryAsync<(string Game, int Cnt, long Sum)>(new CommandDefinition("""
-            SELECT 'darts'      AS game, COUNT(*)::int AS cnt, COALESCE(SUM(amount),0)::bigint AS sum FROM darts_bets
+            SELECT 'darts'      AS game, COUNT(*)::int AS cnt, COALESCE(SUM(amount),0)::bigint AS sum FROM darts_rounds
             UNION ALL
             SELECT 'dicecube',   COUNT(*)::int,               COALESCE(SUM(amount),0)::bigint     FROM dicecube_bets
             UNION ALL

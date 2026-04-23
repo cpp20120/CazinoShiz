@@ -7,6 +7,7 @@
 
 using BotFramework.Host;
 using BotFramework.Sdk;
+using Microsoft.Extensions.Options;
 
 namespace Games.Bowling;
 
@@ -20,8 +21,10 @@ public sealed class BowlingService(
     IEconomicsService economics,
     IAnalyticsService analytics,
     IBowlingBetStore bets,
-    IDomainEventBus events) : IBowlingService
+    IDomainEventBus events,
+    IOptions<BowlingOptions> options) : IBowlingService
 {
+    private readonly int _maxBet = options.Value.MaxBet;
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
         [1] = 0, [2] = 0, [3] = 0, [4] = 1, [5] = 2, [6] = 2,
@@ -29,11 +32,14 @@ public sealed class BowlingService(
 
     public async Task<BowlingBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)
     {
-        if (amount <= 0) return BowlingBetResult.Fail(BowlingBetError.InvalidAmount);
+        if (amount <= 0 || amount > _maxBet) return BowlingBetResult.Fail(BowlingBetError.InvalidAmount);
 
         await economics.EnsureUserAsync(userId, chatId, displayName, ct);
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
         if (amount > balance) return BowlingBetResult.Fail(BowlingBetError.NotEnoughCoins, balance);
+
+        if (!BotMiniGameSession.TryBeginPlaceBet(userId, chatId, MiniGameIds.Bowling, out var blocker))
+            return new BowlingBetResult(BowlingBetError.BusyOtherGame, 0, balance, 0, blocker);
 
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return BowlingBetResult.Fail(BowlingBetError.AlreadyPending, balance, existing.Amount);
@@ -41,14 +47,20 @@ public sealed class BowlingService(
         if (!await economics.TryDebitAsync(userId, chatId, amount, "bowling.bet", ct))
             return BowlingBetResult.Fail(BowlingBetError.NotEnoughCoins, balance);
 
-        await bets.InsertAsync(new BowlingBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct);
+        if (!await bets.InsertAsync(new BowlingBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
+        {
+            await economics.CreditAsync(userId, chatId, amount, "bowling.bet.refund", ct);
+            return BowlingBetResult.Fail(BowlingBetError.AlreadyPending, balance);
+        }
+
+        BotMiniGameSession.RegisterPlacedBet(userId, chatId, MiniGameIds.Bowling);
 
         analytics.Track("bowling", "bet", new Dictionary<string, object?>
         {
             ["user_id"] = userId, ["chat_id"] = chatId, ["amount"] = amount,
         });
 
-        return new BowlingBetResult(BowlingBetError.None, amount, balance - amount);
+        return new BowlingBetResult(BowlingBetError.None, amount, balance - amount, 0, null);
     }
 
     public async Task<BowlingRollResult> RollAsync(long userId, string displayName, long chatId, int face, CancellationToken ct)
@@ -64,6 +76,7 @@ public sealed class BowlingService(
             await economics.CreditAsync(userId, chatId, payout, "bowling.payout", ct);
 
         await bets.DeleteAsync(userId, chatId, ct);
+        BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Bowling);
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
 
         analytics.Track("bowling", "roll", new Dictionary<string, object?>
