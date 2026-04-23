@@ -19,6 +19,10 @@ public sealed class BotFrameworkOptions
     /// Kestrel port for webhook mode. Ignored in polling mode.
     public int WebhookPort { get; set; } = 3000;
 
+    /// Public HTTPS base URL used to register Telegram webhook in production
+    /// mode (without trailing slash), e.g. https://bot.example.com.
+    public string WebhookBaseUrl { get; set; } = "";
+
     /// Secret for gating /admin/* pages. Leave empty to disable the admin UI
     /// entirely (framework returns 503 when admin routes are hit).
     public string? AdminWebToken { get; set; }
@@ -43,4 +47,11 @@ public sealed class BotFrameworkOptions
 
     /// Bot @username (with or without leading "@") — used by Telegram Login Widget.
     public string Username { get; set; } = "";
+
+    /// Backward-compatible alias for Username to support existing configs.
+    public string BotUsername
+    {
+        get => Username;
+        set => Username = value;
+    }
 }

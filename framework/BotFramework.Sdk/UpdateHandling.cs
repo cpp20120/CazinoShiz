@@ -80,7 +80,29 @@ public sealed class CommandAttribute(string prefix) : RouteAttribute
     public override int Priority => 100 + Prefix.Length;
     public override string Name => $"cmd:{Prefix}";
     public override bool Matches(Update update) =>
-        update.Message?.Text is { } text && text.StartsWith(Prefix);
+        TryGetCommandToken(update.Message?.Text) is { } commandToken
+        && string.Equals(commandToken, Prefix, StringComparison.OrdinalIgnoreCase);
+
+    private static string? TryGetCommandToken(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var span = text.AsSpan().TrimStart();
+        if (span.IsEmpty || span[0] != '/')
+            return null;
+
+        var spaceIndex = span.IndexOf(' ');
+        var token = spaceIndex >= 0 ? span[..spaceIndex] : span;
+        if (token.IsEmpty)
+            return null;
+
+        var mentionIndex = token.IndexOf('@');
+        if (mentionIndex >= 0)
+            token = token[..mentionIndex];
+
+        return token.IsEmpty ? null : token.ToString();
+    }
 }
 
 public sealed class CallbackPrefixAttribute(string prefix) : RouteAttribute

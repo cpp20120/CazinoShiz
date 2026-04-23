@@ -109,7 +109,7 @@ public static class BotFrameworkApplicationExtensions
             if (string.IsNullOrEmpty(opts.Username))
             {
                 ctx.Response.StatusCode = 503;
-                await ctx.Response.WriteAsync("Admin UI disabled: Bot:Username not set");
+                await ctx.Response.WriteAsync("Admin UI disabled: Bot:Username/Bot:BotUsername not set");
                 return;
             }
 

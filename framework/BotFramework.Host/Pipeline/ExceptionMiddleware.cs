@@ -27,6 +27,7 @@ public sealed partial class ExceptionMiddleware(
                 ["update_id"] = ctx.Update.Id,
                 ["user_id"] = ctx.UserId,
             });
+            throw;
         }
     }
 

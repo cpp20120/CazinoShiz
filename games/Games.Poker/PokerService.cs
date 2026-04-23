@@ -9,14 +9,16 @@
 //   • Domain events (PokerHandStarted / PokerHandEnded) are published on the
 //     IDomainEventBus for cross-module subscribers.
 //
-// Concurrency: per-table SemaphoreSlim gates (keyed by invite code) so
-// different tables in different group chats don't block each other.
+// Concurrency: per-table SemaphoreSlim gates (keyed by invite code) plus
+// PostgreSQL advisory locks with the same keys. The local gate keeps one
+// process efficient; advisory lock extends the protection across instances.
 // Table-creating operations gate by "u:{userId}" until a code is assigned.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using System.Collections.Concurrent;
 using BotFramework.Host;
 using BotFramework.Sdk;
+using Dapper;
 using Games.Poker.Domain;
 using Microsoft.Extensions.Options;
 using static Games.Poker.PokerResultHelpers;
@@ -40,6 +42,7 @@ public sealed partial class PokerService(
     IPokerTableStore tables,
     IPokerSeatStore seats,
     IEconomicsService economics,
+    INpgsqlConnectionFactory connections,
     IAnalyticsService analytics,
     IDomainEventBus events,
     IOptions<PokerOptions> options,
@@ -82,8 +85,10 @@ public sealed partial class PokerService(
 
     public async Task<CreateResult> CreateTableAsync(long userId, string displayName, long chatId, CancellationToken ct)
     {
-        var gate = GetGate($"u:{userId}");
+        var lockKey = $"u:{userId}";
+        var gate = GetGate(lockKey);
         await gate.WaitAsync(ct);
+        await using var distributedLock = await AcquireDistributedLockAsync(lockKey, ct);
         try
         {
             await economics.EnsureUserAsync(userId, chatId, displayName, ct);
@@ -128,8 +133,16 @@ public sealed partial class PokerService(
             if (!await economics.TryDebitAsync(userId, chatId, _opts.BuyIn, "poker.create", ct))
                 return Fail(PokerError.NotEnoughCoins);
 
-            await tables.InsertAsync(table, ct);
-            await seats.InsertAsync(seat, ct);
+            try
+            {
+                await tables.InsertAsync(table, ct);
+                await seats.InsertAsync(seat, ct);
+            }
+            catch (Exception ex)
+            {
+                await RefundBuyInAfterCreateFailureAsync(userId, chatId, code, ex, ct);
+                throw;
+            }
 
             LogPokerCreated(code, userId, _opts.BuyIn);
             analytics.Track("poker", "create", new Dictionary<string, object?>
@@ -150,6 +163,7 @@ public sealed partial class PokerService(
         code = code.ToUpperInvariant();
         var gate = GetGate(code);
         await gate.WaitAsync(ct);
+        await using var distributedLock = await AcquireDistributedLockAsync(code, ct);
         try
         {
             await economics.EnsureUserAsync(userId, chatId, displayName, ct);
@@ -182,7 +196,15 @@ public sealed partial class PokerService(
             };
             if (!await economics.TryDebitAsync(userId, chatId, _opts.BuyIn, "poker.join", ct))
                 return JoinFail(PokerError.NotEnoughCoins);
-            await seats.InsertAsync(seat, ct);
+            try
+            {
+                await seats.InsertAsync(seat, ct);
+            }
+            catch (Exception ex)
+            {
+                await RefundBuyInAfterJoinFailureAsync(userId, chatId, code, ex, ct);
+                throw;
+            }
 
             list.Add(seat);
             LogPokerJoined(code, userId, position, list.Count);
@@ -208,6 +230,7 @@ public sealed partial class PokerService(
 
         var gate = GetGate(precheck.InviteCode);
         await gate.WaitAsync(ct);
+        await using var distributedLock = await AcquireDistributedLockAsync(precheck.InviteCode, ct);
         try
         {
             var mySeat = await seats.FindByUserAsync(userId, ct);
@@ -247,6 +270,7 @@ public sealed partial class PokerService(
 
         var gate = GetGate(precheck.InviteCode);
         await gate.WaitAsync(ct);
+        await using var distributedLock = await AcquireDistributedLockAsync(precheck.InviteCode, ct);
         try
         {
             var seat = await seats.FindByUserAsync(userId, ct);
@@ -288,6 +312,7 @@ public sealed partial class PokerService(
     {
         var gate = GetGate(inviteCode);
         await gate.WaitAsync(ct);
+        await using var distributedLock = await AcquireDistributedLockAsync(inviteCode, ct);
         try
         {
             var table = await tables.FindAsync(inviteCode, ct);
@@ -324,6 +349,7 @@ public sealed partial class PokerService(
 
         var gate = GetGate(precheck.InviteCode);
         await gate.WaitAsync(ct);
+        await using var distributedLock = await AcquireDistributedLockAsync(precheck.InviteCode, ct);
         try
         {
             var seat = await seats.FindByUserAsync(userId, ct);
@@ -402,6 +428,78 @@ public sealed partial class PokerService(
 
     public Task<IReadOnlyList<string>> ListStuckCodesAsync(long cutoffMs, CancellationToken ct) =>
         tables.ListStuckCodesAsync(cutoffMs, ct);
+
+    private async Task RefundBuyInAfterCreateFailureAsync(long userId, long chatId, string code, Exception exception, CancellationToken ct)
+    {
+        try
+        {
+            await economics.CreditAsync(userId, chatId, _opts.BuyIn, "poker.create.compensate", ct);
+            LogPokerCreateCompensated(code, userId, _opts.BuyIn);
+        }
+        catch (Exception creditEx)
+        {
+            LogPokerCreateCompensationFailed(code, userId, _opts.BuyIn, creditEx);
+        }
+
+        LogPokerCreateFailedAfterDebit(code, userId, exception);
+    }
+
+    private async Task RefundBuyInAfterJoinFailureAsync(long userId, long chatId, string code, Exception exception, CancellationToken ct)
+    {
+        try
+        {
+            await economics.CreditAsync(userId, chatId, _opts.BuyIn, "poker.join.compensate", ct);
+            LogPokerJoinCompensated(code, userId, _opts.BuyIn);
+        }
+        catch (Exception creditEx)
+        {
+            LogPokerJoinCompensationFailed(code, userId, _opts.BuyIn, creditEx);
+        }
+
+        LogPokerJoinFailedAfterDebit(code, userId, exception);
+    }
+
+    private async Task<IAsyncDisposable> AcquireDistributedLockAsync(string key, CancellationToken ct)
+    {
+        var lockId = HashLockKey(key);
+        var conn = await connections.OpenAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "SELECT pg_advisory_lock(@lockId)",
+            new { lockId },
+            cancellationToken: ct));
+        return new AdvisoryLockHandle(conn, lockId);
+    }
+
+    private static long HashLockKey(string key)
+    {
+        const long offset = unchecked((long)1469598103934665603UL);
+        const long prime = 1099511628211;
+        long hash = offset;
+        foreach (var ch in key)
+        {
+            hash ^= ch;
+            hash *= prime;
+        }
+
+        return hash;
+    }
+
+    private sealed class AdvisoryLockHandle(Npgsql.NpgsqlConnection connection, long lockId) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await connection.ExecuteAsync(new CommandDefinition(
+                    "SELECT pg_advisory_unlock(@lockId)",
+                    new { lockId }));
+            }
+            finally
+            {
+                await connection.DisposeAsync();
+            }
+        }
+    }
 
     // ───────────────────────── orchestration ─────────────────────────
 
@@ -486,8 +584,26 @@ public sealed partial class PokerService(
     [LoggerMessage(LogLevel.Information, "poker.create.ok code={Code} host={UserId} buy_in={BuyIn}")]
     partial void LogPokerCreated(string code, long userId, int buyIn);
 
+    [LoggerMessage(LogLevel.Warning, "poker.create.failed_after_debit code={Code} host={UserId}")]
+    partial void LogPokerCreateFailedAfterDebit(string code, long userId, Exception exception);
+
+    [LoggerMessage(LogLevel.Information, "poker.create.compensated code={Code} host={UserId} amount={Amount}")]
+    partial void LogPokerCreateCompensated(string code, long userId, int amount);
+
+    [LoggerMessage(LogLevel.Error, "poker.create.compensation_failed code={Code} host={UserId} amount={Amount}")]
+    partial void LogPokerCreateCompensationFailed(string code, long userId, int amount, Exception exception);
+
     [LoggerMessage(LogLevel.Information, "poker.join.ok code={Code} user={UserId} seat={Pos} seated={N}")]
     partial void LogPokerJoined(string code, long userId, int pos, int n);
+
+    [LoggerMessage(LogLevel.Warning, "poker.join.failed_after_debit code={Code} user={UserId}")]
+    partial void LogPokerJoinFailedAfterDebit(string code, long userId, Exception exception);
+
+    [LoggerMessage(LogLevel.Information, "poker.join.compensated code={Code} user={UserId} amount={Amount}")]
+    partial void LogPokerJoinCompensated(string code, long userId, int amount);
+
+    [LoggerMessage(LogLevel.Error, "poker.join.compensation_failed code={Code} user={UserId} amount={Amount}")]
+    partial void LogPokerJoinCompensationFailed(string code, long userId, int amount, Exception exception);
 
     [LoggerMessage(LogLevel.Information, "poker.hand.start code={Code} button={Button} utg={Utg} pot={Pot}")]
     partial void LogPokerHandStarted(string code, int button, int utg, int pot);

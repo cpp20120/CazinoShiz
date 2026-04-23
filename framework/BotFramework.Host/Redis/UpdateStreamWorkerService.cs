@@ -78,12 +78,22 @@ public sealed partial class UpdateStreamWorkerService(
     {
         var db = redis.GetDatabase();
         var streamKey = StreamKey(partition);
-        var consumer = $"{Environment.MachineName}:{partition}";
+        var consumer = $"partition:{partition}";
 
         while (!ct.IsCancellationRequested)
         {
             try
             {
+                // Recover pending messages first so failed deliveries get retried.
+                var pending = await db.StreamReadGroupAsync(
+                    streamKey, _opts.ConsumerGroup, consumer, "0", count: 10);
+                if (pending.Length > 0)
+                {
+                    foreach (var entry in pending)
+                        await HandleEntryAsync(db, streamKey, partition, entry, ct);
+                    continue;
+                }
+
                 var entries = await db.StreamReadGroupAsync(
                     streamKey, _opts.ConsumerGroup, consumer, ">", count: 1);
 
@@ -95,18 +105,7 @@ public sealed partial class UpdateStreamWorkerService(
 
                 foreach (var entry in entries)
                 {
-                    try
-                    {
-                        await ProcessAsync(entry, ct);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogProcessingFailed(ex, partition, entry.Id.ToString());
-                    }
-                    finally
-                    {
-                        await db.StreamAcknowledgeAsync(streamKey, _opts.ConsumerGroup, entry.Id);
-                    }
+                    await HandleEntryAsync(db, streamKey, partition, entry, ct);
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
@@ -129,6 +128,51 @@ public sealed partial class UpdateStreamWorkerService(
         }
     }
 
+    private async Task HandleEntryAsync(
+        IDatabase db,
+        string streamKey,
+        int partition,
+        StreamEntry entry,
+        CancellationToken ct)
+    {
+        try
+        {
+            await ProcessAsync(entry, ct);
+            await db.StreamAcknowledgeAsync(streamKey, _opts.ConsumerGroup, entry.Id);
+            await db.KeyDeleteAsync(RetryKey(partition, entry.Id.ToString()));
+        }
+        catch (Exception ex)
+        {
+            var retryKey = RetryKey(partition, entry.Id.ToString());
+            var attempts = await db.StringIncrementAsync(retryKey);
+            await db.KeyExpireAsync(retryKey, TimeSpan.FromSeconds(_opts.RetryCounterTtlSeconds));
+            LogProcessingFailed(ex, partition, entry.Id.ToString(), (long)attempts);
+
+            if (attempts < _opts.MaxProcessingAttempts)
+                return;
+
+            var payload = (string?)entry["u"] ?? "";
+            await db.StreamAddAsync(_opts.DeadLetterStreamKey,
+            [
+                new NameValueEntry("partition", partition),
+                new NameValueEntry("stream", streamKey),
+                new NameValueEntry("entry_id", entry.Id.ToString()),
+                new NameValueEntry("attempts", attempts.ToString()),
+                new NameValueEntry("error_type", ex.GetType().FullName ?? "Exception"),
+                new NameValueEntry("error_message", ex.Message),
+                new NameValueEntry("u", payload),
+                new NameValueEntry("failed_at", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
+            ]);
+
+            await db.StreamAcknowledgeAsync(streamKey, _opts.ConsumerGroup, entry.Id);
+            await db.KeyDeleteAsync(retryKey);
+            LogMovedToDlq(partition, entry.Id.ToString(), (long)attempts);
+        }
+    }
+
+    private string RetryKey(int partition, string entryId) =>
+        $"{_opts.StreamKeyPrefix}:retry:{partition}:{entryId}";
+
     private async Task ProcessAsync(StreamEntry entry, CancellationToken ct)
     {
         var json = (string?)entry["u"];
@@ -150,6 +194,9 @@ public sealed partial class UpdateStreamWorkerService(
     [LoggerMessage(LogLevel.Warning, "update_stream.xgroup_init_failed partition={Partition} key={StreamKey}")]
     partial void LogStreamGroupInitFailed(int partition, string streamKey, Exception ex);
 
-    [LoggerMessage(LogLevel.Warning, "update_worker.processing_failed partition={Partition} id={EntryId}")]
-    partial void LogProcessingFailed(Exception ex, int partition, string entryId);
+    [LoggerMessage(LogLevel.Warning, "update_worker.processing_failed partition={Partition} id={EntryId} attempts={Attempts}")]
+    partial void LogProcessingFailed(Exception ex, int partition, string entryId, long attempts);
+
+    [LoggerMessage(LogLevel.Error, "update_worker.moved_to_dlq partition={Partition} id={EntryId} attempts={Attempts}")]
+    partial void LogMovedToDlq(int partition, string entryId, long attempts);
 }

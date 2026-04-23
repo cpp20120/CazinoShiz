@@ -75,10 +75,24 @@ public class RouteAttributeTests
     }
 
     [Fact]
+    public void Command_MatchesMentionForm()
+    {
+        var attr = new CommandAttribute("/poker");
+        Assert.True(attr.Matches(TextUpdate("/poker@CasinoShizBot create")));
+    }
+
+    [Fact]
     public void Command_DoesNotMatchDifferentCommand()
     {
         var attr = new CommandAttribute("/poker");
         Assert.False(attr.Matches(TextUpdate("/sh")));
+    }
+
+    [Fact]
+    public void Command_DoesNotMatchCommandPrefixOnly()
+    {
+        var attr = new CommandAttribute("/pay");
+        Assert.False(attr.Matches(TextUpdate("/payday")));
     }
 
     [Fact]

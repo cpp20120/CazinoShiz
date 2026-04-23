@@ -50,6 +50,7 @@ public sealed partial class BotHostedService(
         if (_options.IsProduction)
         {
             LogStartingBotInWebhookMode(_options.WebhookPort);
+            await EnsureWebhookAsync(cancellationToken);
         }
         else
         {
@@ -65,6 +66,28 @@ public sealed partial class BotHostedService(
             }
 
             _pollingTask = Task.Run(() => RunPollingWithSupervision(_cts.Token), _cts.Token);
+        }
+    }
+
+    private async Task EnsureWebhookAsync(CancellationToken ct)
+    {
+        var baseUrl = _options.WebhookBaseUrl?.Trim().TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            LogWebhookBaseUrlMissing();
+            return;
+        }
+
+        var webhookUrl = $"{baseUrl}/{_options.Token}";
+        try
+        {
+            await botClient.SetWebhook(webhookUrl, cancellationToken: ct);
+            LogWebhookSet(webhookUrl);
+        }
+        catch (Exception ex)
+        {
+            LogSetWebhookFailed(ex, webhookUrl);
+            throw;
         }
     }
 
@@ -132,7 +155,6 @@ public sealed partial class BotHostedService(
                 var updates = await botClient.GetUpdates(offset, timeout: 30, cancellationToken: ct);
                 foreach (var update in updates)
                 {
-                    offset = update.Id + 1;
                     if (publisher is not null)
                     {
                         await publisher.PublishAsync(update, ct);
@@ -144,6 +166,9 @@ public sealed partial class BotHostedService(
                         var ctx = new UpdateContext(botClient, update, scope.ServiceProvider, ct);
                         await pipeline.InvokeAsync(ctx);
                     }
+
+                    // Advance offset only after successful processing/publication.
+                    offset = update.Id + 1;
                 }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -169,6 +194,15 @@ public sealed partial class BotHostedService(
 
     [LoggerMessage(LogLevel.Warning, "Could not delete Telegram webhook before polling; getUpdates may return 409 until you call deleteWebhook")]
     partial void LogDeleteWebhookForPollingFailed(Exception exception);
+
+    [LoggerMessage(LogLevel.Warning, "Webhook mode enabled but Bot:WebhookBaseUrl is empty; automatic SetWebhook skipped")]
+    partial void LogWebhookBaseUrlMissing();
+
+    [LoggerMessage(LogLevel.Information, "Registered Telegram webhook: {WebhookUrl}")]
+    partial void LogWebhookSet(string webhookUrl);
+
+    [LoggerMessage(LogLevel.Error, "Failed to register Telegram webhook: {WebhookUrl}")]
+    partial void LogSetWebhookFailed(Exception exception, string webhookUrl);
 
     [LoggerMessage(LogLevel.Error, "Error during polling")]
     partial void LogErrorDuringPolling(Exception exception);

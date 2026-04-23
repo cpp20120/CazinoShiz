@@ -93,12 +93,11 @@ public class FrameworkMiddlewareTests
     }
 
     [Fact]
-    public async Task ExceptionMiddleware_HandlerThrows_DoesNotRethrow()
+    public async Task ExceptionMiddleware_HandlerThrows_Rethrows()
     {
         var mw = new ExceptionMiddleware(new NullAnalyticsService(), NullLogger<ExceptionMiddleware>.Instance);
         Task Next(UpdateContext _) => throw new InvalidOperationException("game error");
-        var ex = await Record.ExceptionAsync(() => mw.InvokeAsync(MakeCtx(), Next));
-        Assert.Null(ex);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => mw.InvokeAsync(MakeCtx(), Next));
     }
 
     [Fact]
@@ -107,7 +106,7 @@ public class FrameworkMiddlewareTests
         var analytics = new TrackingAnalyticsService();
         var mw = new ExceptionMiddleware(analytics, NullLogger<ExceptionMiddleware>.Instance);
         Task Next(UpdateContext _) => throw new InvalidOperationException("game error");
-        await mw.InvokeAsync(MakeCtx(), Next);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => mw.InvokeAsync(MakeCtx(), Next));
         Assert.Single(analytics.Events);
     }
 
