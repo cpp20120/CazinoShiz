@@ -1,4 +1,6 @@
+using System.Text.RegularExpressions;
 using BotFramework.Host;
+using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
@@ -12,9 +14,11 @@ public sealed class TransferHandler(
     ITransferService transfers,
     ILocalizer localizer,
     ITelegramBotClient bot,
-    IOptions<TransferOptions> options) : IUpdateHandler
+    IOptions<TransferOptions> options,
+    IOptions<BotFrameworkOptions> frameworkOpts) : IUpdateHandler
 {
     private readonly TransferOptions _opts = options.Value;
+    private readonly BotFrameworkOptions _framework = frameworkOpts.Value;
 
     public async Task HandleAsync(UpdateContext ctx)
     {
@@ -108,44 +112,112 @@ public sealed class TransferHandler(
     private static bool TryParseAmount(Message msg, out int net)
     {
         net = 0;
-        var parts = msg.Text!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var parts = SplitArgs(msg.Text!);
         if (parts.Length < 2) return false;
         return int.TryParse(parts[^1], out net) && net > 0;
     }
 
+    /// <summary>Telegram and clients may use NBSP / other Unicode space; <see cref="string.Split(char)"/> misses those.</summary>
+    private static string[] SplitArgs(string text) =>
+        Regex.Split(text.Trim(), @"\s+", RegexOptions.None)
+            .Where(static s => s.Length > 0)
+            .ToArray();
+
     private async Task<(long userId, string display)?> TryResolveTargetAsync(Message msg, CancellationToken ct)
     {
-        if (msg.ReplyToMessage?.From is { IsBot: false } ru)
-            return (ru.Id, FormatUserLabel(ru));
-
         foreach (var e in msg.Entities ?? [])
         {
             if (e.Type == MessageEntityType.TextMention && e.User is { IsBot: false } u)
                 return (u.Id, FormatUserLabel(u));
         }
 
-        var parts = msg.Text!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length >= 3 && long.TryParse(parts[1], out var uid) && uid > 0)
-            return (uid, $"User ID: {uid}");
-
-        if (parts.Length >= 3)
+        // Plain "@username" typed or chosen from autocomplete is MessageEntityType.Mention, not TextMention.
+        foreach (var e in msg.Entities ?? [])
         {
-            var handle = parts[1].TrimStart('@');
-            if (handle.Length == 0) return null;
-            try
+            if (e.Type != MessageEntityType.Mention) continue;
+            if (MentionIsInsideBotCommand(msg, e)) continue;
+            if (msg.Text is null || e.Offset < 0 || e.Offset + e.Length > msg.Text.Length) continue;
+            var handle = msg.Text.Substring(e.Offset, e.Length).TrimStart('@');
+            if (handle.Length == 0) continue;
+            var resolved = await TryResolvePrivateUserByUsernameAsync(handle, ct);
+            if (resolved != null) return resolved;
+        }
+
+        var parts = SplitArgs(msg.Text!);
+        if (parts.Length >= 3 && int.TryParse(parts[^1], out _))
+        {
+            var midCount = parts.Length - 2;
+            var recipientToken = midCount == 1
+                ? parts[1]
+                : string.Join(' ', parts.Skip(1).Take(midCount));
+            if (recipientToken.Length > 0)
             {
-                var chat = await bot.GetChat(new Telegram.Bot.Types.ChatId("@" + handle), ct);
-                if (chat.Type != ChatType.Private) return null;
-                var label = chat.Username is { Length: > 0 } un ? $"@{un}" : chat.FirstName ?? $"User ID: {chat.Id}";
-                return (chat.Id, label);
-            }
-            catch
-            {
-                return null;
+                if (long.TryParse(recipientToken, out var uid) && uid > 0)
+                    return (uid, $"User ID: {uid}");
+
+                var h = recipientToken.TrimStart('@');
+                if (h.Length > 0)
+                {
+                    var byName = await TryResolvePrivateUserByUsernameAsync(h, ct);
+                    if (byName != null) return byName;
+                }
             }
         }
 
+        // Only if the message does not name a recipient: use reply (avoids "/transfer 10" replying to X overriding nothing).
+        if (msg.ReplyToMessage?.From is { IsBot: false } ru)
+            return (ru.Id, FormatUserLabel(ru));
+
         return null;
+    }
+
+    private async Task<(long userId, string display)?> TryResolvePrivateUserByUsernameAsync(string handle, CancellationToken ct)
+    {
+        handle = handle.Trim();
+        if (handle.Length == 0) return null;
+
+        var botName = _framework.Username.Trim().TrimStart('@');
+        if (botName.Length > 0 && string.Equals(handle, botName, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        try
+        {
+            var chat = await bot.GetChat(new ChatId("@" + handle), ct);
+            if (chat.Type != ChatType.Private) return null;
+            if (chat.Username is { Length: > 0 } un &&
+                botName.Length > 0 &&
+                string.Equals(un, botName, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var label = chat.Username is { Length: > 0 } u2 ? $"@{u2}" : chat.FirstName ?? $"User ID: {chat.Id}";
+            return (chat.Id, label);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Skip @handles that are only the /command@BotName suffix (separate Mention entity in some clients).</summary>
+    private static bool MentionIsInsideBotCommand(Message msg, MessageEntity mention)
+    {
+        if (msg.Text is null) return false;
+        var textLen = msg.Text.Length;
+        foreach (var e in msg.Entities ?? [])
+        {
+            if (e.Type != MessageEntityType.BotCommand) continue;
+            var cmdLo = e.Offset;
+            var cmdHi = e.Offset + e.Length;
+            // Some clients mark the entire message as BotCommand; then every Mention looks "inside" and we skip all.
+            if (cmdHi - cmdLo >= textLen)
+                continue;
+            var mLo = mention.Offset;
+            var mHi = mention.Offset + mention.Length;
+            if (mLo >= cmdLo && mHi <= cmdHi)
+                return true;
+        }
+
+        return false;
     }
 
     private static string FormatUserLabel(User u) =>

@@ -1,6 +1,6 @@
 # CasinoShiz
 
-A Telegram casino/gambling mini-game bot. Russian-language UI. Games: slots (🎰), dice cube (🎲), darts (🎯), bowling (🎳), basketball (🏀), horse racing, Texas Hold'em poker, blackjack, Secret Hitler (🗳), freespin code redemption.
+A Telegram casino/gambling mini-game bot. Russian-language UI. Games: slots (🎰), dice cube (🎲), darts (🎯), bowling (🎳), basketball (🏀), horse racing, Texas Hold'em poker, blackjack, Secret Hitler (🗳), freespin code redemption, optional **peer coin transfers** (`/transfer`) in groups.
 
 ## Stack
 
@@ -53,6 +53,7 @@ CasinoShiz/
 │   ├── Games.SecretHitler/           — hidden-role social deduction (full DDD split)
 │   ├── Games.Redeem/                 — freespin codes + emoji captcha
 │   ├── Games.Leaderboard/            — /top, /balance, /daily, /help
+│   ├── Games.Transfer/               — /transfer (peer coins in groups)
 │   └── Games.Admin/                  — admin Telegram commands
 ├── host/
 │   └── CasinoShiz.Host/              — composition root
@@ -132,6 +133,8 @@ await economics.EnsureUserAsync(userId, balanceScopeId, displayName, ct);
 await economics.TryDebitAsync(userId, balanceScopeId, amount, "horse.bet", ct);
 await economics.CreditAsync(userId, balanceScopeId, payout, "dice.prize", ct);
 await economics.AdjustUncheckedAsync(userId, balanceScopeId, delta, ct); // admin / recovery
+// Atomic two-party move (used by /transfer): debit sender and credit recipient in one transaction
+await economics.TryPeerTransferAsync(fromId, toId, balanceScopeId, debitTotal, creditNet, "transfer.send", "transfer.receive", ct);
 ```
 
 `EnsureUserAsync` seeds new `(user, scope)` rows with `Bot:StartingCoins` and caches existence for 24 h in `IMemoryCache`.
@@ -159,6 +162,38 @@ Slots (🎰) use a **fixed cost + gas** (`TaxService.GetGas`) and a fixed prize 
 - If **already claimed** for that day → friendly refusal.
 
 Config: `Bot:DailyBonus` — `Enabled`, `PercentOfBalance` (e.g. `0.35` = **0.35%** of balance, not 35%), `MaxBonus`, `TimezoneOffsetHours`. Handler: `LeaderboardHandler` on `/daily`.
+
+### Peer transfer (`/transfer`)
+
+Module **`Games.Transfer`**. Lets a user send coins to another user **in the same group/supergroup wallet** (`balance_scope_id` = that chat’s `Chat.Id`). **Not available in private chats with the bot** (there is no separate “recipient” context).
+
+**Semantics**
+
+- The **last whitespace-separated token** in the message is the amount the **recipient receives** (net).
+- **Fee** is computed on that net amount from `Games:transfer` (defaults in `appsettings.json`): `FeePercent` (e.g. `0.03` = 3%), then **round to nearest 0.5**, then to a **whole coin** (`MidpointRounding.AwayFromZero`), then clamp to at least `MinFeeCoins` (default **1**). Optional `MinNetCoins`, `MaxNetCoins` (`0` = no cap).
+- The sender is debited **net + fee**; the recipient is credited **net**. The fee is **not** credited anywhere (coins leave circulation). Reasons: `transfer.send` / `transfer.receive`.
+
+**Atomicity**
+
+- Implemented as `IEconomicsService.TryPeerTransferAsync` in **`EconomicsService`**: one DB transaction, **`SELECT … FOR UPDATE`** on **both** `(user, scope)` rows in **ascending `telegram_user_id`** order (deadlock-safe), then two ledger inserts.
+
+**Recipient resolution** (`TransferHandler`)
+
+Order is **explicit recipient first**, then **reply** (so `/transfer … 10` with only two tokens still works when replying to someone, but `/transfer @user 10` is not overridden by an accidental reply).
+
+1. **`TextMention`** entity (inline user picker).
+2. **`Mention`** entity (`@username`) — not the same as `TextMention`. Mentions **fully contained** in a normal `BotCommand` span (e.g. `/transfer@YourBot`) are ignored. If a client marks the **entire message** as `BotCommand`, that span is **not** used to hide mentions (otherwise every `@user` would be skipped).
+3. **Whitespace-split args** (any Unicode whitespace, not only ASCII space — avoids NBSP gluing `/transfer@Bot` and `@user` into one token).
+4. **Text between command and amount**: numeric Telegram user id, or `@username` / handle resolved via `getChat` (private user only). Transfers to the configured **`Bot:Username`** / `Bot:BotUsername` are rejected.
+5. **Reply** to the target user’s message — only if none of the above produced a recipient.
+
+**Config**
+
+- Section **`Games:transfer`**: `FeePercent`, `MinFeeCoins`, `MinNetCoins`, `MaxNetCoins`.
+
+**UX**
+
+- Success message shows **sender balance** and **recipient balance** after the transfer. `/help` (Leaderboard module) links to `/transfer`.
 
 ## Migrations
 
