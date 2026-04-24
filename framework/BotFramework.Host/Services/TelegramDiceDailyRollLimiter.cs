@@ -14,6 +14,7 @@ internal sealed class TelegramDiceDailyRollLimiter(
             return new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, 0, 0);
 
         var today = TodayInOffset(o.TimezoneOffsetHours);
+        var todayDb = today.ToDateTime(TimeOnly.MinValue);
         var max = o.MaxRollsPerUserPerDay;
 
         while (true)
@@ -55,13 +56,13 @@ internal sealed class TelegramDiceDailyRollLimiter(
                 new CommandDefinition(
                     """
                     UPDATE users SET
-                        telegram_dice_rolls_on = @today,
+                        telegram_dice_rolls_on = @todayDb,
                         telegram_dice_roll_count = @newCount,
                         version = version + 1,
                         updated_at = now()
                     WHERE telegram_user_id = @userId AND balance_scope_id = @balanceScopeId AND version = @ver
                     """,
-                    new { userId, balanceScopeId, today, newCount, ver = row.Version },
+                    new { userId, balanceScopeId, todayDb, newCount, ver = row.Version },
                     transaction: tx,
                     cancellationToken: ct)).ConfigureAwait(false);
 
