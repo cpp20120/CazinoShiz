@@ -152,7 +152,127 @@ public sealed partial class EconomicsService(
         }
     }
 
+    public async Task<PeerTransferResult> TryPeerTransferAsync(
+        long fromUserId,
+        long toUserId,
+        long balanceScopeId,
+        int debitFromSender,
+        int creditToRecipient,
+        string senderReason,
+        string recipientReason,
+        CancellationToken ct)
+    {
+        if (fromUserId == toUserId)
+            return new PeerTransferResult(false, PeerTransferFailure.SameUser, 0, 0);
+        if (debitFromSender <= 0 || creditToRecipient <= 0)
+            throw new ArgumentOutOfRangeException(nameof(debitFromSender));
+        if (debitFromSender < creditToRecipient)
+            throw new ArgumentException("Debit must be >= credit (fee cannot be negative).");
+
+        var firstUser = Math.Min(fromUserId, toUserId);
+        var secondUser = Math.Max(fromUserId, toUserId);
+
+        const string selectSqlTransfer = """
+            SELECT coins AS Coins, version AS Version FROM users
+            WHERE telegram_user_id = @userId AND balance_scope_id = @balanceScopeId
+            FOR UPDATE
+            """;
+        const string updateSql = """
+            UPDATE users
+            SET coins = @newCoins, version = @newVersion, updated_at = now()
+            WHERE telegram_user_id = @userId AND balance_scope_id = @balanceScopeId
+            """;
+        const string insertLedger = """
+            INSERT INTO economics_ledger (telegram_user_id, balance_scope_id, delta, balance_after, reason)
+            VALUES (@userId, @balanceScopeId, @delta, @newCoins, @reason)
+            """;
+
+        await using var conn = await connections.OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var row1 = await conn.QuerySingleOrDefaultAsync<LockedWallet>(
+            new CommandDefinition(
+                selectSqlTransfer, new { userId = firstUser, balanceScopeId }, transaction: tx, cancellationToken: ct));
+        var row2 = await conn.QuerySingleOrDefaultAsync<LockedWallet>(
+            new CommandDefinition(
+                selectSqlTransfer, new { userId = secondUser, balanceScopeId }, transaction: tx, cancellationToken: ct));
+
+        if (row1 is null)
+        {
+            var missing = firstUser == fromUserId ? PeerTransferFailure.SenderMissing : PeerTransferFailure.RecipientMissing;
+            await tx.RollbackAsync(ct);
+            return new PeerTransferResult(false, missing, 0, 0);
+        }
+
+        if (row2 is null)
+        {
+            var missing = secondUser == fromUserId ? PeerTransferFailure.SenderMissing : PeerTransferFailure.RecipientMissing;
+            await tx.RollbackAsync(ct);
+            return new PeerTransferResult(false, missing, 0, 0);
+        }
+
+        var fromCoins = fromUserId == firstUser ? row1.Coins : row2.Coins;
+        var fromVersion = fromUserId == firstUser ? row1.Version : row2.Version;
+        var toCoins = fromUserId == firstUser ? row2.Coins : row1.Coins;
+        var toVersion = fromUserId == firstUser ? row2.Version : row1.Version;
+
+        var senderNew = fromCoins - debitFromSender;
+        if (senderNew < 0)
+        {
+            await tx.RollbackAsync(ct);
+            LogDebitRejected(fromUserId, balanceScopeId, debitFromSender, fromCoins, senderReason);
+            return new PeerTransferResult(false, PeerTransferFailure.InsufficientFunds, 0, 0);
+        }
+
+        var recipientNew = toCoins + creditToRecipient;
+        var newFromVersion = fromVersion + 1;
+        var newToVersion = toVersion + 1;
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            updateSql,
+            new { userId = fromUserId, balanceScopeId, newCoins = senderNew, newVersion = newFromVersion },
+            transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            updateSql,
+            new { userId = toUserId, balanceScopeId, newCoins = recipientNew, newVersion = newToVersion },
+            transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            insertLedger,
+            new
+            {
+                userId = fromUserId,
+                balanceScopeId,
+                delta = -debitFromSender,
+                newCoins = senderNew,
+                reason = senderReason,
+            },
+            transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            insertLedger,
+            new
+            {
+                userId = toUserId,
+                balanceScopeId,
+                delta = creditToRecipient,
+                newCoins = recipientNew,
+                reason = recipientReason,
+            },
+            transaction: tx, cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        LogDebit(fromUserId, balanceScopeId, debitFromSender, senderNew, senderReason);
+        LogCredit(toUserId, balanceScopeId, creditToRecipient, recipientNew, recipientReason);
+        LogPeerTransfer(fromUserId, toUserId, balanceScopeId, debitFromSender, creditToRecipient);
+        return new PeerTransferResult(true, null, senderNew, recipientNew);
+    }
+
     private sealed record LedgerLineRead(long Id, long TelegramUserId, long BalanceScopeId, int Delta, string Reason);
+
+    private sealed class LockedWallet
+    {
+        public int Coins { get; set; }
+        public long Version { get; set; }
+    }
 
     private async Task<(bool Applied, int NewBalance)> ApplyAsync(
         long userId, long balanceScopeId, int delta, bool allowNegative, string reason, CancellationToken ct)
@@ -220,4 +340,7 @@ public sealed partial class EconomicsService(
     [LoggerMessage(LogLevel.Warning, "economics.adjust_unchecked user={UserId} scope={BalanceScopeId} delta={Delta} balance={Balance}")]
     partial void LogAdjustUnchecked(
         long userId, long balanceScopeId, int delta, int balance);
+
+    [LoggerMessage(LogLevel.Information, "economics.peer_transfer from={From} to={To} scope={Scope} debit={Debit} credit={Credit}")]
+    partial void LogPeerTransfer(long from, long to, long scope, int debit, int credit);
 }

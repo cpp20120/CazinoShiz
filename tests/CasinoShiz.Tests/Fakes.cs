@@ -66,6 +66,35 @@ sealed class FakeEconomicsService : IEconomicsService
 
     public Task<LedgerRevertResult> RevertLedgerEntryAsync(long economicsLedgerId, CancellationToken ct) =>
         Task.FromResult(new LedgerRevertResult(LedgerRevertStatus.NotFound, 0));
+
+    public Task<PeerTransferResult> TryPeerTransferAsync(
+        long fromUserId,
+        long toUserId,
+        long balanceScopeId,
+        int debitFromSender,
+        int creditToRecipient,
+        string senderReason,
+        string recipientReason,
+        CancellationToken ct)
+    {
+        if (fromUserId == toUserId)
+            return Task.FromResult(new PeerTransferResult(false, PeerTransferFailure.SameUser, 0, 0));
+
+        var fromKey = (fromUserId, balanceScopeId);
+        var toKey = (toUserId, balanceScopeId);
+        var fromBal = _balances.GetValueOrDefault(fromKey, StartingBalance);
+        if (fromBal < debitFromSender)
+            return Task.FromResult(new PeerTransferResult(false, PeerTransferFailure.InsufficientFunds, 0, 0));
+
+        var toBal = _balances.GetValueOrDefault(toKey, StartingBalance);
+        var newFrom = fromBal - debitFromSender;
+        var newTo = toBal + creditToRecipient;
+        _balances[fromKey] = newFrom;
+        _balances[toKey] = newTo;
+        Debits.Add((fromUserId, balanceScopeId, debitFromSender, senderReason));
+        Credits.Add((toUserId, balanceScopeId, creditToRecipient, recipientReason));
+        return Task.FromResult(new PeerTransferResult(true, null, newFrom, newTo));
+    }
 }
 
 sealed class NullAnalyticsService : IAnalyticsService

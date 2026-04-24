@@ -26,18 +26,11 @@ using Telegram.Bot.Types;
 
 namespace BotFramework.Host;
 
-public sealed partial class UpdateRouter
+public sealed partial class UpdateRouter(IEnumerable<IModule> modules, ILogger<UpdateRouter> logger)
 {
-    private readonly IReadOnlyList<Route> _routes;
-    private readonly ILogger<UpdateRouter> _logger;
+    private readonly IReadOnlyList<Route> _routes = BuildRoutes(modules);
 
     private readonly record struct Route(RouteAttribute Attribute, Type HandlerType);
-
-    public UpdateRouter(IEnumerable<IModule> modules, ILogger<UpdateRouter> logger)
-    {
-        _logger = logger;
-        _routes = BuildRoutes(modules);
-    }
 
     private static IReadOnlyList<Route> BuildRoutes(IEnumerable<IModule> modules)
     {

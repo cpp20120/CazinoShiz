@@ -12,7 +12,7 @@ public static class BotMiniGameRollGate
     private static readonly ConcurrentDictionary<(string GameId, long UserId, long ChatId), long> UntilTicks = new();
 
     /// <summary>How long to prefer bot-only rolls after a bet before allowing manual throw again.</summary>
-    public const int GraceMs = 60_000;
+    private const int GraceMs = 60_000;
 
     public static void ExpectBotRoll(string gameId, long userId, long chatId) =>
         UntilTicks[(gameId, userId, chatId)] = Environment.TickCount64 + GraceMs;
@@ -25,11 +25,8 @@ public static class BotMiniGameRollGate
     {
         if (!UntilTicks.TryGetValue((gameId, userId, chatId), out var until))
             return false;
-        if (Environment.TickCount64 > until)
-        {
-            UntilTicks.TryRemove((gameId, userId, chatId), out _);
-            return false;
-        }
-        return true;
+        if (Environment.TickCount64 <= until) return true;
+        UntilTicks.TryRemove((gameId, userId, chatId), out _);
+        return false;
     }
 }

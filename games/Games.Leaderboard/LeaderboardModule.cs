@@ -53,6 +53,7 @@ public sealed class LeaderboardModule : IModule
                 + "/top — таблица лидеров\n"
                 + "/balance — твой баланс\n"
                 + "/daily — маленький ежедневный бонус (процент с потолком)\n"
+                + "/transfer — перевод монет игроку в группе (см. <code>/transfer</code>)\n"
                 + "/redeem <i>код</i> — активировать код\n\n"
                 + "Игры: /sh · /poker · /blackjack · /horse · /dice · /darts · /football · /basket · /bowling\n"
                 + "Слоты: отправь 🎰 в чат\n\n"

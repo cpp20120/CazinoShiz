@@ -48,7 +48,39 @@ public interface IEconomicsService
     /// is missing or already reverted. Append-only: never deletes the original row.
     /// </summary>
     Task<LedgerRevertResult> RevertLedgerEntryAsync(long economicsLedgerId, CancellationToken ct);
+
+    /// <summary>
+    /// Atomically debits <paramref name="debitFromSender"/> from <paramref name="fromUserId"/> and
+    /// credits <paramref name="creditToRecipient"/> to <paramref name="toUserId"/> in
+    /// <paramref name="balanceScopeId"/>. The difference (fee) is not credited anywhere. Both users
+    /// must already exist — call <see cref="EnsureUserAsync"/> for each first.
+    /// </summary>
+    Task<PeerTransferResult> TryPeerTransferAsync(
+        long fromUserId,
+        long toUserId,
+        long balanceScopeId,
+        int debitFromSender,
+        int creditToRecipient,
+        string senderReason,
+        string recipientReason,
+        CancellationToken ct);
 }
+
+public enum PeerTransferFailure
+{
+    SameUser,
+    SenderMissing,
+    RecipientMissing,
+    InsufficientFunds,
+}
+
+/// <param name="SenderNewBalance">Meaningful when <see cref="Ok"/> is true.</param>
+/// <param name="RecipientNewBalance">Meaningful when <see cref="Ok"/> is true.</param>
+public readonly record struct PeerTransferResult(
+    bool Ok,
+    PeerTransferFailure? Failure,
+    int SenderNewBalance,
+    int RecipientNewBalance);
 
 public enum DailyBonusClaimStatus
 {

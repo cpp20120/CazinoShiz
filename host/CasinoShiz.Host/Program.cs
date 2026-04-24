@@ -27,6 +27,7 @@ using Games.Leaderboard;
 using Games.Poker;
 using Games.Redeem;
 using Games.SecretHitler;
+using Games.Transfer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Builder;
 
@@ -48,6 +49,7 @@ builder.AddBotFramework()
     .AddModule<SecretHitlerModule>()
     .AddModule<RedeemModule>()
     .AddModule<LeaderboardModule>()
+    .AddModule<TransferModule>()
     .AddModule<AdminModule>();
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
