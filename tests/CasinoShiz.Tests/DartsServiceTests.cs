@@ -33,7 +33,8 @@ public class DartsServiceTests
             ghostHeal ?? new NullMiniGameSessionGhostHeal(),
             bus ?? new NullEventBus(),
             queue ?? new DartsRollQueue(),
-            Options.Create(new DartsOptions()));
+            Options.Create(new DartsOptions()),
+            new NullTelegramDiceDailyRollLimiter());
 
     private static async Task ArmAsync(
         InMemoryDartsRoundStore rounds, long roundId, long chatId, int botMessageId = BotMsg)

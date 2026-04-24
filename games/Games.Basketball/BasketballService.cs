@@ -6,8 +6,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
+using BotFramework.Host.Services;
 using BotFramework.Sdk;
-using Microsoft.Extensions.Options;
 
 namespace Games.Basketball;
 
@@ -22,10 +22,10 @@ public sealed class BasketballService(
     IAnalyticsService analytics,
     IBasketballBetStore bets,
     IDomainEventBus events,
-    IOptions<BasketballOptions> options,
-    IMiniGameSessionGhostHeal ghostHeal) : IBasketballService
+    IRuntimeTuningAccessor tuning,
+    IMiniGameSessionGhostHeal ghostHeal,
+    ITelegramDiceDailyRollLimiter telegramDiceRolls) : IBasketballService
 {
-    private readonly int _maxBet = options.Value.MaxBet;
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
         [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 2,
@@ -33,7 +33,8 @@ public sealed class BasketballService(
 
     public async Task<BasketballBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)
     {
-        if (amount <= 0 || amount > _maxBet) return BasketballBetResult.Fail(BasketballBetError.InvalidAmount);
+        var maxBet = tuning.GetSection<BasketballOptions>(BasketballOptions.SectionName).MaxBet;
+        if (amount <= 0 || amount > maxBet) return BasketballBetResult.Fail(BasketballBetError.InvalidAmount);
 
         await economics.EnsureUserAsync(userId, chatId, displayName, ct);
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
@@ -51,16 +52,25 @@ public sealed class BasketballService(
             ghostHeal,
             ct);
         if (!session.Ok)
-            return new BasketballBetResult(BasketballBetError.BusyOtherGame, 0, balance, 0, session.Blocker);
+            return new BasketballBetResult(BasketballBetError.BusyOtherGame, 0, balance, 0, session.Blocker, 0, 0);
 
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return BasketballBetResult.Fail(BasketballBetError.AlreadyPending, balance, existing.Amount);
 
+        var gate = await telegramDiceRolls.TryConsumeRollAsync(userId, chatId, ct);
+        if (gate.Status == TelegramDiceRollGateStatus.LimitExceeded)
+            return new BasketballBetResult(
+                BasketballBetError.DailyRollLimit, 0, balance, 0, null, gate.UsedToday, gate.Limit);
+
         if (!await economics.TryDebitAsync(userId, chatId, amount, "basketball.bet", ct))
+        {
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
             return BasketballBetResult.Fail(BasketballBetError.NotEnoughCoins, balance);
+        }
 
         if (!await bets.InsertAsync(new BasketballBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
         {
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
             await economics.CreditAsync(userId, chatId, amount, "basketball.bet.refund", ct);
             return BasketballBetResult.Fail(BasketballBetError.AlreadyPending, balance);
         }
@@ -72,7 +82,7 @@ public sealed class BasketballService(
             ["user_id"] = userId, ["chat_id"] = chatId, ["amount"] = amount,
         });
 
-        return new BasketballBetResult(BasketballBetError.None, amount, balance - amount, 0, null);
+        return new BasketballBetResult(BasketballBetError.None, amount, balance - amount, 0, null, 0, 0);
     }
 
     public async Task<BasketballThrowResult> ThrowAsync(long userId, string displayName, long chatId, int face, CancellationToken ct)

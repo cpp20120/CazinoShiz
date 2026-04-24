@@ -20,7 +20,6 @@
 using BotFramework.Host;
 using BotFramework.Host.Services;
 using BotFramework.Sdk;
-using Microsoft.Extensions.Options;
 
 namespace Games.Dice;
 
@@ -40,12 +39,11 @@ public sealed class DiceService(
     IAnalyticsService analytics,
     IDiceHistoryStore history,
     IDomainEventBus events,
-    IOptions<DiceOptions> options) : IDiceService
+    ITelegramDiceDailyRollLimiter telegramDiceRolls,
+    IRuntimeTuningAccessor tuning) : IDiceService
 {
     private static readonly string[] Stickers = ["bar", "cherry", "lemon", "seven"];
     private static readonly int[] StakePrice = [1, 1, 2, 3];
-
-    private readonly DiceOptions _opts = options.Value;
 
     public async Task<DicePlayResult> PlayAsync(
         long userId,
@@ -68,11 +66,20 @@ public sealed class DiceService(
 
         await economics.EnsureUserAsync(userId, chatId, displayName, ct);
 
-        var gas = TaxService.GetGasTax(_opts.Cost);
-        var loss = _opts.Cost + gas;
+        var gate = await telegramDiceRolls.TryConsumeRollAsync(userId, chatId, ct);
+        if (gate.Status == TelegramDiceRollGateStatus.LimitExceeded)
+            return new DicePlayResult(
+                DiceOutcome.DailyRollLimitExceeded,
+                DailyDiceUsed: gate.UsedToday,
+                DailyDiceLimit: gate.Limit);
+
+        var diceOpts = tuning.GetSection<DiceOptions>(DiceOptions.SectionName);
+        var gas = TaxService.GetGasTax(diceOpts.Cost);
+        var loss = diceOpts.Cost + gas;
 
         if (!await economics.TryDebitAsync(userId, chatId, loss, reason: "dice.stake", ct))
         {
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
             analytics.Track("dice", "not_enough_coins", new Dictionary<string, object?>
             {
                 ["user_id"] = userId,

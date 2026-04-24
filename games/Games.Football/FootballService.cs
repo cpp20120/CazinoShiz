@@ -4,8 +4,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
+using BotFramework.Host.Services;
 using BotFramework.Sdk;
-using Microsoft.Extensions.Options;
 
 namespace Games.Football;
 
@@ -20,10 +20,10 @@ public sealed class FootballService(
     IAnalyticsService analytics,
     IFootballBetStore bets,
     IDomainEventBus events,
-    IOptions<FootballOptions> options,
-    IMiniGameSessionGhostHeal ghostHeal) : IFootballService
+    IRuntimeTuningAccessor tuning,
+    IMiniGameSessionGhostHeal ghostHeal,
+    ITelegramDiceDailyRollLimiter telegramDiceRolls) : IFootballService
 {
-    private readonly int _maxBet = options.Value.MaxBet;
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
         [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 2,
@@ -31,7 +31,8 @@ public sealed class FootballService(
 
     public async Task<FootballBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)
     {
-        if (amount <= 0 || amount > _maxBet) return FootballBetResult.Fail(FootballBetError.InvalidAmount);
+        var maxBet = tuning.GetSection<FootballOptions>(FootballOptions.SectionName).MaxBet;
+        if (amount <= 0 || amount > maxBet) return FootballBetResult.Fail(FootballBetError.InvalidAmount);
 
         await economics.EnsureUserAsync(userId, chatId, displayName, ct);
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
@@ -49,16 +50,25 @@ public sealed class FootballService(
             ghostHeal,
             ct);
         if (!session.Ok)
-            return new FootballBetResult(FootballBetError.BusyOtherGame, 0, balance, 0, session.Blocker);
+            return new FootballBetResult(FootballBetError.BusyOtherGame, 0, balance, 0, session.Blocker, 0, 0);
 
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return FootballBetResult.Fail(FootballBetError.AlreadyPending, balance, existing.Amount);
 
+        var gate = await telegramDiceRolls.TryConsumeRollAsync(userId, chatId, ct);
+        if (gate.Status == TelegramDiceRollGateStatus.LimitExceeded)
+            return new FootballBetResult(
+                FootballBetError.DailyRollLimit, 0, balance, 0, null, gate.UsedToday, gate.Limit);
+
         if (!await economics.TryDebitAsync(userId, chatId, amount, "football.bet", ct))
+        {
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
             return FootballBetResult.Fail(FootballBetError.NotEnoughCoins, balance);
+        }
 
         if (!await bets.InsertAsync(new FootballBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
         {
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
             await economics.CreditAsync(userId, chatId, amount, "football.bet.refund", ct);
             return FootballBetResult.Fail(FootballBetError.AlreadyPending, balance);
         }
@@ -70,7 +80,7 @@ public sealed class FootballService(
             ["user_id"] = userId, ["chat_id"] = chatId, ["amount"] = amount,
         });
 
-        return new FootballBetResult(FootballBetError.None, amount, balance - amount, 0, null);
+        return new FootballBetResult(FootballBetError.None, amount, balance - amount, 0, null, 0, 0);
     }
 
     public async Task<FootballThrowResult> ThrowAsync(long userId, string displayName, long chatId, int face, CancellationToken ct)

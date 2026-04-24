@@ -213,6 +213,8 @@ Framework migrations (`_framework` module), see `FrameworkMigrations.cs`:
 | `006_per_chat_wallets_and_ledger` | `users` with `(telegram_user_id, balance_scope_id)` PK; `economics_ledger` |
 | `007_known_chats` | `known_chats` (first/last seen per chat) |
 | `008_users_last_daily_bonus` | `users.last_daily_bonus_on DATE` for `/daily` |
+| `009_users_telegram_dice_daily` | `users.telegram_dice_rolls_on`, `telegram_dice_roll_count` — shared daily cap for 🎰🎲🎯🎳🏀⚽ (see `Bot:TelegramDiceDailyLimit`) |
+| `010_runtime_tuning` | `runtime_tuning` — JSON patch merged over file/env for whitelisted `Bot` + `Games` keys; edited from `/admin/settings` |
 
 ## Poker (DDD split)
 
@@ -266,6 +268,12 @@ Race only runs with ≥ `MinBetsToRun` bets (default 4). Race date is `MM-dd-yyy
 ## Admin web UI
 
 Razor pages under `/admin/*` served on the same port as the webhook (3000).
+
+### Runtime settings (`/admin/settings`)
+
+SuperAdmin can POST a JSON **patch** (whitelist: `Bot.DailyBonus`, `Bot.TelegramDiceDailyLimit`, and `Games` keys `dice`, `dicecube`, `darts`, `football`, `basketball`, `bowling`, `transfer`). It is stored in `runtime_tuning.payload` and merged on top of `appsettings` / environment on every read via `IRuntimeTuningAccessor`. After save, the host reloads the overlay immediately.
+
+Pending **🎲 cube** bets store `mult4`/`mult5`/`mult6` on the row at bet time so a rule change does not alter payout for throws already in flight.
 
 ### Authentication
 
@@ -321,6 +329,7 @@ Every write action from the admin UI is recorded in `admin_audit`:
 | `TrustedChannel` | no | @username for race GIF broadcast |
 | `StartingCoins` | no | Coins for new users (default 100) |
 | `DailyBonus` (nested) | no | `Enabled`, `PercentOfBalance` (% of balance, e.g. `0.35` = 0.35 %), `MaxBonus`, `TimezoneOffsetHours` |
+| `TelegramDiceDailyLimit` (nested) | no | `MaxRollsPerUserPerDay` (**0** = unlimited), `TimezoneOffsetHours` (same convention as `DailyBonus`) — counts user-initiated Telegram random-dice mini-games per wallet (chat scope) |
 
 ### `Games` section (excerpt)
 

@@ -1,5 +1,5 @@
 using BotFramework.Host;
-using Microsoft.Extensions.Options;
+using BotFramework.Host.Services;
 
 namespace Games.Transfer;
 
@@ -37,10 +37,8 @@ public interface ITransferService
 public sealed class TransferService(
     IEconomicsService economics,
     IAnalyticsService analytics,
-    IOptions<TransferOptions> options) : ITransferService
+    IRuntimeTuningAccessor tuning) : ITransferService
 {
-    private readonly TransferOptions _opts = options.Value;
-
     public async Task<TransferAttemptResult> TryTransferAsync(
         long fromUserId,
         long toUserId,
@@ -50,16 +48,17 @@ public sealed class TransferService(
         int netToRecipient,
         CancellationToken ct)
     {
+        var opts = tuning.GetSection<TransferOptions>(TransferOptions.SectionName);
         if (fromUserId == toUserId)
             return Fail(TransferError.SameUser, netToRecipient);
 
-        if (netToRecipient < _opts.MinNetCoins)
+        if (netToRecipient < opts.MinNetCoins)
             return Fail(TransferError.NetBelowMinimum, netToRecipient);
 
-        if (_opts.MaxNetCoins > 0 && netToRecipient > _opts.MaxNetCoins)
+        if (opts.MaxNetCoins > 0 && netToRecipient > opts.MaxNetCoins)
             return Fail(TransferError.NetAboveMaximum, netToRecipient);
 
-        var fee = TransferOptions.ComputeFeeCoins(netToRecipient, _opts.FeePercent, _opts.MinFeeCoins);
+        var fee = TransferOptions.ComputeFeeCoins(netToRecipient, opts.FeePercent, opts.MinFeeCoins);
         var total = netToRecipient + fee;
 
         await economics.EnsureUserAsync(fromUserId, chatId, senderDisplayName, ct);

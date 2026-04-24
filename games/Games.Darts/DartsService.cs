@@ -5,8 +5,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
+using BotFramework.Host.Services;
 using BotFramework.Sdk;
-using Microsoft.Extensions.Options;
 
 namespace Games.Darts;
 
@@ -27,9 +27,9 @@ public sealed class DartsService(
     IMiniGameSessionGhostHeal ghostHeal,
     IDomainEventBus events,
     IDartsRollQueue rollQueue,
-    IOptions<DartsOptions> options) : IDartsService
+    IRuntimeTuningAccessor tuning,
+    ITelegramDiceDailyRollLimiter telegramDiceRolls) : IDartsService
 {
-    private readonly int _maxBet = options.Value.MaxBet;
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
         [1] = 0, [2] = 0, [3] = 0, [4] = 1, [5] = 2, [6] = 2,
@@ -38,7 +38,8 @@ public sealed class DartsService(
     public async Task<DartsBetResult> PlaceBetAsync(
         long userId, string displayName, long chatId, int amount, int replyToMessageId, CancellationToken ct)
     {
-        if (amount <= 0 || amount > _maxBet) return DartsBetResult.Fail(DartsBetError.InvalidAmount);
+        var maxBet = tuning.GetSection<DartsOptions>(DartsOptions.SectionName).MaxBet;
+        if (amount <= 0 || amount > maxBet) return DartsBetResult.Fail(DartsBetError.InvalidAmount);
 
         await economics.EnsureUserAsync(userId, chatId, displayName, ct);
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
@@ -56,10 +57,18 @@ public sealed class DartsService(
             ghostHeal,
             ct);
         if (!session.Ok)
-            return new DartsBetResult(DartsBetError.BusyOtherGame, 0, balance, 0, session.Blocker);
+            return new DartsBetResult(DartsBetError.BusyOtherGame, 0, balance, 0, session.Blocker, 0, 0, 0, 0);
+
+        var gate = await telegramDiceRolls.TryConsumeRollAsync(userId, chatId, ct);
+        if (gate.Status == TelegramDiceRollGateStatus.LimitExceeded)
+            return new DartsBetResult(
+                DartsBetError.DailyRollLimit, 0, balance, 0, null, 0, 0, gate.UsedToday, gate.Limit);
 
         if (!await economics.TryDebitAsync(userId, chatId, amount, "darts.bet", ct))
+        {
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
             return DartsBetResult.Fail(DartsBetError.NotEnoughCoins, balance);
+        }
 
         long roundId;
         try
@@ -78,6 +87,7 @@ public sealed class DartsService(
         }
         catch
         {
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
             await economics.CreditAsync(userId, chatId, amount, "darts.bet.refund", ct);
             throw;
         }
@@ -93,7 +103,7 @@ public sealed class DartsService(
         });
 
         return new DartsBetResult(
-            DartsBetError.None, amount, balance - amount, 0, null, roundId, queuedAhead);
+            DartsBetError.None, amount, balance - amount, 0, null, roundId, queuedAhead, 0, 0);
     }
 
     public async Task<DartsThrowResult> ThrowAsync(

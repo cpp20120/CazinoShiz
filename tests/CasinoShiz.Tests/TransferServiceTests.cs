@@ -1,6 +1,5 @@
 using BotFramework.Host;
 using Games.Transfer;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace CasinoShiz.Tests;
@@ -29,7 +28,7 @@ public sealed class TransferServiceTests
         var svc = new TransferService(
             economics,
             new NullAnalyticsService(),
-            Options.Create(new TransferOptions { FeePercent = 0.03, MinFeeCoins = 1 }));
+            new FakeRuntimeTuning { Transfer = new TransferOptions { FeePercent = 0.03, MinFeeCoins = 1 } });
 
         var r = await svc.TryTransferAsync(1, 2, chatId: -100, "a", "b", netToRecipient: 100, default);
 

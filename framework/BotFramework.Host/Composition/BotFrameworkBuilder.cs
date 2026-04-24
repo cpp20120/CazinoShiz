@@ -36,6 +36,7 @@ using BotFramework.Host.Composition;
 using BotFramework.Host.Pipeline;
 using BotFramework.Host.Redis;
 using BotFramework.Host.Services;
+using BotFramework.Host.Services.RuntimeTuning;
 using BotFramework.Sdk;
 using DotNetCore.CAP;
 using Microsoft.Extensions.Configuration;
@@ -209,6 +210,13 @@ public static class BotFrameworkBuilderExtensions
         services.Configure<DailyBonusOptions>(configuration.GetSection(DailyBonusOptions.SectionName));
         services.AddSingleton<IDailyBonusService, DailyBonusService>();
 
+        services.Configure<TelegramDiceDailyLimitOptions>(
+            configuration.GetSection(TelegramDiceDailyLimitOptions.SectionName));
+        services.AddSingleton<ITelegramDiceDailyRollLimiter, TelegramDiceDailyRollLimiter>();
+
+        services.AddSingleton<RuntimeTuningAccessor>();
+        services.AddSingleton<IRuntimeTuningAccessor>(sp => sp.GetRequiredService<RuntimeTuningAccessor>());
+
         services.Configure<ClickHouseOptions>(configuration.GetSection(ClickHouseOptions.SectionName));
         services.AddSingleton<ClickHouseAnalyticsService>();
         services.AddSingleton<IAnalyticsService>(sp => sp.GetRequiredService<ClickHouseAnalyticsService>());
@@ -227,6 +235,8 @@ public static class BotFrameworkBuilderExtensions
         // polling starts. Generic Host awaits hosted services in registration
         // order, so registering the migration runner first does the trick.
         services.AddHostedService<ModuleMigrationRunner>();
+        // Reload overlay after framework migration 010 creates runtime_tuning (hosted services start in registration order).
+        services.AddHostedService(sp => sp.GetRequiredService<RuntimeTuningAccessor>());
 
         services.AddHostedService<BackgroundJobRunner>();
 

@@ -1,6 +1,6 @@
 using BotFramework.Host;
+using BotFramework.Host.Services;
 using BotFramework.Sdk;
-using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -11,7 +11,7 @@ namespace Games.Football;
 [MessageDice("⚽")]
 public sealed partial class FootballHandler(
     IFootballService service,
-    IOptions<FootballOptions> options,
+    IRuntimeTuningAccessor tuning,
     ILocalizer localizer,
     ILogger<FootballHandler> logger) : IUpdateHandler
 {
@@ -57,7 +57,7 @@ public sealed partial class FootballHandler(
         {
             case "help":
                 await ctx.Bot.SendMessage(chatId,
-                    string.Format(Loc("usage"), options.Value.DefaultBet),
+                    string.Format(Loc("usage"), tuning.GetSection<FootballOptions>(FootballOptions.SectionName).DefaultBet),
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
                 break;
             case "bet":
@@ -66,7 +66,7 @@ public sealed partial class FootballHandler(
                 break;
             default:
                 await ctx.Bot.SendMessage(chatId,
-                    string.Format(Loc("usage"), options.Value.DefaultBet),
+                    string.Format(Loc("usage"), tuning.GetSection<FootballOptions>(FootballOptions.SectionName).DefaultBet),
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
                 break;
         }
@@ -77,18 +77,18 @@ public sealed partial class FootballHandler(
     {
         int amount;
         if (parts.Length == 1)
-            amount = options.Value.DefaultBet;
+            amount = tuning.GetSection<FootballOptions>(FootballOptions.SectionName).DefaultBet;
         else if (parts.Length == 2)
         {
             if (!parts[1].Equals("bet", StringComparison.OrdinalIgnoreCase))
             {
                 await ctx.Bot.SendMessage(chatId,
-                    string.Format(Loc("bet.usage"), options.Value.DefaultBet),
+                    string.Format(Loc("bet.usage"), tuning.GetSection<FootballOptions>(FootballOptions.SectionName).DefaultBet),
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
                 return;
             }
 
-            amount = options.Value.DefaultBet;
+            amount = tuning.GetSection<FootballOptions>(FootballOptions.SectionName).DefaultBet;
         }
         else if (parts.Length >= 3
             && parts[1].Equals("bet", StringComparison.OrdinalIgnoreCase)
@@ -96,7 +96,7 @@ public sealed partial class FootballHandler(
         else
         {
             await ctx.Bot.SendMessage(chatId,
-                string.Format(Loc("bet.usage"), options.Value.DefaultBet),
+                string.Format(Loc("bet.usage"), tuning.GetSection<FootballOptions>(FootballOptions.SectionName).DefaultBet),
                 parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
             return;
         }
@@ -109,6 +109,7 @@ public sealed partial class FootballHandler(
             FootballBetError.NotEnoughCoins => string.Format(Loc("bet.not_enough"), r.Balance),
             FootballBetError.AlreadyPending => string.Format(Loc("bet.already_pending"), r.PendingAmount),
             FootballBetError.BusyOtherGame => string.Format(Loc("bet.busy_other"), MiniGameLabels.Ru(r.BlockingGameId!)),
+            FootballBetError.DailyRollLimit => string.Format(Loc("bet.daily_roll_limit"), r.DailyRollUsed, r.DailyRollLimit),
             _ => Loc("bet.failed"),
         };
         try

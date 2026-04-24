@@ -1,4 +1,5 @@
 using BotFramework.Host;
+using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 using Games.Admin;
 using Games.Blackjack;
@@ -11,6 +12,7 @@ using Games.Dice;
 using Games.Horse;
 using Games.Leaderboard;
 using Games.Redeem;
+using Games.Transfer;
 
 namespace CasinoShiz.Tests;
 
@@ -95,6 +97,73 @@ sealed class FakeEconomicsService : IEconomicsService
         Credits.Add((toUserId, balanceScopeId, creditToRecipient, recipientReason));
         return Task.FromResult(new PeerTransferResult(true, null, newFrom, newTo));
     }
+}
+
+sealed class NullTelegramDiceDailyRollLimiter : ITelegramDiceDailyRollLimiter
+{
+    public Task<TelegramDiceRollGateResult> TryConsumeRollAsync(
+        long userId, long balanceScopeId, CancellationToken ct) =>
+        Task.FromResult(new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, 0, 0));
+
+    public Task TryRefundRollAsync(long userId, long balanceScopeId, CancellationToken ct) =>
+        Task.CompletedTask;
+}
+
+sealed class RejectingTelegramDiceDailyRollLimiter : ITelegramDiceDailyRollLimiter
+{
+    public Task<TelegramDiceRollGateResult> TryConsumeRollAsync(
+        long userId, long balanceScopeId, CancellationToken ct) =>
+        Task.FromResult(new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.LimitExceeded, 3, 10));
+
+    public Task TryRefundRollAsync(long userId, long balanceScopeId, CancellationToken ct) =>
+        Task.CompletedTask;
+}
+
+sealed class RecordingTelegramDiceDailyRollLimiter : ITelegramDiceDailyRollLimiter
+{
+    public int RefundCount { get; private set; }
+
+    public Task<TelegramDiceRollGateResult> TryConsumeRollAsync(
+        long userId, long balanceScopeId, CancellationToken ct) =>
+        Task.FromResult(new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, 1, 99));
+
+    public Task TryRefundRollAsync(long userId, long balanceScopeId, CancellationToken ct)
+    {
+        RefundCount++;
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>In-memory <see cref="IRuntimeTuningAccessor"/> for unit tests.</summary>
+public sealed class FakeRuntimeTuning : IRuntimeTuningAccessor
+{
+    public DailyBonusOptions DailyBonus { get; set; } = new();
+    public TelegramDiceDailyLimitOptions TelegramDiceDailyLimit { get; set; } = new();
+    public DiceOptions Dice { get; set; } = new();
+    public DiceCubeOptions DiceCube { get; set; } = new();
+    public DartsOptions Darts { get; set; } = new();
+    public FootballOptions Football { get; set; } = new();
+    public BasketballOptions Basketball { get; set; } = new();
+    public BowlingOptions Bowling { get; set; } = new();
+    public TransferOptions Transfer { get; set; } = new();
+
+    public T GetSection<T>(string sectionPath) where T : class, new()
+    {
+        object? box = sectionPath switch
+        {
+            DiceOptions.SectionName => Dice,
+            DiceCubeOptions.SectionName => DiceCube,
+            DartsOptions.SectionName => Darts,
+            FootballOptions.SectionName => Football,
+            BasketballOptions.SectionName => Basketball,
+            BowlingOptions.SectionName => Bowling,
+            TransferOptions.SectionName => Transfer,
+            _ => null,
+        };
+        return box as T ?? new T();
+    }
+
+    public Task ReloadFromDatabaseAsync(CancellationToken ct) => Task.CompletedTask;
 }
 
 sealed class NullAnalyticsService : IAnalyticsService

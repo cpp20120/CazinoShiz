@@ -59,10 +59,12 @@ public sealed partial class DartsBotDiceSender(
         using var scope = services.CreateScope();
         var rounds = scope.ServiceProvider.GetRequiredService<IDartsRoundStore>();
         var economics = scope.ServiceProvider.GetRequiredService<IEconomicsService>();
+        var diceRolls = scope.ServiceProvider.GetRequiredService<ITelegramDiceDailyRollLimiter>();
         var row = await rounds.FindByIdAsync(roundId, ct);
         if (row is not { Status: DartsRoundStatus.Queued })
             return;
 
+        await diceRolls.TryRefundRollAsync(userId, chatId, ct);
         await economics.CreditAsync(userId, chatId, row.Amount, "darts.bot_dice.refund", ct);
         await rounds.DeleteAsync(roundId, ct);
 

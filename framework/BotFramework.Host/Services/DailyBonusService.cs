@@ -1,25 +1,23 @@
 using BotFramework.Host.Composition;
 using Dapper;
-using Microsoft.Extensions.Options;
 
 namespace BotFramework.Host.Services;
 
 public sealed partial class DailyBonusService(
     INpgsqlConnectionFactory connections,
     IEconomicsService economics,
-    IOptions<DailyBonusOptions> options,
+    IRuntimeTuningAccessor tuning,
     IAnalyticsService analytics,
     ILogger<DailyBonusService> logger) : IDailyBonusService
 {
-    private readonly DailyBonusOptions _opt = options.Value;
-
     public async Task<DailyBonusClaimResult> TryClaimAsync(
         long userId, long balanceScopeId, string displayName, CancellationToken ct)
     {
-        if (!_opt.Enabled) return new DailyBonusClaimResult(DailyBonusClaimStatus.Disabled);
+        var opt = tuning.DailyBonus;
+        if (!opt.Enabled) return new DailyBonusClaimResult(DailyBonusClaimStatus.Disabled);
 
         await economics.EnsureUserAsync(userId, balanceScopeId, displayName, ct);
-        var today = TodayInOffset(_opt.TimezoneOffsetHours);
+        var today = TodayInOffset(opt.TimezoneOffsetHours);
 
         const string selectSql = """
             SELECT u.coins, u.version, u.last_daily_bonus_on
@@ -67,7 +65,7 @@ public sealed partial class DailyBonusService(
             return new DailyBonusClaimResult(DailyBonusClaimStatus.IneligibleEmptyBalance, 0, 0);
         }
 
-        var bonus = DailyBonusMath.ComputeBonus(coins, _opt.PercentOfBalance, _opt.MaxBonus);
+        var bonus = DailyBonusMath.ComputeBonus(coins, opt.PercentOfBalance, opt.MaxBonus);
         if (bonus < 1)
         {
             await tx.RollbackAsync(ct);

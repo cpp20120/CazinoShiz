@@ -6,12 +6,15 @@
 //
 // MinSecondsBetweenBets: optional per-(user, chat) delay after a completed roll
 // before the next /dice bet to reduce leaderboard / chat spam.
+//
+// Mult4/5/6 are snapshotted on the bet row so pending rolls keep the odds from
+// when the bet was placed after runtime config changes.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
+using BotFramework.Host.Services;
 using BotFramework.Sdk;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Options;
 
 namespace Games.DiceCube;
 
@@ -34,16 +37,15 @@ public sealed class DiceCubeService(
     IDiceCubeBetStore bets,
     IDomainEventBus events,
     IMemoryCache cache,
-    IOptions<DiceCubeOptions> options,
-    IMiniGameSessionGhostHeal ghostHeal) : IDiceCubeService
+    IRuntimeTuningAccessor tuning,
+    IMiniGameSessionGhostHeal ghostHeal,
+    ITelegramDiceDailyRollLimiter telegramDiceRolls) : IDiceCubeService
 {
-    private readonly DiceCubeOptions _opt = options.Value;
-    private readonly int _maxBet = options.Value.MaxBet;
-    private readonly IReadOnlyDictionary<int, int> _mults = BuildMultipliers(options.Value);
+    private DiceCubeOptions Cube => tuning.GetSection<DiceCubeOptions>(DiceCubeOptions.SectionName);
 
-    public int Mult4 => _opt.Mult4;
-    public int Mult5 => _opt.Mult5;
-    public int Mult6 => _opt.Mult6;
+    public int Mult4 => Cube.Mult4;
+    public int Mult5 => Cube.Mult5;
+    public int Mult6 => Cube.Mult6;
 
     public static IReadOnlyDictionary<int, int> BuildMultipliers(DiceCubeOptions o) =>
         new Dictionary<int, int>
@@ -55,16 +57,17 @@ public sealed class DiceCubeService(
 
     public async Task<CubeBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)
     {
-        if (amount <= 0 || amount > _maxBet) return CubeBetResult.Fail(CubeBetError.InvalidAmount);
+        var cube = Cube;
+        if (amount <= 0 || amount > cube.MaxBet) return CubeBetResult.Fail(CubeBetError.InvalidAmount);
 
         await economics.EnsureUserAsync(userId, chatId, displayName, ct);
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
         if (amount > balance) return CubeBetResult.Fail(CubeBetError.NotEnoughCoins, balance);
 
-        if (_opt.MinSecondsBetweenBets > 0
+        if (cube.MinSecondsBetweenBets > 0
             && cache.TryGetValue(CooldownCacheKey(userId, chatId), out DateTimeOffset lastRoll))
         {
-            var wait = (lastRoll + TimeSpan.FromSeconds(_opt.MinSecondsBetweenBets)) - DateTimeOffset.UtcNow;
+            var wait = (lastRoll + TimeSpan.FromSeconds(cube.MinSecondsBetweenBets)) - DateTimeOffset.UtcNow;
             if (wait > TimeSpan.Zero)
             {
                 var sec = (int)Math.Ceiling(wait.TotalSeconds);
@@ -84,16 +87,35 @@ public sealed class DiceCubeService(
             ghostHeal,
             ct);
         if (!session.Ok)
-            return new CubeBetResult(CubeBetError.BusyOtherGame, 0, balance, 0, 0, session.Blocker);
+            return new CubeBetResult(CubeBetError.BusyOtherGame, 0, balance, 0, 0, session.Blocker, 0, 0);
 
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return CubeBetResult.Fail(CubeBetError.AlreadyPending, balance, existing.Amount);
 
-        if (!await economics.TryDebitAsync(userId, chatId, amount, "dicecube.bet", ct))
-            return CubeBetResult.Fail(CubeBetError.NotEnoughCoins, balance);
+        var gate = await telegramDiceRolls.TryConsumeRollAsync(userId, chatId, ct);
+        if (gate.Status == TelegramDiceRollGateStatus.LimitExceeded)
+            return new CubeBetResult(
+                CubeBetError.DailyRollLimit, 0, balance, 0, 0, null, gate.UsedToday, gate.Limit);
 
-        if (!await bets.InsertAsync(new DiceCubeBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
+        if (!await economics.TryDebitAsync(userId, chatId, amount, "dicecube.bet", ct))
         {
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
+            return CubeBetResult.Fail(CubeBetError.NotEnoughCoins, balance);
+        }
+
+        cube = Cube;
+        if (!await bets.InsertAsync(
+                new DiceCubeBet(
+                    userId,
+                    chatId,
+                    amount,
+                    DateTimeOffset.UtcNow,
+                    cube.Mult4,
+                    cube.Mult5,
+                    cube.Mult6),
+                ct))
+        {
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
             await economics.CreditAsync(userId, chatId, amount, "dicecube.bet.refund", ct);
             return CubeBetResult.Fail(CubeBetError.AlreadyPending, balance);
         }
@@ -105,7 +127,7 @@ public sealed class DiceCubeService(
             ["user_id"] = userId, ["chat_id"] = chatId, ["amount"] = amount,
         });
 
-        return new CubeBetResult(CubeBetError.None, amount, balance - amount, 0, 0, null);
+        return new CubeBetResult(CubeBetError.None, amount, balance - amount, 0, 0, null, 0, 0);
     }
 
     public async Task<CubeRollResult> RollAsync(long userId, string displayName, long chatId, int face, CancellationToken ct)
@@ -114,7 +136,14 @@ public sealed class DiceCubeService(
         if (bet == null) return new CubeRollResult(CubeRollOutcome.NoBet);
 
         await economics.EnsureUserAsync(userId, chatId, displayName, ct);
-        var multiplier = _mults.TryGetValue(face, out var m) ? m : 0;
+        var rule = new DiceCubeOptions
+        {
+            Mult4 = bet.Mult4,
+            Mult5 = bet.Mult5,
+            Mult6 = bet.Mult6,
+        };
+        var mults = BuildMultipliers(rule);
+        var multiplier = mults.TryGetValue(face, out var m) ? m : 0;
         var payout = bet.Amount * multiplier;
 
         if (payout > 0)
@@ -122,7 +151,8 @@ public sealed class DiceCubeService(
 
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.DiceCube);
-        if (_opt.MinSecondsBetweenBets > 0)
+        var cube = Cube;
+        if (cube.MinSecondsBetweenBets > 0)
         {
             cache.Set(
                 CooldownCacheKey(userId, chatId),
@@ -157,5 +187,6 @@ public sealed class DiceCubeService(
         await economics.CreditAsync(userId, chatId, bet.Amount, "dicecube.bot_dice.failed", ct);
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.DiceCube);
+        await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
     }
 }

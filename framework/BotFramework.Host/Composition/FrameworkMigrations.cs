@@ -140,5 +140,21 @@ internal sealed class FrameworkMigrations : IModuleMigrations
             ALTER TABLE users
                 ADD COLUMN IF NOT EXISTS last_daily_bonus_on DATE;
             """),
+
+        new Migration("009_users_telegram_dice_daily", """
+            ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS telegram_dice_rolls_on DATE,
+                ADD COLUMN IF NOT EXISTS telegram_dice_roll_count INTEGER NOT NULL DEFAULT 0;
+            """),
+
+        new Migration("010_runtime_tuning", """
+            CREATE TABLE IF NOT EXISTS runtime_tuning (
+                id          SMALLINT PRIMARY KEY CHECK (id = 1),
+                payload     JSONB NOT NULL DEFAULT '{}'::jsonb,
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            INSERT INTO runtime_tuning (id, payload) VALUES (1, '{}'::jsonb)
+            ON CONFLICT (id) DO NOTHING;
+            """),
     ];
 }

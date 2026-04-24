@@ -5,7 +5,6 @@ using Games.Darts;
 using Games.Football;
 using Games.DiceCube;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace CasinoShiz.Tests;
@@ -33,7 +32,7 @@ public class DiceCubeMultiplierTests
     {
         var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(),
             new InMemoryDiceCubeBetStore(), new NullEventBus(), new MemoryCache(new MemoryCacheOptions()),
-            Options.Create(new DiceCubeOptions()), new NullMiniGameSessionGhostHeal());
+            new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: 0, default);
         Assert.Equal(CubeBetError.InvalidAmount, result.Error);
     }
@@ -44,7 +43,7 @@ public class DiceCubeMultiplierTests
         var econ = new FakeEconomicsService { StartingBalance = 10 };
         var svc = new DiceCubeService(econ, new NullAnalyticsService(),
             new InMemoryDiceCubeBetStore(), new NullEventBus(), new MemoryCache(new MemoryCacheOptions()),
-            Options.Create(new DiceCubeOptions()), new NullMiniGameSessionGhostHeal());
+            new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         Assert.Equal(CubeBetError.NotEnoughCoins, result.Error);
     }
@@ -55,7 +54,7 @@ public class DiceCubeMultiplierTests
         var store = new InMemoryDiceCubeBetStore();
         var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(),
             store, new NullEventBus(), new MemoryCache(new MemoryCacheOptions()),
-            Options.Create(new DiceCubeOptions()), new NullMiniGameSessionGhostHeal());
+            new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         Assert.Equal(CubeBetError.AlreadyPending, result.Error);
@@ -66,7 +65,7 @@ public class DiceCubeMultiplierTests
     {
         var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(),
             new InMemoryDiceCubeBetStore(), new NullEventBus(), new MemoryCache(new MemoryCacheOptions()),
-            Options.Create(new DiceCubeOptions()), new NullMiniGameSessionGhostHeal());
+            new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         var result = await svc.RollAsync(1, "u", 100, face: 6, default);
         Assert.Equal(CubeRollOutcome.NoBet, result.Outcome);
     }
@@ -77,7 +76,7 @@ public class DiceCubeMultiplierTests
         var econ = new FakeEconomicsService();
         var store = new InMemoryDiceCubeBetStore();
         var svc = new DiceCubeService(econ, new NullAnalyticsService(), store, new NullEventBus(), new MemoryCache(new MemoryCacheOptions()),
-            Options.Create(new DiceCubeOptions()), new NullMiniGameSessionGhostHeal());
+            new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.RollAsync(1, "u", 100, face: 6, default);
         Assert.Equal(CubeRollOutcome.Rolled, result.Outcome);
@@ -91,7 +90,7 @@ public class DiceCubeMultiplierTests
         var econ = new FakeEconomicsService();
         var store = new InMemoryDiceCubeBetStore();
         var svc = new DiceCubeService(econ, new NullAnalyticsService(), store, new NullEventBus(), new MemoryCache(new MemoryCacheOptions()),
-            Options.Create(new DiceCubeOptions()), new NullMiniGameSessionGhostHeal());
+            new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.RollAsync(1, "u", 100, face: 1, default);
         Assert.Equal(CubeRollOutcome.Rolled, result.Outcome);
@@ -119,8 +118,8 @@ public class BasketballMultiplierTests
     public async Task PlaceBetAsync_NegativeAmount_ReturnsFail()
     {
         var svc = new BasketballService(new FakeEconomicsService(), new NullAnalyticsService(),
-            new InMemoryBasketballBetStore(), new NullEventBus(), Options.Create(new BasketballOptions()),
-            new NullMiniGameSessionGhostHeal());
+            new InMemoryBasketballBetStore(), new NullEventBus(), new FakeRuntimeTuning(),
+            new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: -5, default);
         Assert.Equal(BasketballBetError.InvalidAmount, result.Error);
     }
@@ -131,7 +130,7 @@ public class BasketballMultiplierTests
         var econ = new FakeEconomicsService();
         var store = new InMemoryBasketballBetStore();
         var svc = new BasketballService(econ, new NullAnalyticsService(), store, new NullEventBus(),
-            Options.Create(new BasketballOptions()), new NullMiniGameSessionGhostHeal());
+            new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.ThrowAsync(1, "u", 100, face: 5, default);
         Assert.Equal(BasketballThrowOutcome.Thrown, result.Outcome);
@@ -145,7 +144,7 @@ public class BasketballMultiplierTests
         var econ = new FakeEconomicsService();
         var store = new InMemoryBasketballBetStore();
         var svc = new BasketballService(econ, new NullAnalyticsService(), store, new NullEventBus(),
-            Options.Create(new BasketballOptions()), new NullMiniGameSessionGhostHeal());
+            new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         var result = await svc.ThrowAsync(1, "u", 100, face: 2, default);
         Assert.Equal(0, result.Payout);
@@ -176,7 +175,7 @@ public class BowlingMultiplierTests
         var econ = new FakeEconomicsService();
         var store = new InMemoryBowlingBetStore();
         var svc = new BowlingService(econ, new NullAnalyticsService(), store, new NullEventBus(),
-            Options.Create(new BowlingOptions()), new NullMiniGameSessionGhostHeal());
+            new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         var result = await svc.RollAsync(1, "u", 100, face: 6, default);
         Assert.Equal(BowlingRollOutcome.Rolled, result.Outcome);
@@ -188,7 +187,7 @@ public class BowlingMultiplierTests
     {
         var store = new InMemoryBowlingBetStore();
         var svc = new BowlingService(new FakeEconomicsService(), new NullAnalyticsService(),
-            store, new NullEventBus(), Options.Create(new BowlingOptions()), new NullMiniGameSessionGhostHeal());
+            store, new NullEventBus(), new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: 50, default);
         Assert.Equal(BowlingBetError.AlreadyPending, result.Error);
@@ -201,7 +200,7 @@ public class BowlingMultiplierTests
         var basketStore = new InMemoryBasketballBetStore();
         var heal = new LocalMiniGameSessionGhostHeal(basketball: basketStore);
         var svc = new BowlingService(new FakeEconomicsService(), new NullAnalyticsService(),
-            new InMemoryBowlingBetStore(), new NullEventBus(), Options.Create(new BowlingOptions()), heal);
+            new InMemoryBowlingBetStore(), new NullEventBus(), new FakeRuntimeTuning(), heal, new NullTelegramDiceDailyRollLimiter());
         var result = await svc.PlaceBetAsync(1, "u", 100, amount: 10, default);
         Assert.Equal(BowlingBetError.None, result.Error);
     }
@@ -234,7 +233,7 @@ public class DartsMultiplierTests
         var econ = new FakeEconomicsService();
         var store = new InMemoryDartsRoundStore();
         var svc = new DartsService(econ, new NullAnalyticsService(), store, new NullMiniGameSessionGhostHeal(),
-            new NullEventBus(), new DartsRollQueue(), Options.Create(new DartsOptions()));
+            new NullEventBus(), new DartsRollQueue(), new FakeRuntimeTuning(), new NullTelegramDiceDailyRollLimiter());
         var pr = await svc.PlaceBetAsync(1, "u", 100, amount: 100, 1, default);
         Assert.True(await store.TryMarkAwaitingOutcomeAsync(pr.RoundId, 8001, default));
         DartsDiceRoundBinding.Bind(100, 8001, pr.RoundId);
@@ -248,7 +247,7 @@ public class DartsMultiplierTests
     {
         var svc = new DartsService(new FakeEconomicsService(), new NullAnalyticsService(),
             new InMemoryDartsRoundStore(), new NullMiniGameSessionGhostHeal(), new NullEventBus(), new DartsRollQueue(),
-            Options.Create(new DartsOptions()));
+            new FakeRuntimeTuning(), new NullTelegramDiceDailyRollLimiter());
         var result = await svc.ThrowAsync(999, 1, "u", 100, 1, face: 6, default);
         Assert.Equal(DartsThrowOutcome.NoBet, result.Outcome);
     }
@@ -276,7 +275,7 @@ public class FootballMultiplierTests
         var econ = new FakeEconomicsService();
         var store = new InMemoryFootballBetStore();
         var svc = new FootballService(econ, new NullAnalyticsService(), store, new NullEventBus(),
-            Options.Create(new FootballOptions()), new NullMiniGameSessionGhostHeal());
+            new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         await svc.PlaceBetAsync(1, "u", 100, amount: 100, default);
         var result = await svc.ThrowAsync(1, "u", 100, face: 5, default);
         Assert.Equal(FootballThrowOutcome.Thrown, result.Outcome);
@@ -287,8 +286,8 @@ public class FootballMultiplierTests
     public async Task ThrowAsync_NoBet_ReturnsNoBet()
     {
         var svc = new FootballService(new FakeEconomicsService(), new NullAnalyticsService(),
-            new InMemoryFootballBetStore(), new NullEventBus(), Options.Create(new FootballOptions()),
-            new NullMiniGameSessionGhostHeal());
+            new InMemoryFootballBetStore(), new NullEventBus(), new FakeRuntimeTuning(),
+            new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         var result = await svc.ThrowAsync(1, "u", 100, face: 5, default);
         Assert.Equal(FootballThrowOutcome.NoBet, result.Outcome);
     }

@@ -1,0 +1,34 @@
+@page "/admin/settings"
+@model CasinoShiz.Host.Pages.Admin.SettingsModel
+@{ ViewData["Title"] = "Runtime settings"; }
+
+<h2>Runtime settings</h2>
+<p class="muted">Database overlay merges on top of <code>appsettings</code> / environment. Only whitelisted <code>Bot</code> and <code>Games</code> keys are stored. Pending 🎲 cube bets keep mults from when the bet was placed.</p>
+
+@if (!string.IsNullOrEmpty(Model.Flash))
+{
+    <div class="flash">@Model.Flash</div>
+}
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <div class="flash error">@Model.Error</div>
+}
+
+<div class="card">
+    <h3>Effective (read-only preview)</h3>
+    <pre>@Model.EffectivePreviewJson</pre>
+</div>
+
+@if (Model.CanEdit)
+{
+    <form method="post" class="card">
+        <h3>Database patch (JSON)</h3>
+        <p class="muted">Example: <code>{"Games":{"dice":{"Cost":12}}}</code> or <code>{"Bot":{"DailyBonus":{"MaxBonus":10}}}</code>. Empty object <code>{}</code> clears overrides.</p>
+        <textarea asp-for="PatchJson" rows="22" style="width:100%;font-family:monospace;font-size:12px;"></textarea>
+        <p style="margin-top:12px"><button type="submit">Save &amp; reload</button></p>
+    </form>
+}
+else
+    {
+    <p class="muted">Read-only admin — editing disabled.</p>
+}

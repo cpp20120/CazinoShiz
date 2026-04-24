@@ -98,6 +98,32 @@ public readonly record struct DailyBonusClaimResult(
     int BonusCoins = 0,
     int NewBalance = 0);
 
+public enum TelegramDiceRollGateStatus
+{
+    Allowed,
+    LimitExceeded,
+}
+
+/// <param name="UsedToday">Rolls already counted for the local day after a successful <c>Allowed</c> consume.</param>
+/// <param name="Limit">Configured max rolls per day when status is <see cref="TelegramDiceRollGateStatus.LimitExceeded"/>.</param>
+public readonly record struct TelegramDiceRollGateResult(
+    TelegramDiceRollGateStatus Status,
+    int UsedToday = 0,
+    int Limit = 0);
+
+/// <summary>
+/// Per-(user, chat) daily counter for Telegram mini-games that consume a random dice outcome.
+/// When <c>Bot:TelegramDiceDailyLimit:MaxRollsPerUserPerDay</c> is 0, both methods allow all rolls (no-op).
+/// </summary>
+public interface ITelegramDiceDailyRollLimiter
+{
+    /// <summary>Increments today's roll count if under the cap. Call only after <c>EnsureUserAsync</c>.</summary>
+    Task<TelegramDiceRollGateResult> TryConsumeRollAsync(long userId, long balanceScopeId, CancellationToken ct);
+
+    /// <summary>Decrements today's count (not below 0) if the bet was rolled back — e.g. debit refunded after failed DB insert or bot <c>SendDice</c> abort.</summary>
+    Task TryRefundRollAsync(long userId, long balanceScopeId, CancellationToken ct);
+}
+
 /// <summary>Once per configured local day: credit <see cref="DailyBonusOptions.PercentOfBalance"/> of balance (capped), minimal "bonus" not a prize.</summary>
 public interface IDailyBonusService
 {

@@ -7,8 +7,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
+using BotFramework.Host.Services;
 using BotFramework.Sdk;
-using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -19,7 +19,7 @@ namespace Games.DiceCube;
 [MessageDice("🎲")]
 public sealed partial class DiceCubeHandler(
     IDiceCubeService service,
-    IOptions<DiceCubeOptions> options,
+    IRuntimeTuningAccessor tuning,
     ILocalizer localizer,
     ILogger<DiceCubeHandler> logger) : IUpdateHandler
 {
@@ -65,7 +65,7 @@ public sealed partial class DiceCubeHandler(
         {
             case "help":
                 await ctx.Bot.SendMessage(chatId,
-                    string.Format(Loc("usage"), options.Value.DefaultBet),
+                    string.Format(Loc("usage"), tuning.GetSection<DiceCubeOptions>(DiceCubeOptions.SectionName).DefaultBet),
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
                 break;
             case "bet":
@@ -74,7 +74,7 @@ public sealed partial class DiceCubeHandler(
                 break;
             default:
                 await ctx.Bot.SendMessage(chatId,
-                    string.Format(Loc("usage"), options.Value.DefaultBet),
+                    string.Format(Loc("usage"), tuning.GetSection<DiceCubeOptions>(DiceCubeOptions.SectionName).DefaultBet),
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
                 break;
         }
@@ -85,18 +85,18 @@ public sealed partial class DiceCubeHandler(
     {
         int amount;
         if (parts.Length == 1)
-            amount = options.Value.DefaultBet;
+            amount = tuning.GetSection<DiceCubeOptions>(DiceCubeOptions.SectionName).DefaultBet;
         else if (parts.Length == 2)
         {
             if (!parts[1].Equals("bet", StringComparison.OrdinalIgnoreCase))
             {
                 await ctx.Bot.SendMessage(chatId,
-                    string.Format(Loc("bet.usage"), options.Value.DefaultBet),
+                    string.Format(Loc("bet.usage"), tuning.GetSection<DiceCubeOptions>(DiceCubeOptions.SectionName).DefaultBet),
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
                 return;
             }
 
-            amount = options.Value.DefaultBet;
+            amount = tuning.GetSection<DiceCubeOptions>(DiceCubeOptions.SectionName).DefaultBet;
         }
         else if (parts.Length >= 3
             && parts[1].Equals("bet", StringComparison.OrdinalIgnoreCase)
@@ -104,7 +104,7 @@ public sealed partial class DiceCubeHandler(
         else
         {
             await ctx.Bot.SendMessage(chatId,
-                string.Format(Loc("bet.usage"), options.Value.DefaultBet),
+                string.Format(Loc("bet.usage"), tuning.GetSection<DiceCubeOptions>(DiceCubeOptions.SectionName).DefaultBet),
                 parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
             return;
         }
@@ -119,6 +119,7 @@ public sealed partial class DiceCubeHandler(
             CubeBetError.AlreadyPending => string.Format(Loc("bet.already_pending"), r.PendingAmount),
             CubeBetError.BusyOtherGame => string.Format(Loc("bet.busy_other"), MiniGameLabels.Ru(r.BlockingGameId!)),
             CubeBetError.Cooldown => string.Format(Loc("bet.cooldown"), r.CooldownSeconds),
+            CubeBetError.DailyRollLimit => string.Format(Loc("bet.daily_roll_limit"), r.DailyRollUsed, r.DailyRollLimit),
             _ => Loc("bet.failed"),
         };
         try

@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using BotFramework.Host;
 using BotFramework.Host.Composition;
+using BotFramework.Host.Services;
 using BotFramework.Sdk;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
@@ -14,10 +15,9 @@ public sealed class TransferHandler(
     ITransferService transfers,
     ILocalizer localizer,
     ITelegramBotClient bot,
-    IOptions<TransferOptions> options,
+    IRuntimeTuningAccessor tuning,
     IOptions<BotFrameworkOptions> frameworkOpts) : IUpdateHandler
 {
-    private readonly TransferOptions _opts = options.Value;
     private readonly BotFrameworkOptions _framework = frameworkOpts.Value;
 
     public async Task HandleAsync(UpdateContext ctx)
@@ -74,12 +74,12 @@ public sealed class TransferHandler(
         {
             case TransferError.NetBelowMinimum:
                 await ctx.Bot.SendMessage(chatId,
-                    string.Format(Loc("err.min_net"), _opts.MinNetCoins),
+                    string.Format(Loc("err.min_net"), tuning.GetSection<TransferOptions>(TransferOptions.SectionName).MinNetCoins),
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
                 return;
             case TransferError.NetAboveMaximum:
                 await ctx.Bot.SendMessage(chatId,
-                    string.Format(Loc("err.max_net"), _opts.MaxNetCoins),
+                    string.Format(Loc("err.max_net"), tuning.GetSection<TransferOptions>(TransferOptions.SectionName).MaxNetCoins),
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
                 return;
             case TransferError.SameUser:

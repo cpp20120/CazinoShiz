@@ -2,7 +2,6 @@ using BotFramework.Sdk;
 using Games.Darts;
 using Games.DiceCube;
 using Microsoft.Extensions.Caching.Memory;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace CasinoShiz.Tests;
@@ -23,15 +22,17 @@ public class DiceCubeServiceTests
         InMemoryDiceCubeBetStore? bets = null,
         IMemoryCache? cache = null,
         DiceCubeOptions? o = null,
-        IMiniGameSessionGhostHeal? ghostHeal = null) =>
+        IMiniGameSessionGhostHeal? ghostHeal = null,
+        FakeRuntimeTuning? tuning = null) =>
         new(
             economics ?? new FakeEconomicsService(),
             new NullAnalyticsService(),
             bets ?? new InMemoryDiceCubeBetStore(),
             new NullEventBus(),
             cache ?? NewCache(),
-            Options.Create(o ?? new DiceCubeOptions()),
-            ghostHeal ?? new NullMiniGameSessionGhostHeal());
+            tuning ?? new FakeRuntimeTuning { DiceCube = o ?? new DiceCubeOptions() },
+            ghostHeal ?? new NullMiniGameSessionGhostHeal(),
+            new NullTelegramDiceDailyRollLimiter());
 
     [Fact]
     public async Task PlaceBetAsync_PendingOtherMiniGame_ReturnsBusyOtherGame()
@@ -44,7 +45,8 @@ public class DiceCubeServiceTests
             new NullMiniGameSessionGhostHeal(),
             new NullEventBus(),
             new DartsRollQueue(),
-            Options.Create(new DartsOptions()));
+            new FakeRuntimeTuning(),
+            new NullTelegramDiceDailyRollLimiter());
         await darts.PlaceBetAsync(1, "u", 100, 50, 1, default);
         var result = await svc.PlaceBetAsync(1, "u", 100, 30, default);
         Assert.Equal(CubeBetError.BusyOtherGame, result.Error);
@@ -64,7 +66,8 @@ public class DiceCubeServiceTests
             new NullMiniGameSessionGhostHeal(),
             new NullEventBus(),
             new DartsRollQueue(),
-            Options.Create(new DartsOptions()));
+            new FakeRuntimeTuning(),
+            new NullTelegramDiceDailyRollLimiter());
         var dp = await darts.PlaceBetAsync(1, "u", 100, 50, 1, default);
         Assert.True(await dRounds.TryMarkAwaitingOutcomeAsync(dp.RoundId, 4242, default));
         DartsDiceRoundBinding.Bind(100, 4242, dp.RoundId);
@@ -322,7 +325,7 @@ public class DiceCubeServiceTests
         var bus = new NullEventBus();
         var bets = new InMemoryDiceCubeBetStore();
         var svc = new DiceCubeService(new FakeEconomicsService(), new NullAnalyticsService(), bets, bus, NewCache(),
-            Options.Create(new DiceCubeOptions()), new NullMiniGameSessionGhostHeal());
+            new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         await svc.PlaceBetAsync(1, "u", 100, 50, default);
         await svc.RollAsync(1, "u", 100, 4, default);
         Assert.Single(bus.Published);
@@ -356,5 +359,16 @@ public class DiceCubeServiceTests
         var r = await svc.PlaceBetAsync(1, "u", 100, 10, default);
         Assert.Equal(CubeBetError.Cooldown, r.Error);
         Assert.InRange(r.CooldownSeconds, 1, 30);
+    }
+
+    [Fact]
+    public async Task RollAsync_UsesSnapshotMult6_WhenTuningChangesBeforeRoll()
+    {
+        var tuning = new FakeRuntimeTuning { DiceCube = new DiceCubeOptions { Mult6 = 2, MaxBet = 10_000 } };
+        var svc = MakeService(tuning: tuning);
+        await svc.PlaceBetAsync(1, "u", 100, 100, default);
+        tuning.DiceCube = new DiceCubeOptions { Mult6 = 9, MaxBet = 10_000 };
+        var result = await svc.RollAsync(1, "u", 100, 6, default);
+        Assert.Equal(200, result.Payout);
     }
 }

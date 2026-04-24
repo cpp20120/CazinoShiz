@@ -24,5 +24,12 @@ public sealed class DiceCubeMigrations : IModuleMigrations
                 PRIMARY KEY (user_id, chat_id)
             );
             """),
+
+        new Migration("002_dicecube_bets_rule_snapshot", """
+            ALTER TABLE dicecube_bets
+                ADD COLUMN IF NOT EXISTS mult4 INTEGER NOT NULL DEFAULT 1,
+                ADD COLUMN IF NOT EXISTS mult5 INTEGER NOT NULL DEFAULT 2,
+                ADD COLUMN IF NOT EXISTS mult6 INTEGER NOT NULL DEFAULT 2;
+            """),
     ];
 }

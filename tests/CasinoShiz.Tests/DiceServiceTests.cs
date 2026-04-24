@@ -1,5 +1,5 @@
+using BotFramework.Host;
 using Games.Dice;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace CasinoShiz.Tests;
@@ -13,13 +13,15 @@ public class DiceServiceTests
 {
     private static DiceService MakeService(
         FakeEconomicsService? economics = null,
-        int cost = 7) =>
+        int cost = 7,
+        ITelegramDiceDailyRollLimiter? limiter = null) =>
         new(
             economics ?? new FakeEconomicsService(),
             new NullAnalyticsService(),
             new NullDiceHistoryStore(),
             new NullEventBus(),
-            Options.Create(new DiceOptions { Cost = cost }));
+            limiter ?? new NullTelegramDiceDailyRollLimiter(),
+            new FakeRuntimeTuning { Dice = new DiceOptions { Cost = cost } });
 
     [Fact]
     public async Task PlayAsync_ForwardedMessage_ReturnsForwarded()
@@ -45,6 +47,26 @@ public class DiceServiceTests
         var svc = MakeService(econ);
         var result = await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
         Assert.Equal(DiceOutcome.NotEnoughCoins, result.Outcome);
+    }
+
+    [Fact]
+    public async Task PlayAsync_DailyRollLimit_ReturnsLimitExceeded()
+    {
+        var svc = MakeService(limiter: new RejectingTelegramDiceDailyRollLimiter());
+        var result = await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        Assert.Equal(DiceOutcome.DailyRollLimitExceeded, result.Outcome);
+        Assert.Equal(3, result.DailyDiceUsed);
+        Assert.Equal(10, result.DailyDiceLimit);
+    }
+
+    [Fact]
+    public async Task PlayAsync_InsufficientBalance_RefundsConsumedRoll()
+    {
+        var recording = new RecordingTelegramDiceDailyRollLimiter();
+        var econ = new FakeEconomicsService { StartingBalance = 0 };
+        var svc = MakeService(econ, limiter: recording);
+        await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        Assert.Equal(1, recording.RefundCount);
     }
 
     [Fact]

@@ -56,6 +56,13 @@ public sealed partial class DiceHandler(
                     string.Format(Loc("err.not_enough_coins"), result.Loss),
                     replyParameters: reply, cancellationToken: ctx.Ct);
                 return;
+
+            case DiceOutcome.DailyRollLimitExceeded:
+                await ctx.Bot.SendMessage(
+                    chatId,
+                    string.Format(Loc("err.daily_roll_limit"), result.DailyDiceUsed, result.DailyDiceLimit),
+                    parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
+                return;
         }
 
         var net = result.Prize - result.Loss;
