@@ -18,6 +18,7 @@ public sealed partial class DailyBonusService(
 
         await economics.EnsureUserAsync(userId, balanceScopeId, displayName, ct);
         var today = TodayInOffset(opt.TimezoneOffsetHours);
+        var todayDb = today.ToDateTime(TimeOnly.MinValue);
 
         const string selectSql = """
             SELECT u.coins, u.version, u.last_daily_bonus_on
@@ -29,7 +30,7 @@ public sealed partial class DailyBonusService(
             UPDATE users
             SET coins = @newCoins,
                 version = @newVersion,
-                last_daily_bonus_on = @today,
+                last_daily_bonus_on = @todayDb,
                 updated_at = now()
             WHERE telegram_user_id = @userId AND balance_scope_id = @balanceScopeId
             """;
@@ -84,7 +85,7 @@ public sealed partial class DailyBonusService(
                     balanceScopeId,
                     newCoins,
                     newVersion,
-                    today,
+                    todayDb,
                 },
                 transaction: tx, cancellationToken: ct));
         await conn.ExecuteAsync(
