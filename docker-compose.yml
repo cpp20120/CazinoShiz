@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: cazino
       POSTGRES_PASSWORD: cazino
     volumes:
-      - ./data/postgres:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cazino -d cazino"]
       interval: 5s
@@ -24,7 +24,7 @@ services:
       - "8123:8123"
       - "9000:9000"
     volumes:
-      - ./data/clickhouse:/var/lib/clickhouse
+      - clickhouse_data:/var/lib/clickhouse
     environment:
       CLICKHOUSE_DB: analytics
       CLICKHOUSE_USER: default
@@ -47,7 +47,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - ./data/redis:/data
+      - redis_data:/data
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -56,7 +56,6 @@ services:
       retries: 10
       start_period: 5s
 
-  # Prometheus scrapes postgres-exporter + redis-exporter; Grafana uses the Prometheus datasource.
   postgres-exporter:
     image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
     restart: unless-stopped
@@ -75,7 +74,6 @@ services:
       redis:
         condition: service_healthy
 
-  # Per-container CPU/memory (cgroups). Linux + Docker; needs host paths + privileged.
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.47.2
     restart: unless-stopped
@@ -88,7 +86,6 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
-    # Internal only; Prometheus scrapes cadvisor:8080/metrics
 
   prometheus:
     image: prom/prometheus:v2.54.0
@@ -120,7 +117,7 @@ services:
       Redis__Enabled: "true"
       Redis__ConnectionString: "redis:6379"
     volumes:
-      - ./data:/app/data
+      - bot_app_data:/app/data
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -152,5 +149,9 @@ services:
         condition: service_started
 
 volumes:
+  postgres_data:
+  clickhouse_data:
+  redis_data:
+  bot_app_data:
   grafana_data:
   prometheus_data:
