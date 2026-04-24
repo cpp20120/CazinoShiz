@@ -90,7 +90,12 @@ public sealed class TransferHandler(
             case TransferError.None:
                 await ctx.Bot.SendMessage(chatId,
                     string.Format(Loc("ok"),
-                        net, result.FeeCoins, result.TotalDebited, result.SenderBalance, recipientLabel, result.RecipientBalance),
+                        net,
+                        result.FeeCoins,
+                        result.TotalDebited,
+                        result.SenderBalance,
+                        result.RecipientBalance,
+                        recipientLabel),
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
                 return;
             default:
