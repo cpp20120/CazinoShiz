@@ -27,7 +27,7 @@ public sealed partial class HorseModel(
     public int BetsToday { get; private set; }
     public IReadOnlyDictionary<int, double> Koefs { get; private set; } = new Dictionary<int, double>();
     public IReadOnlyList<PastRace> Past { get; private set; } = [];
-    public string TodayRaceDate { get; private set; } = HorseTimeHelper.GetRaceDate();
+    public string TodayRaceDate { get; private set; } = "";
     public int MinBets => _opts.MinBetsToRun;
     public int HorseCount => _opts.HorseCount;
     public IReadOnlyList<long> ConfiguredAdmins => _opts.Admins;
@@ -43,6 +43,7 @@ public sealed partial class HorseModel(
 
     public async Task<IActionResult> OnPostRunAsync(CancellationToken ct)
     {
+        TodayRaceDate = HorseTimeHelper.GetRaceDate(_opts.TimezoneOffsetHours);
         var actor = HttpContext.Session.GetAdminSession();
         if (actor?.Role != AdminRole.SuperAdmin)
             return StatusCode(403);
@@ -133,6 +134,7 @@ public sealed partial class HorseModel(
 
     private async Task LoadAsync(CancellationToken ct)
     {
+        TodayRaceDate = HorseTimeHelper.GetRaceDate(_opts.TimezoneOffsetHours);
         var info = await horse.GetTodayInfoAsync(balanceScopeIdOnly: null, ct);
         BetsToday = info.BetsCount;
         Koefs = info.Koefs;

@@ -142,7 +142,7 @@ public sealed partial class HorseHandler(
             gifMessage = await ctx.Bot.SendAnimation(chatId, InputFile.FromStream(gifStream, "horses.gif"),
                 cancellationToken: ctx.Ct);
 
-        var raceDate = HorseTimeHelper.GetRaceDate();
+        var raceDate = HorseTimeHelper.GetRaceDate(_opts.TimezoneOffsetHours);
         var fileId = gifMessage.Animation?.FileId;
         var resultScope = kind == HorseRunKind.Global ? 0L : chatId;
         if (fileId != null)

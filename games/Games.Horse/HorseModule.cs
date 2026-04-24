@@ -15,7 +15,8 @@ public sealed class HorseModule : IModule
             .AddScoped<IHorseService, HorseService>()
             .AddScoped<IHorseBetStore, HorseBetStore>()
             .AddScoped<IHorseResultStore, HorseResultStore>()
-            .AddHandler<HorseHandler>();
+            .AddHandler<HorseHandler>()
+            .AddBackgroundJob<HorseScheduledRaceJob>();
     }
 
     public IModuleMigrations GetMigrations() => new HorseMigrations();
@@ -36,7 +37,7 @@ public sealed class HorseModule : IModule
                 "<b>Как играть</b>\n" +
                 "• Сделай ставку: монеты списываются сразу.\n" +
                 "• Коэффициенты «пари-матч»: чем больше денег на лошадь, тем ниже коэф. Актуальные числа — в /horse info.\n" +
-                "• Победитель забега выбирается случайно при запуске гонки админом.\n" +
+                "• Победитель забега выбирается случайно при запуске гонки админом или по расписанию\n" +
                 "• Выигрыш ≈ ставка × твой коэффициент (выплата целым числом монет).\n" +
                 "• Чтобы гонка прошла, в пуле должно быть не меньше {1} ставок (записей).\n" +
                 "• В группе <code>/horserun</code> считает только этот чат; <code>/horserun global</code> — общий забег по всем чатам .\n\n" +

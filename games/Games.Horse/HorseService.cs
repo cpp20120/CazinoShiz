@@ -72,7 +72,7 @@ public sealed partial class HorseService(
         if (!await economics.TryDebitAsync(userId, balanceScopeId, amount, "horse.bet", ct))
             return BetFail(HorseError.InvalidAmount, horseId, balance);
 
-        var raceDate = HorseTimeHelper.GetRaceDate();
+        var raceDate = HorseTimeHelper.GetRaceDate(_opts.TimezoneOffsetHours);
         var bet = new HorseBetRow(Guid.NewGuid(), raceDate, userId, balanceScopeId, horseId - 1, amount);
         await betStore.InsertAsync(bet, ct);
 
@@ -89,7 +89,7 @@ public sealed partial class HorseService(
 
     public async Task<RaceInfo> GetTodayInfoAsync(long? balanceScopeIdOnly, CancellationToken ct)
     {
-        var raceDate = HorseTimeHelper.GetRaceDate();
+        var raceDate = HorseTimeHelper.GetRaceDate(_opts.TimezoneOffsetHours);
         var bets = balanceScopeIdOnly is { } scope
             ? await betStore.ListByRaceDateAndScopeAsync(raceDate, scope, ct)
             : await betStore.ListByRaceDateAsync(raceDate, ct);
@@ -103,7 +103,7 @@ public sealed partial class HorseService(
 
     public async Task<TodayRaceResult> GetTodayResultAsync(long viewerBalanceScopeId, CancellationToken ct)
     {
-        var raceDate = HorseTimeHelper.GetRaceDate();
+        var raceDate = HorseTimeHelper.GetRaceDate(_opts.TimezoneOffsetHours);
         var local = await resultStore.FindAsync(raceDate, viewerBalanceScopeId, ct);
         if (local != null)
             return new TodayRaceResult(local.Winner, local.FileId);
@@ -126,7 +126,7 @@ public sealed partial class HorseService(
             return RaceFail(HorseError.NotAdmin);
         }
 
-        var raceDate = HorseTimeHelper.GetRaceDate();
+        var raceDate = HorseTimeHelper.GetRaceDate(_opts.TimezoneOffsetHours);
         var resultScope = kind == HorseRunKind.Global ? 0L : chatScopeId;
         var bets = kind == HorseRunKind.Global
             ? await betStore.ListByRaceDateAsync(raceDate, ct)

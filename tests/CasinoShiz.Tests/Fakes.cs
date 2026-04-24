@@ -1,5 +1,6 @@
 using BotFramework.Host;
 using BotFramework.Host.Composition;
+using BotFramework.Host.Services;
 using BotFramework.Sdk;
 using Games.Admin;
 using Games.Blackjack;
@@ -145,6 +146,7 @@ public sealed class FakeRuntimeTuning : IRuntimeTuningAccessor
     public FootballOptions Football { get; set; } = new();
     public BasketballOptions Basketball { get; set; } = new();
     public BowlingOptions Bowling { get; set; } = new();
+    public HorseOptions Horse { get; set; } = new();
     public TransferOptions Transfer { get; set; } = new();
 
     public T GetSection<T>(string sectionPath) where T : class, new()
@@ -157,6 +159,7 @@ public sealed class FakeRuntimeTuning : IRuntimeTuningAccessor
             FootballOptions.SectionName => Football,
             BasketballOptions.SectionName => Basketball,
             BowlingOptions.SectionName => Bowling,
+            HorseOptions.SectionName => Horse,
             TransferOptions.SectionName => Transfer,
             _ => null,
         };

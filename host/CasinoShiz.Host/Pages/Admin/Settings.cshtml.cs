@@ -11,6 +11,7 @@ using Games.Darts;
 using Games.Dice;
 using Games.DiceCube;
 using Games.Football;
+using Games.Horse;
 using Games.Transfer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -123,6 +124,7 @@ public sealed class SettingsModel(
             ["football"] = JsonSerializer.SerializeToNode(tuning.GetSection<FootballOptions>(FootballOptions.SectionName)),
             ["basketball"] = JsonSerializer.SerializeToNode(tuning.GetSection<BasketballOptions>(BasketballOptions.SectionName)),
             ["bowling"] = JsonSerializer.SerializeToNode(tuning.GetSection<BowlingOptions>(BowlingOptions.SectionName)),
+            ["horse"] = JsonSerializer.SerializeToNode(tuning.GetSection<HorseOptions>(HorseOptions.SectionName)),
             ["transfer"] = JsonSerializer.SerializeToNode(tuning.GetSection<TransferOptions>(TransferOptions.SectionName)),
         };
         return new JsonObject { ["Bot"] = bot, ["Games"] = games };
@@ -155,6 +157,7 @@ public sealed class SettingsModel(
                 TryMerge<FootballOptions>(games, "football", FootballOptions.SectionName);
                 TryMerge<BasketballOptions>(games, "basketball", BasketballOptions.SectionName);
                 TryMerge<BowlingOptions>(games, "bowling", BowlingOptions.SectionName);
+                TryMerge<HorseOptions>(games, "horse", HorseOptions.SectionName);
                 TryMerge<TransferOptions>(games, "transfer", TransferOptions.SectionName);
             }
         }

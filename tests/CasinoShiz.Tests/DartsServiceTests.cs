@@ -3,7 +3,6 @@ using Games.DiceCube;
 using Games.Darts;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace CasinoShiz.Tests;
@@ -25,7 +24,8 @@ public class DartsServiceTests
         InMemoryDartsRoundStore? rounds = null,
         IMiniGameSessionGhostHeal? ghostHeal = null,
         IDartsRollQueue? queue = null,
-        NullEventBus? bus = null) =>
+        NullEventBus? bus = null,
+        FakeRuntimeTuning? tuning = null) =>
         new(
             economics ?? new FakeEconomicsService(),
             new NullAnalyticsService(),
@@ -33,7 +33,7 @@ public class DartsServiceTests
             ghostHeal ?? new NullMiniGameSessionGhostHeal(),
             bus ?? new NullEventBus(),
             queue ?? new DartsRollQueue(),
-            Options.Create(new DartsOptions()),
+            tuning ?? new FakeRuntimeTuning(),
             new NullTelegramDiceDailyRollLimiter());
 
     private static async Task ArmAsync(
