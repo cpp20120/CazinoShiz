@@ -13,6 +13,8 @@ public interface IFootballService
 {
     Task<FootballBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct);
     Task<FootballThrowResult> ThrowAsync(long userId, string displayName, long chatId, int face, CancellationToken ct);
+    /// <summary>Refund and clear pending bet when bot SendDice fails after debit.</summary>
+    Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct);
 }
 
 public sealed class FootballService(
@@ -111,5 +113,23 @@ public sealed class FootballService(
             ct);
 
         return new FootballThrowResult(FootballThrowOutcome.Thrown, face, bet.Amount, multiplier, payout, balance);
+    }
+
+    public async Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var bet = await bets.FindAsync(userId, chatId, ct);
+        if (bet == null) return;
+
+        await economics.CreditAsync(userId, chatId, bet.Amount, "football.send_dice_failed", ct);
+        await bets.DeleteAsync(userId, chatId, ct);
+        BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Football);
+        await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
+
+        analytics.Track("football", "bet_aborted", new Dictionary<string, object?>
+        {
+            ["user_id"] = userId,
+            ["chat_id"] = chatId,
+            ["amount"] = bet.Amount,
+        });
     }
 }

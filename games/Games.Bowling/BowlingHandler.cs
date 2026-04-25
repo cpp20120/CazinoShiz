@@ -136,6 +136,15 @@ public sealed partial class BowlingHandler(
             catch (Exception ex)
             {
                 BotMiniGameRollGate.Clear(RollGateId, userId, chatId);
+                try
+                {
+                    await service.AbortPendingBetAfterSendDiceFailedAsync(userId, chatId, ctx.Ct);
+                }
+                catch (Exception abortEx)
+                {
+                    LogAbortAfterBotDiceFailed(userId, abortEx);
+                }
+
                 LogBotDiceFailed(userId, ex);
             }
         }
@@ -186,4 +195,7 @@ public sealed partial class BowlingHandler(
 
     [LoggerMessage(EventId = 2402, Level = LogLevel.Warning, Message = "bowling.bot_dice.failed user={UserId}")]
     partial void LogBotDiceFailed(long userId, Exception exception);
+
+    [LoggerMessage(EventId = 2403, Level = LogLevel.Error, Message = "bowling.abort_after_send_dice_failed user={UserId}")]
+    partial void LogAbortAfterBotDiceFailed(long userId, Exception exception);
 }

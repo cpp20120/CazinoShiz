@@ -104,7 +104,7 @@ services:
       - redis-exporter
       - cadvisor
 
-  bot:
+  cazino-bot:
     build:
       context: .
       dockerfile: Dockerfile

@@ -27,5 +27,15 @@ public sealed class DiceMigrations : IModuleMigrations
             );
             CREATE INDEX ix_dice_rolls_user_time ON dice_rolls (user_id, rolled_at DESC);
             """),
+        new Migration("002_add_pending_bets", """
+            CREATE TABLE dice_bets (
+                user_id      BIGINT       NOT NULL,
+                chat_id      BIGINT       NOT NULL,
+                dice_value   SMALLINT     NOT NULL,
+                loss         INTEGER      NOT NULL,
+                created_at   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                PRIMARY KEY (user_id, chat_id)
+            );
+            """),
     ];
 }

@@ -186,6 +186,28 @@ sealed class NullDiceHistoryStore : IDiceHistoryStore
     public Task AppendAsync(DiceRoll roll, CancellationToken ct) => Task.CompletedTask;
 }
 
+sealed class InMemoryDiceBetStore : IDiceBetStore
+{
+    private readonly Dictionary<(long userId, long chatId), DiceBet> _bets = new();
+
+    public Task<DiceBet?> FindAsync(long userId, long chatId, CancellationToken ct) =>
+        Task.FromResult(_bets.GetValueOrDefault((userId, chatId)));
+
+    public Task<bool> InsertAsync(DiceBet bet, CancellationToken ct)
+    {
+        var key = (bet.UserId, bet.ChatId);
+        if (_bets.ContainsKey(key)) return Task.FromResult(false);
+        _bets[key] = bet;
+        return Task.FromResult(true);
+    }
+
+    public Task DeleteAsync(long userId, long chatId, CancellationToken ct)
+    {
+        _bets.Remove((userId, chatId));
+        return Task.CompletedTask;
+    }
+}
+
 sealed class InMemoryBlackjackHandStore : IBlackjackHandStore
 {
     private readonly Dictionary<long, BlackjackHandRow> _hands = new();

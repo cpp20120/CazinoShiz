@@ -15,6 +15,7 @@ public interface IBowlingService
 {
     Task<BowlingBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct);
     Task<BowlingRollResult> RollAsync(long userId, string displayName, long chatId, int face, CancellationToken ct);
+    Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct);
 }
 
 public sealed class BowlingService(
@@ -113,5 +114,23 @@ public sealed class BowlingService(
             ct);
 
         return new BowlingRollResult(BowlingRollOutcome.Rolled, face, bet.Amount, multiplier, payout, balance);
+    }
+
+    public async Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var bet = await bets.FindAsync(userId, chatId, ct);
+        if (bet == null) return;
+
+        await economics.CreditAsync(userId, chatId, bet.Amount, "bowling.send_dice_failed", ct);
+        await bets.DeleteAsync(userId, chatId, ct);
+        BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Bowling);
+        await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
+
+        analytics.Track("bowling", "bet_aborted", new Dictionary<string, object?>
+        {
+            ["user_id"] = userId,
+            ["chat_id"] = chatId,
+            ["amount"] = bet.Amount,
+        });
     }
 }

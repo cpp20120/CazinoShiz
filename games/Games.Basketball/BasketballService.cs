@@ -15,6 +15,7 @@ public interface IBasketballService
 {
     Task<BasketballBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct);
     Task<BasketballThrowResult> ThrowAsync(long userId, string displayName, long chatId, int face, CancellationToken ct);
+    Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct);
 }
 
 public sealed class BasketballService(
@@ -113,5 +114,23 @@ public sealed class BasketballService(
             ct);
 
         return new BasketballThrowResult(BasketballThrowOutcome.Thrown, face, bet.Amount, multiplier, payout, balance);
+    }
+
+    public async Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var bet = await bets.FindAsync(userId, chatId, ct);
+        if (bet == null) return;
+
+        await economics.CreditAsync(userId, chatId, bet.Amount, "basketball.send_dice_failed", ct);
+        await bets.DeleteAsync(userId, chatId, ct);
+        BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Basketball);
+        await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
+
+        analytics.Track("basketball", "bet_aborted", new Dictionary<string, object?>
+        {
+            ["user_id"] = userId,
+            ["chat_id"] = chatId,
+            ["amount"] = bet.Amount,
+        });
     }
 }

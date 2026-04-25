@@ -1,20 +1,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // DiceService — application service for the 🎰 slots roll.
 //
+// Two-phase design (like DiceCubeService):
+//   1. PlaceBetAsync: Debit stake, store pending bet. User returns bet info.
+//   2. ResolveBetAsync: Resolve dice roll, compute prize, credit payout, clean up bet.
+//   3. AbortBetAfterSendDiceFailedAsync: If bot's SendDice fails, refund the debit.
+//
+// This prevents lost bets when the Telegram message fails to send after debit.
+// Previously, the service did everything atomically in one call; if the message
+// send failed in the handler's try-catch, the debit was already done but the
+// user saw no result and couldn't retry. Now the bet is only consumed if BOTH
+// the debit and message-send succeed.
+//
 // Ported from src/CasinoShiz.Core/Services/Dice/DiceService.cs, minus the
 // per-user attempts counter, bank-tax windowing, and freespin-code issuance.
-// Those depended on the shared UserState row and the Redeem module and will
-// come back when #15 ports the remainder (tracked as a follow-up). The core
-// gameplay — decode Telegram's encoded dice value, pick a sticker triple,
-// compute prize from the published payout table — ships verbatim.
-//
-// Stateless by design: no aggregate, no repository. Each call is debit →
-// resolve → credit → audit → analytics → publish, all in the same request
-// scope. EconomicsService makes each mutation atomic on its own row; we
-// deliberately accept that a failure between debit and credit leaves the
-// bettor short by the stake. Matches the live bot's behavior today (same
-// non-transactional boundary) and is cheap to revisit by introducing a
-// transactional wrapper on IEconomicsService later.
+// Those depended on the shared UserState row and will come back when #15
+// ports the remainder.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
@@ -25,18 +26,33 @@ namespace Games.Dice;
 
 public interface IDiceService
 {
-    Task<DicePlayResult> PlayAsync(
+    /// <summary>Phase 1: Debit stake and store pending bet. Called before SendDice.</summary>
+    Task<DicePlaceBetResult> PlaceBetAsync(
         long userId,
         string displayName,
         int diceValue,
         long chatId,
         bool isForwarded,
         CancellationToken ct);
+
+    /// <summary>Phase 2: Resolve the dice roll and credit payout. Called after dice is rolled.</summary>
+    Task<DiceRollResult> ResolveBetAsync(
+        long userId,
+        string displayName,
+        long chatId,
+        CancellationToken ct);
+
+    /// <summary>Recover from SendDice failure: refund the debit and clear the pending bet.</summary>
+    Task AbortBetAfterSendDiceFailedAsync(
+        long userId,
+        long chatId,
+        CancellationToken ct);
 }
 
 public sealed class DiceService(
     IEconomicsService economics,
     IAnalyticsService analytics,
+    IDiceBetStore bets,
     IDiceHistoryStore history,
     IDomainEventBus events,
     ITelegramDiceDailyRollLimiter telegramDiceRolls,
@@ -45,7 +61,7 @@ public sealed class DiceService(
     private static readonly string[] Stickers = ["bar", "cherry", "lemon", "seven"];
     private static readonly int[] StakePrice = [1, 1, 2, 3];
 
-    public async Task<DicePlayResult> PlayAsync(
+    public async Task<DicePlaceBetResult> PlaceBetAsync(
         long userId,
         string displayName,
         int diceValue,
@@ -61,14 +77,14 @@ public sealed class DiceService(
                 ["chat_id"] = chatId,
                 ["dice_value"] = diceValue,
             });
-            return new DicePlayResult(DiceOutcome.Forwarded);
+            return new DicePlaceBetResult(DiceOutcome.Forwarded);
         }
 
         await economics.EnsureUserAsync(userId, chatId, displayName, ct);
 
         var gate = await telegramDiceRolls.TryConsumeRollAsync(userId, chatId, ct);
         if (gate.Status == TelegramDiceRollGateStatus.LimitExceeded)
-            return new DicePlayResult(
+            return new DicePlaceBetResult(
                 DiceOutcome.DailyRollLimitExceeded,
                 DailyDiceUsed: gate.UsedToday,
                 DailyDiceLimit: gate.Limit);
@@ -77,6 +93,21 @@ public sealed class DiceService(
         var gas = TaxService.GetGasTax(diceOpts.Cost);
         var loss = diceOpts.Cost + gas;
 
+        var balance = await economics.GetBalanceAsync(userId, chatId, ct);
+        if (loss > balance)
+        {
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
+            analytics.Track("dice", "not_enough_coins", new Dictionary<string, object?>
+            {
+                ["user_id"] = userId,
+                ["chat_id"] = chatId,
+                ["dice_value"] = diceValue,
+                ["fixed_loss"] = loss,
+            });
+            return new DicePlaceBetResult(DiceOutcome.NotEnoughCoins, Loss: loss);
+        }
+
+        // Debit the stake
         if (!await economics.TryDebitAsync(userId, chatId, loss, reason: "dice.stake", ct))
         {
             await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
@@ -87,10 +118,44 @@ public sealed class DiceService(
                 ["dice_value"] = diceValue,
                 ["fixed_loss"] = loss,
             });
-            return new DicePlayResult(DiceOutcome.NotEnoughCoins, Loss: loss);
+            return new DicePlaceBetResult(DiceOutcome.NotEnoughCoins, Loss: loss);
         }
 
-        var rolls = DecodeRolls(diceValue);
+        // Store the pending bet so ResolveBet can find it later
+        var bet = new DiceBet(userId, chatId, diceValue, loss, DateTimeOffset.UtcNow);
+        if (!await bets.InsertAsync(bet, ct))
+        {
+            // Bet already exists or store failed; refund and fail
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
+            await economics.CreditAsync(userId, chatId, loss, "dice.bet.refund", ct);
+            return new DicePlaceBetResult(DiceOutcome.BetStoreError);
+        }
+
+        var newBalance = balance - loss;
+        analytics.Track("dice", "bet_placed", new Dictionary<string, object?>
+        {
+            ["user_id"] = userId,
+            ["chat_id"] = chatId,
+            ["dice_value"] = diceValue,
+            ["loss"] = loss,
+        });
+
+        return new DicePlaceBetResult(DiceOutcome.BetPlaced, loss, newBalance, gas);
+    }
+
+    public async Task<DiceRollResult> ResolveBetAsync(
+        long userId,
+        string displayName,
+        long chatId,
+        CancellationToken ct)
+    {
+        var bet = await bets.FindAsync(userId, chatId, ct);
+        if (bet == null)
+            return new DiceRollResult(DiceOutcome.NoPendingBet);
+
+        await economics.EnsureUserAsync(userId, chatId, displayName, ct);
+
+        var rolls = DecodeRolls(bet.DiceValue);
         var (maxFrequent, maxFrequency) = GetMaxFrequency(rolls);
         var prize = GetPrize(maxFrequent, maxFrequency, rolls);
 
@@ -98,36 +163,56 @@ public sealed class DiceService(
             await economics.CreditAsync(userId, chatId, prize, reason: "dice.prize", ct);
 
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
-
         var rolledAt = DateTimeOffset.UtcNow;
+        
         await history.AppendAsync(new DiceRoll(
             Id: Guid.NewGuid(),
             UserId: userId,
-            DiceValue: diceValue,
+            DiceValue: bet.DiceValue,
             Prize: prize,
-            Loss: loss,
+            Loss: bet.Loss,
             RolledAt: rolledAt), ct);
+
+        await bets.DeleteAsync(userId, chatId, ct);
 
         analytics.Track("dice", "success", new Dictionary<string, object?>
         {
             ["user_id"] = userId,
             ["chat_id"] = chatId,
-            ["dice_value"] = diceValue,
+            ["dice_value"] = bet.DiceValue,
             ["prize"] = prize,
-            ["fixed_loss"] = loss,
-            ["is_win"] = prize - loss > 0,
+            ["fixed_loss"] = bet.Loss,
+            ["is_win"] = prize - bet.Loss > 0,
         });
 
         await events.PublishAsync(
             new DiceRollCompleted(
                 UserId: userId,
-                DiceValue: diceValue,
+                DiceValue: bet.DiceValue,
                 Prize: prize,
-                Loss: loss,
+                Loss: bet.Loss,
                 OccurredAt: rolledAt.ToUnixTimeMilliseconds()),
             ct);
 
-        return new DicePlayResult(DiceOutcome.Played, prize, loss, balance, gas);
+        return new DiceRollResult(DiceOutcome.Played, prize, bet.Loss, balance);
+    }
+
+    public async Task AbortBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct)
+    {
+        var bet = await bets.FindAsync(userId, chatId, ct);
+        if (bet == null) return;
+
+        // Refund the debited amount
+        await economics.CreditAsync(userId, chatId, bet.Loss, "dice.send_dice_failed", ct);
+        await bets.DeleteAsync(userId, chatId, ct);
+        await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
+
+        analytics.Track("dice", "bet_aborted", new Dictionary<string, object?>
+        {
+            ["user_id"] = userId,
+            ["chat_id"] = chatId,
+            ["loss"] = bet.Loss,
+        });
     }
 
     private static (int maxFrequent, int maxFrequency) GetMaxFrequency(int[] arr)
@@ -172,3 +257,4 @@ public sealed class DiceService(
         ((value - 1) >> 4) & 0b11,
     ];
 }
+
