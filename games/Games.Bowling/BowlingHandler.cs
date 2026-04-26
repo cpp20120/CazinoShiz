@@ -116,7 +116,23 @@ public sealed partial class BowlingHandler(
         {
             await ctx.Bot.SendMessage(chatId, text, replyParameters: reply, cancellationToken: ctx.Ct);
         }
-        catch (Exception ex) { LogReplyFailed(userId, ex); return; }
+        catch (Exception ex)
+        {
+            LogReplyFailed(userId, ex);
+            if (r.Error == BowlingBetError.None)
+            {
+                try
+                {
+                    await service.AbortPendingBetAfterSendDiceFailedAsync(userId, chatId, ctx.Ct);
+                }
+                catch (Exception abortEx)
+                {
+                    LogAbortAfterBotDiceFailed(userId, abortEx);
+                }
+            }
+
+            return;
+        }
 
         if (r.Error == BowlingBetError.None)
         {
@@ -173,6 +189,7 @@ public sealed partial class BowlingHandler(
                 : string.Format(Loc("roll.lose"), r.Face, r.Bet, r.Balance);
             try
             {
+                await Task.Delay(4000, ctx.Ct);
                 await ctx.Bot.SendMessage(chatId, text,
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
             }

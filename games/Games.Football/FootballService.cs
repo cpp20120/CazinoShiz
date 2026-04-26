@@ -13,7 +13,8 @@ public interface IFootballService
 {
     Task<FootballBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct);
     Task<FootballThrowResult> ThrowAsync(long userId, string displayName, long chatId, int face, CancellationToken ct);
-    /// <summary>Refund and clear pending bet when bot SendDice fails after debit.</summary>
+
+    /// <summary>Refund and clear pending bet when bot cannot complete SendMessage/SendDice after debit.</summary>
     Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct);
 }
 

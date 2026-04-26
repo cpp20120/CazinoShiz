@@ -88,6 +88,7 @@ public sealed class LeaderboardHandler(
         lines.Add(Loc("top.hidden_reminder"));
 
         await ctx.Bot.SendMessage(msg.Chat.Id, string.Join("\n", lines),
+            parseMode: ParseMode.Html,
             replyParameters: new ReplyParameters { MessageId = msg.MessageId },
             cancellationToken: ctx.Ct);
     }
@@ -136,7 +137,8 @@ public sealed class LeaderboardHandler(
     private static string FormatUser(LeaderboardUser user, bool isFirstPlace)
     {
         var crown = isFirstPlace ? "👑 " : "";
-        return $"{crown}{user.DisplayName} - {user.Coins}";
+        var safeName = System.Net.WebUtility.HtmlEncode(user.DisplayName ?? "Unknown").Replace("@", "@\u200B");
+        return $"{crown}{safeName} - {user.Coins}";
     }
 
     private string Loc(string key) => localizer.Get("leaderboard", key);

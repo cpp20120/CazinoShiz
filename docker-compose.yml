@@ -148,6 +148,18 @@ services:
       prometheus:
         condition: service_started
 
+  db-backup:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      PGPASSWORD: cazino
+    volumes:
+      - ./:/backup
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "pg_dump -h postgres -U cazino -d cazino -f /backup/file.sql"
+
 volumes:
   postgres_data:
   clickhouse_data:

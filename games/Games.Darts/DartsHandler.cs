@@ -153,6 +153,7 @@ public sealed partial class DartsHandler(
                 : string.Format(Loc("throw.lose"), r.Face, r.Bet, r.Balance);
             try
             {
+                await Task.Delay(4000, ctx.Ct);
                 await ctx.Bot.SendMessage(chatId, text,
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
             }

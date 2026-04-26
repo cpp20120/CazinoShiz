@@ -171,5 +171,3 @@ public sealed partial class DiceHandler(
     [LoggerMessage(EventId = 2004, Level = LogLevel.Error, Message = "dice.abort.failed user={UserId}")]
     partial void LogAbortFailed(long userId, Exception exception);
 }
-
-

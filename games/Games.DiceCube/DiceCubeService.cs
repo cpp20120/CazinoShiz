@@ -27,7 +27,7 @@ public interface IDiceCubeService
     Task<CubeBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct);
     Task<CubeRollResult> RollAsync(long userId, string displayName, long chatId, int face, CancellationToken ct);
 
-    /// <summary>Refund and clear pending bet when bot SendDice fails after debit.</summary>
+    /// <summary>Refund and clear pending bet when bot cannot deliver SendMessage/SendDice after debit.</summary>
     Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct);
 }
 
