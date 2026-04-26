@@ -28,7 +28,6 @@ public sealed class DiceModule : IModule
         services
             .BindOptions<DiceOptions>(DiceOptions.SectionName)
             .AddScoped<IDiceService, DiceService>()
-            .AddScoped<IDiceBetStore, DiceBetStore>()
             .AddScoped<IDiceHistoryStore, DiceHistoryStore>()
             .AddHandler<DiceHandler>();
     }
@@ -43,8 +42,6 @@ public sealed class DiceModule : IModule
             ["err.forwarded"] = "Не обманывай меня! 😠",
             ["err.not_enough_coins"] = "Кажется, у кого-то закончились монеты. 😢\nКрутить барабан стоит {0} монет.",
             ["err.daily_roll_limit"] = "Лимит бросков кубика на сегодня исчерпан ({0}/{1}). Попробуй завтра. 🎲",
-            ["err.bet_store"] = "Ошибка при сохранении ставки. Попробуй снова.",
-            ["err.no_pending_bet"] = "У тебя нет активной ставки. Кинь кубик, чтобы начать играть!",
             ["result.win"] = "Поздравляю, ты выиграл <i>{0} - {1} (ставка) = <b>{2} монет</b></i>! 🎉",
             ["result.lose"] = "Ой-ой, сегодня удача не на твоей стороне. Ты потерял <i>{0} - {1} (компенсация) = <b>{2} монет</b></i> 💸",
             ["result.balance"] = "Твой баланс: <b>{0} монет</b>",
