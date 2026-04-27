@@ -28,6 +28,7 @@ using Games.Poker;
 using Games.Redeem;
 using Games.SecretHitler;
 using Games.Transfer;
+using BotFramework.Host.Composition;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Builder;
 
@@ -59,8 +60,10 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
         ForwardedHeaders.XForwardedProto;
 
 
+#pragma warning disable ASPDEPR005
     options.KnownNetworks.Clear();
     options.KnownProxies.Clear();
+#pragma warning restore ASPDEPR005
 });
 
 
