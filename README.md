@@ -83,6 +83,14 @@ After login, access is role-gated:
 
 All write actions are logged to the `admin_audit` table.
 
+## Diagnostics & Health
+
+The host provides built-in endpoints and hidden commands for monitoring:
+
+- **HTTP `/health/live`**: Liveness probe endpoint. Returns HTTP 200 (or 503) based on basic application responsiveness.
+- **HTTP `/health/ready`**: Readiness probe endpoint. Returns HTTP 200 (or 503) along with the status of configured infrastructure dependencies (PostgreSQL, Redis, ClickHouse).
+- **Telegram `/debug` command**: A hidden bot command that reports technical process metrics directly in the chat, including the current `chat_id`, `chat_type`, process `uptime`, total `cpu time`, and memory usage (`rss`).
+
 ## Configuration
 
 Key `Bot` section fields in `appsettings.json` / env vars:
