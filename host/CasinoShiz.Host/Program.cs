@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 using CasinoShiz.Host;
+using CasinoShiz.Host.Debug;
 using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 using Games.Admin;
@@ -28,7 +29,6 @@ using Games.Poker;
 using Games.Redeem;
 using Games.SecretHitler;
 using Games.Transfer;
-using BotFramework.Host.Composition;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Builder;
 
@@ -38,6 +38,7 @@ builder.Services.AddSingleton<CasinoShiz.Host.Pages.Admin.HorseGifCache>();
 builder.Services.AddScoped<IMiniGameSessionGhostHeal, MiniGameSessionGhostHeal>();
 
 builder.AddBotFramework()
+    .AddModule<DebugModule>()
     .AddModule<DiceModule>()
     .AddModule<DiceCubeModule>()
     .AddModule<DartsModule>()

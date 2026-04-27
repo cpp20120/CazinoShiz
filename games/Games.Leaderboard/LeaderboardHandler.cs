@@ -11,7 +11,6 @@ namespace Games.Leaderboard;
 [Command("/balance")]
 [Command("/daily")]
 [Command("/help")]
-[Command("/__debug")]
 public sealed class LeaderboardHandler(
     ILeaderboardService service,
     IDailyBonusService dailyBonus,
@@ -23,9 +22,7 @@ public sealed class LeaderboardHandler(
         var msg = ctx.Update.Message;
         if (msg?.Text == null) return;
 
-        if (msg.Text.StartsWith("/__debug"))
-            await HandleDebugAsync(ctx, msg);
-        else if (msg.Text.StartsWith("/help"))
+        if (msg.Text.StartsWith("/help"))
             await HandleHelpAsync(ctx, msg);
         else if (msg.Text.StartsWith("/top"))
             await HandleTopAsync(ctx, msg);
@@ -34,12 +31,6 @@ public sealed class LeaderboardHandler(
         else if (msg.Text.StartsWith("/daily"))
             await HandleDailyAsync(ctx, msg);
     }
-
-    private Task HandleDebugAsync(UpdateContext ctx, Message msg) =>
-        ctx.Bot.SendMessage(msg.Chat.Id,
-            $"userId : {msg.From?.Id}\nchatId : {msg.Chat.Id}",
-            replyParameters: new ReplyParameters { MessageId = msg.MessageId },
-            cancellationToken: ctx.Ct);
 
     private Task HandleHelpAsync(UpdateContext ctx, Message msg)
     {

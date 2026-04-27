@@ -10,6 +10,7 @@ namespace Games.Admin;
 
 [Command("/run")]
 [Command("/rename")]
+[Command("/debug")]
 public sealed class AdminHandler(
     IAdminService service,
     ILocalizer localizer,
@@ -28,6 +29,12 @@ public sealed class AdminHandler(
         if (msg.Text.StartsWith("/rename"))
         {
             await HandleRenameAsync(ctx, msg, userId);
+            return;
+        }
+
+        if (msg.Text.StartsWith("/debug"))
+        {
+            await HandleDebugAsync(ctx, msg);
             return;
         }
 
@@ -180,6 +187,28 @@ public sealed class AdminHandler(
     {
         var parts = str.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
         return parts.Length > 1 ? parts[1].Trim() : "";
+    }
+
+    private static readonly System.Diagnostics.Process _process = System.Diagnostics.Process.GetCurrentProcess();
+
+    private async Task HandleDebugAsync(UpdateContext ctx, Message msg)
+    {
+        var chatId = msg.Chat.Id;
+        var chatType = msg.Chat.Type.ToString();
+        var uptime = Math.Round((DateTime.UtcNow - _process.StartTime.ToUniversalTime()).TotalSeconds);
+        var rss = _process.WorkingSet64 / 1024 / 1024;
+        var cpuTime = _process.TotalProcessorTime.TotalSeconds;
+
+        var text = $"chat id: <code>{chatId}</code>\n" +
+                   $"chat type: <code>{chatType}</code>\n" +
+                   $"uptime: <code>{uptime}s</code>\n" +
+                   $"cpu time: <code>{cpuTime:F2}s</code>\n" +
+                   $"rss: <code>{rss} MB</code>";
+
+        await ctx.Bot.SendMessage(msg.Chat.Id, text,
+            parseMode: ParseMode.Html, 
+            replyParameters: new ReplyParameters { MessageId = msg.MessageId }, 
+            cancellationToken: ctx.Ct);
     }
 
     private string Loc(string key) => localizer.Get("admin", key);
