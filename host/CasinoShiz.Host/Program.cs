@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 using CasinoShiz.Host;
+using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 using Games.Admin;
 using Games.Basketball;
