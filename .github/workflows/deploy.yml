@@ -1,9 +1,6 @@
 name: Build and push image
 
-on:
-  push:
-    branches: [master]
-  workflow_dispatch:
+on: push
 
 env:
   IMAGE: ghcr.io/cpp20120/casinoshiz
@@ -32,10 +29,11 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: ${{ github.event_name != 'pull_request' }} 
           provenance: false
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ github.event_name == 'pull_request' && format('{0}:pr-{1}', env.IMAGE, github.event.number) || '' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
