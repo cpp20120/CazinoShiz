@@ -160,8 +160,9 @@ public static class BotFrameworkBuilderExtensions
         services.AddSingleton<UpdatePipeline>();
 
         // Default update middleware chain in registration order =
-        // execution order, outermost first: Exception -> Logging -> RateLimit.
+        // execution order, outermost first: Exception -> Dedup -> Logging -> RateLimit.
         services.AddSingleton<IUpdateMiddleware, ExceptionMiddleware>();
+        services.AddSingleton<IUpdateMiddleware, UpdateDeduplicationMiddleware>();
         services.AddSingleton<IUpdateMiddleware, LoggingMiddleware>();
         services.AddSingleton<IUpdateMiddleware, RateLimitMiddleware>();
         services.AddSingleton<IUpdateMiddleware, KnownChatsMiddleware>();
@@ -179,6 +180,10 @@ public static class BotFrameworkBuilderExtensions
         if (redisEnabled && string.IsNullOrWhiteSpace(redisConn))
             throw new InvalidOperationException(
                 "Redis:Enabled is true but Redis:ConnectionString is not set.");
+        var botIsProduction = configuration.GetValue<bool>($"{BotFrameworkOptions.SectionName}:IsProduction");
+        if (botIsProduction && !redisEnabled)
+            throw new InvalidOperationException(
+                "Production mode requires Redis. Set Redis:Enabled=true and Redis:ConnectionString.");
 
         var pgConnStr = configuration.GetConnectionString("Postgres")!;
         // CAP (outbox + cross-pod delivery) only when Redis transport is available.
@@ -207,6 +212,9 @@ public static class BotFrameworkBuilderExtensions
 
         // Cross-cutting services every module shares.
         services.AddSingleton<IEconomicsService, EconomicsService>();
+        services.AddSingleton<IDistributedGameLock, PostgresDistributedGameLock>();
+        services.AddSingleton<IMiniGameSessionStore, PostgresMiniGameSessionStore>();
+        services.AddSingleton<IMiniGameRollGateStore, PostgresMiniGameRollGateStore>();
         services.Configure<DailyBonusOptions>(configuration.GetSection(DailyBonusOptions.SectionName));
         services.AddSingleton<IDailyBonusService, DailyBonusService>();
 

@@ -13,8 +13,10 @@ public sealed partial class BowlingHandler(
     IBowlingService service,
     IRuntimeTuningAccessor tuning,
     ILocalizer localizer,
-    ILogger<BowlingHandler> logger) : IUpdateHandler
+    ILogger<BowlingHandler> logger,
+    IMiniGameRollGateStore? rollGates = null) : IUpdateHandler
 {
+    private IMiniGameRollGateStore RollGates => rollGates ?? NullMiniGameRollGateStore.Instance;
     private const string DiceEmoji = "🎳";
     private const string RollGateId = "bowling";
 
@@ -26,7 +28,8 @@ public sealed partial class BowlingHandler(
             if (!BotMiniGameDiceOwner.TryResolveDicePlayer(diceMsg, out var uid, out var dname))
                 return;
             if (diceMsg.From is { IsBot: false }
-                && BotMiniGameRollGate.ShouldIgnoreUserThrow(RollGateId, uid, diceMsg.Chat.Id))
+                && (BotMiniGameRollGate.ShouldIgnoreUserThrow(RollGateId, uid, diceMsg.Chat.Id)
+                    || await RollGates.ShouldIgnoreUserThrowAsync(RollGateId, uid, diceMsg.Chat.Id, ctx.Ct)))
             {
                 await ctx.Bot.SendMessage(diceMsg.Chat.Id, Loc("roll.wait_bot"),
                     parseMode: ParseMode.Html,
@@ -137,6 +140,7 @@ public sealed partial class BowlingHandler(
         if (r.Error == BowlingBetError.None)
         {
             BotMiniGameRollGate.ExpectBotRoll(RollGateId, userId, chatId);
+            await RollGates.ExpectBotRollAsync(RollGateId, userId, chatId, ctx.Ct);
             try
             {
                 var diceSent = await ctx.Bot.SendDice(chatId, emoji: DiceEmoji, replyParameters: reply,
@@ -152,6 +156,7 @@ public sealed partial class BowlingHandler(
             catch (Exception ex)
             {
                 BotMiniGameRollGate.Clear(RollGateId, userId, chatId);
+                await RollGates.ClearAsync(RollGateId, userId, chatId, ctx.Ct);
                 try
                 {
                     await service.AbortPendingBetAfterSendDiceFailedAsync(userId, chatId, ctx.Ct);
@@ -221,6 +226,7 @@ public sealed partial class BowlingHandler(
         finally
         {
             BotMiniGameRollGate.Clear(RollGateId, userId, chatId);
+            await RollGates.ClearAsync(RollGateId, userId, chatId, ctx.Ct);
             if (msg.From is { IsBot: true })
                 BotMiniGameDiceOwner.MarkCompleted(chatId, msg.MessageId);
             else

@@ -25,6 +25,7 @@ public sealed partial class SecretHitlerService(
     ISecretHitlerGameStore games,
     ISecretHitlerPlayerStore players,
     IEconomicsService economics,
+    IDistributedGameLock distributedLocks,
     IAnalyticsService analytics,
     IDomainEventBus events,
     IOptions<SecretHitlerOptions> options,
@@ -71,6 +72,7 @@ public sealed partial class SecretHitlerService(
         await gate.WaitAsync(ct);
         try
         {
+            await using var distributedLock = await distributedLocks.AcquireAsync($"sh:u:{userId}", ct);
             var buyIn = _opts.BuyIn;
             await economics.EnsureUserAsync(userId, chatId, displayName, ct);
             var balance = await economics.GetBalanceAsync(userId, chatId, ct);
@@ -130,6 +132,7 @@ public sealed partial class SecretHitlerService(
         await gate.WaitAsync(ct);
         try
         {
+            await using var distributedLock = await distributedLocks.AcquireAsync($"sh:{code}", ct);
             var buyIn = _opts.BuyIn;
             await economics.EnsureUserAsync(userId, chatId, displayName, ct);
             var balance = await economics.GetBalanceAsync(userId, chatId, ct);
@@ -193,6 +196,7 @@ public sealed partial class SecretHitlerService(
         await gate.WaitAsync(ct);
         try
         {
+            await using var distributedLock = await distributedLocks.AcquireAsync($"sh:{precheck.InviteCode}", ct);
             var me = await players.FindByUserAsync(userId, ct);
             if (me == null) return StartFail(ShError.NotInGame);
             var game = await games.FindAsync(me.InviteCode, ct);
@@ -232,6 +236,7 @@ public sealed partial class SecretHitlerService(
         await gate.WaitAsync(ct);
         try
         {
+            await using var distributedLock = await distributedLocks.AcquireAsync($"sh:{precheck.InviteCode}", ct);
             var me = await players.FindByUserAsync(userId, ct);
             if (me == null) return NominateFail(ShError.NotInGame);
             var game = await games.FindAsync(me.InviteCode, ct);
@@ -268,6 +273,7 @@ public sealed partial class SecretHitlerService(
         await gate.WaitAsync(ct);
         try
         {
+            await using var distributedLock = await distributedLocks.AcquireAsync($"sh:{precheck.InviteCode}", ct);
             var me = await players.FindByUserAsync(userId, ct);
             if (me == null) return VoteFail(ShError.NotInGame);
             var game = await games.FindAsync(me.InviteCode, ct);
@@ -316,6 +322,7 @@ public sealed partial class SecretHitlerService(
         await gate.WaitAsync(ct);
         try
         {
+            await using var distributedLock = await distributedLocks.AcquireAsync($"sh:{precheck.InviteCode}", ct);
             var me = await players.FindByUserAsync(userId, ct);
             if (me == null) return DiscardFail(ShError.NotInGame);
             var game = await games.FindAsync(me.InviteCode, ct);
@@ -352,6 +359,7 @@ public sealed partial class SecretHitlerService(
         await gate.WaitAsync(ct);
         try
         {
+            await using var distributedLock = await distributedLocks.AcquireAsync($"sh:{precheck.InviteCode}", ct);
             var me = await players.FindByUserAsync(userId, ct);
             if (me == null) return EnactFail(ShError.NotInGame);
             var game = await games.FindAsync(me.InviteCode, ct);
@@ -401,6 +409,7 @@ public sealed partial class SecretHitlerService(
         await gate.WaitAsync(ct);
         try
         {
+            await using var distributedLock = await distributedLocks.AcquireAsync($"sh:{precheck.InviteCode}", ct);
             var me = await players.FindByUserAsync(userId, ct);
             if (me == null) return LeaveFail(ShError.NotInGame);
             var game = await games.FindAsync(me.InviteCode, ct);
@@ -445,6 +454,7 @@ public sealed partial class SecretHitlerService(
         await gate.WaitAsync(ct);
         try
         {
+            await using var distributedLock = await distributedLocks.AcquireAsync($"sh:u:{userId}", ct);
             await players.UpsertStateMessageAsync(userId, messageId, ct);
         }
         finally { gate.Release(); }

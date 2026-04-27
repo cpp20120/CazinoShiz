@@ -27,8 +27,11 @@ public sealed class BasketballService(
     IDomainEventBus events,
     IRuntimeTuningAccessor tuning,
     IMiniGameSessionGhostHeal ghostHeal,
-    ITelegramDiceDailyRollLimiter telegramDiceRolls) : IBasketballService
+    ITelegramDiceDailyRollLimiter telegramDiceRolls,
+    IMiniGameSessionStore? sessions = null) : IBasketballService
 {
+    private IMiniGameSessionStore Sessions => sessions ?? NullMiniGameSessionStore.Instance;
+
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
         [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 2,
@@ -50,9 +53,13 @@ public sealed class BasketballService(
             async c =>
             {
                 if (await bets.FindAsync(userId, chatId, c) == null)
+                {
                     BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Basketball);
+                    await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Basketball, c);
+                }
             },
             ghostHeal,
+            Sessions,
             ct);
         if (!session.Ok)
             return new BasketballBetResult(BasketballBetError.BusyOtherGame, 0, balance, 0, session.Blocker, 0, 0);
@@ -79,6 +86,7 @@ public sealed class BasketballService(
         }
 
         BotMiniGameSession.RegisterPlacedBet(userId, chatId, MiniGameIds.Basketball);
+        await Sessions.RegisterPlacedBetAsync(userId, chatId, MiniGameIds.Basketball, ct);
 
         analytics.Track("basketball", "bet", new Dictionary<string, object?>
         {
@@ -102,6 +110,7 @@ public sealed class BasketballService(
 
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Basketball);
+        await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Basketball, ct);
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
 
         analytics.Track("basketball", "throw", new Dictionary<string, object?>
@@ -126,6 +135,7 @@ public sealed class BasketballService(
         await economics.CreditAsync(userId, chatId, bet.Amount, "basketball.send_dice_failed", ct);
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Basketball);
+        await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Basketball, ct);
         await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
 
         analytics.Track("basketball", "bet_aborted", new Dictionary<string, object?>

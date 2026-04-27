@@ -156,5 +156,46 @@ internal sealed class FrameworkMigrations : IModuleMigrations
             INSERT INTO runtime_tuning (id, payload) VALUES (1, '{}'::jsonb)
             ON CONFLICT (id) DO NOTHING;
             """),
+
+        new Migration("011_delivery_and_coordination", """
+            CREATE TABLE IF NOT EXISTS processed_updates (
+                update_id      BIGINT       PRIMARY KEY,
+                status         TEXT         NOT NULL,
+                started_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                completed_at   TIMESTAMPTZ,
+                error          TEXT
+            );
+            CREATE INDEX IF NOT EXISTS ix_processed_updates_started ON processed_updates (started_at DESC);
+
+            CREATE TABLE IF NOT EXISTS game_command_idempotency (
+                idempotency_key TEXT         PRIMARY KEY,
+                status          TEXT         NOT NULL,
+                result_json     JSONB,
+                started_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                completed_at    TIMESTAMPTZ,
+                error           TEXT
+            );
+            CREATE INDEX IF NOT EXISTS ix_game_command_idempotency_started ON game_command_idempotency (started_at DESC);
+
+            CREATE TABLE IF NOT EXISTS mini_game_sessions (
+                user_id     BIGINT       NOT NULL,
+                chat_id     BIGINT       NOT NULL,
+                game_id     TEXT         NOT NULL,
+                expires_at  TIMESTAMPTZ  NOT NULL,
+                updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                PRIMARY KEY (user_id, chat_id)
+            );
+            CREATE INDEX IF NOT EXISTS ix_mini_game_sessions_expires ON mini_game_sessions (expires_at);
+
+            CREATE TABLE IF NOT EXISTS mini_game_roll_gates (
+                game_id     TEXT         NOT NULL,
+                user_id     BIGINT       NOT NULL,
+                chat_id     BIGINT       NOT NULL,
+                expires_at  TIMESTAMPTZ  NOT NULL,
+                updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                PRIMARY KEY (game_id, user_id, chat_id)
+            );
+            CREATE INDEX IF NOT EXISTS ix_mini_game_roll_gates_expires ON mini_game_roll_gates (expires_at);
+            """),
     ];
 }
