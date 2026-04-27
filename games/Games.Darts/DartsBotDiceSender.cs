@@ -60,6 +60,8 @@ public sealed partial class DartsBotDiceSender(
         var rounds = scope.ServiceProvider.GetRequiredService<IDartsRoundStore>();
         var economics = scope.ServiceProvider.GetRequiredService<IEconomicsService>();
         var diceRolls = scope.ServiceProvider.GetRequiredService<ITelegramDiceDailyRollLimiter>();
+        var sessions = scope.ServiceProvider.GetService<IMiniGameSessionStore>() ?? NullMiniGameSessionStore.Instance;
+        var rollGates = scope.ServiceProvider.GetService<IMiniGameRollGateStore>() ?? NullMiniGameRollGateStore.Instance;
         var row = await rounds.FindByIdAsync(roundId, ct);
         if (row is not { Status: DartsRoundStatus.Queued })
             return;
@@ -72,7 +74,9 @@ public sealed partial class DartsBotDiceSender(
         if (remaining == 0)
         {
             BotMiniGameRollGate.Clear("darts", userId, chatId);
+            await rollGates.ClearAsync("darts", userId, chatId, ct);
             BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Darts);
+            await sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Darts, ct);
         }
     }
 
@@ -81,10 +85,13 @@ public sealed partial class DartsBotDiceSender(
         using var scope = services.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IDartsService>();
         var localizer = scope.ServiceProvider.GetRequiredService<ILocalizer>();
+        var rollGates = scope.ServiceProvider.GetService<IMiniGameRollGateStore>() ?? NullMiniGameRollGateStore.Instance;
         var result = await service.ThrowAsync(
             job.RoundId, job.UserId, job.DisplayName, job.ChatId, botMessageId, face, ct);
         if (result.Outcome == DartsThrowOutcome.NoBet)
             return;
+        BotMiniGameRollGate.Clear("darts", job.UserId, job.ChatId);
+        await rollGates.ClearAsync("darts", job.UserId, job.ChatId, ct);
 
         var net = result.Payout - result.Bet;
         var text = result.Payout > 0

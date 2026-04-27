@@ -39,8 +39,11 @@ public sealed class DiceCubeService(
     IMemoryCache cache,
     IRuntimeTuningAccessor tuning,
     IMiniGameSessionGhostHeal ghostHeal,
-    ITelegramDiceDailyRollLimiter telegramDiceRolls) : IDiceCubeService
+    ITelegramDiceDailyRollLimiter telegramDiceRolls,
+    IMiniGameSessionStore? sessions = null) : IDiceCubeService
 {
+    private IMiniGameSessionStore Sessions => sessions ?? NullMiniGameSessionStore.Instance;
+
     private DiceCubeOptions Cube => tuning.GetSection<DiceCubeOptions>(DiceCubeOptions.SectionName);
 
     public int Mult4 => Cube.Mult4;
@@ -82,9 +85,13 @@ public sealed class DiceCubeService(
             async c =>
             {
                 if (await bets.FindAsync(userId, chatId, c) == null)
+                {
                     BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.DiceCube);
+                    await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.DiceCube, c);
+                }
             },
             ghostHeal,
+            Sessions,
             ct);
         if (!session.Ok)
             return new CubeBetResult(CubeBetError.BusyOtherGame, 0, balance, 0, 0, session.Blocker, 0, 0);
@@ -121,6 +128,7 @@ public sealed class DiceCubeService(
         }
 
         BotMiniGameSession.RegisterPlacedBet(userId, chatId, MiniGameIds.DiceCube);
+        await Sessions.RegisterPlacedBetAsync(userId, chatId, MiniGameIds.DiceCube, ct);
 
         analytics.Track("dicecube", "bet", new Dictionary<string, object?>
         {
@@ -151,6 +159,7 @@ public sealed class DiceCubeService(
 
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.DiceCube);
+        await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.DiceCube, ct);
         var cube = Cube;
         if (cube.MinSecondsBetweenBets > 0)
         {
@@ -187,6 +196,7 @@ public sealed class DiceCubeService(
         await economics.CreditAsync(userId, chatId, bet.Amount, "dicecube.bot_dice.failed", ct);
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.DiceCube);
+        await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.DiceCube, ct);
         await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
     }
 }

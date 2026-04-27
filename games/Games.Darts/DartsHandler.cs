@@ -13,8 +13,10 @@ public sealed partial class DartsHandler(
     IDartsService service,
     IRuntimeTuningAccessor tuning,
     ILocalizer localizer,
-    ILogger<DartsHandler> logger) : IUpdateHandler
+    ILogger<DartsHandler> logger,
+    IMiniGameRollGateStore? rollGates = null) : IUpdateHandler
 {
+    private IMiniGameRollGateStore RollGates => rollGates ?? NullMiniGameRollGateStore.Instance;
     private const string DiceEmoji = "🎯";
     private const string RollGateId = "darts";
 
@@ -40,7 +42,8 @@ public sealed partial class DartsHandler(
             if (!BotMiniGameDiceOwner.TryResolveDicePlayer(diceMsg, out var uid, out var dname))
                 return;
             if (diceMsg.From is { IsBot: false }
-                && BotMiniGameRollGate.ShouldIgnoreUserThrow(RollGateId, uid, diceMsg.Chat.Id))
+                && (BotMiniGameRollGate.ShouldIgnoreUserThrow(RollGateId, uid, diceMsg.Chat.Id)
+                    || await RollGates.ShouldIgnoreUserThrowAsync(RollGateId, uid, diceMsg.Chat.Id, ctx.Ct)))
             {
                 await ctx.Bot.SendMessage(diceMsg.Chat.Id, Loc("roll.wait_bot"),
                     parseMode: ParseMode.Html,
@@ -148,7 +151,10 @@ public sealed partial class DartsHandler(
         }
 
         if (r.Error == DartsBetError.None)
+        {
             BotMiniGameRollGate.ExpectBotRoll(RollGateId, userId, chatId);
+            await RollGates.ExpectBotRollAsync(RollGateId, userId, chatId, ctx.Ct);
+        }
     }
 
     private string FormatBetAccepted(DartsBetResult r)
@@ -199,6 +205,8 @@ public sealed partial class DartsHandler(
         }
         finally
         {
+            BotMiniGameRollGate.Clear(RollGateId, userId, chatId);
+            await RollGates.ClearAsync(RollGateId, userId, chatId, ctx.Ct);
             if (msg.From is { IsBot: true })
                 BotMiniGameDiceOwner.MarkCompleted(chatId, msg.MessageId);
             else

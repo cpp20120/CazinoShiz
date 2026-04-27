@@ -27,8 +27,11 @@ public sealed class BowlingService(
     IDomainEventBus events,
     IRuntimeTuningAccessor tuning,
     IMiniGameSessionGhostHeal ghostHeal,
-    ITelegramDiceDailyRollLimiter telegramDiceRolls) : IBowlingService
+    ITelegramDiceDailyRollLimiter telegramDiceRolls,
+    IMiniGameSessionStore? sessions = null) : IBowlingService
 {
+    private IMiniGameSessionStore Sessions => sessions ?? NullMiniGameSessionStore.Instance;
+
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
         [1] = 0, [2] = 0, [3] = 0, [4] = 1, [5] = 2, [6] = 2,
@@ -50,9 +53,13 @@ public sealed class BowlingService(
             async c =>
             {
                 if (await bets.FindAsync(userId, chatId, c) == null)
+                {
                     BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Bowling);
+                    await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Bowling, c);
+                }
             },
             ghostHeal,
+            Sessions,
             ct);
         if (!session.Ok)
             return new BowlingBetResult(BowlingBetError.BusyOtherGame, 0, balance, 0, session.Blocker, 0, 0);
@@ -79,6 +86,7 @@ public sealed class BowlingService(
         }
 
         BotMiniGameSession.RegisterPlacedBet(userId, chatId, MiniGameIds.Bowling);
+        await Sessions.RegisterPlacedBetAsync(userId, chatId, MiniGameIds.Bowling, ct);
 
         analytics.Track("bowling", "bet", new Dictionary<string, object?>
         {
@@ -102,6 +110,7 @@ public sealed class BowlingService(
 
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Bowling);
+        await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Bowling, ct);
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
 
         analytics.Track("bowling", "roll", new Dictionary<string, object?>
@@ -126,6 +135,7 @@ public sealed class BowlingService(
         await economics.CreditAsync(userId, chatId, bet.Amount, "bowling.send_dice_failed", ct);
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Bowling);
+        await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Bowling, ct);
         await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
 
         analytics.Track("bowling", "bet_aborted", new Dictionary<string, object?>

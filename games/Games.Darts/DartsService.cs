@@ -38,8 +38,11 @@ public sealed class DartsService(
     IDomainEventBus events,
     IDartsRollQueue rollQueue,
     IRuntimeTuningAccessor tuning,
-    ITelegramDiceDailyRollLimiter telegramDiceRolls) : IDartsService
+    ITelegramDiceDailyRollLimiter telegramDiceRolls,
+    IMiniGameSessionStore? sessions = null) : IDartsService
 {
+    private IMiniGameSessionStore Sessions => sessions ?? NullMiniGameSessionStore.Instance;
+
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
         [1] = 0, [2] = 0, [3] = 0, [4] = 1, [5] = 2, [6] = 2,
@@ -62,9 +65,13 @@ public sealed class DartsService(
             async c =>
             {
                 if (await rounds.CountActiveByUserChatAsync(userId, chatId, c) == 0)
+                {
                     BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Darts);
+                    await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Darts, c);
+                }
             },
             ghostHeal,
+            Sessions,
             ct);
         if (!session.Ok)
             return new DartsBetResult(DartsBetError.BusyOtherGame, 0, balance, 0, session.Blocker, 0, 0, 0, 0);
@@ -104,6 +111,7 @@ public sealed class DartsService(
 
         var queuedAhead = await rounds.CountRollsAheadInChatAsync(chatId, roundId, ct);
         BotMiniGameSession.RegisterPlacedBet(userId, chatId, MiniGameIds.Darts);
+        await Sessions.RegisterPlacedBetAsync(userId, chatId, MiniGameIds.Darts, ct);
 
         rollQueue.Enqueue(new DartsRollJob(roundId, chatId, userId, displayName, replyToMessageId));
 
@@ -141,6 +149,7 @@ public sealed class DartsService(
         {
             BotMiniGameRollGate.Clear("darts", userId, chatId);
             BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Darts);
+            await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Darts, ct);
         }
 
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
@@ -174,6 +183,7 @@ public sealed class DartsService(
         {
             BotMiniGameRollGate.Clear("darts", userId, chatId);
             BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Darts);
+            await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Darts, ct);
         }
     }
 
@@ -198,9 +208,12 @@ public sealed class DartsService(
             async c =>
             {
                 if (await rounds.CountActiveByUserChatAsync(userId, chatId, c) == 0)
+                {
                     BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Darts);
+                    await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Darts, c);
+                }
             },
-            ghostHeal, ct);
+            ghostHeal, Sessions, ct);
         if (!session.Ok)
             return new DartsThrowResult(DartsThrowOutcome.BetBusyOtherGame, BlockingGameId: session.Blocker);
 
@@ -225,6 +238,7 @@ public sealed class DartsService(
             await economics.CreditAsync(userId, chatId, payout, "darts.quickplay.payout", ct);
 
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Darts);
+        await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Darts, ct);
         var newBalance = await economics.GetBalanceAsync(userId, chatId, ct);
 
         analytics.Track("darts", "quickplay", new Dictionary<string, object?>

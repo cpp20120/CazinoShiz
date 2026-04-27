@@ -124,6 +124,14 @@ public interface ITelegramDiceDailyRollLimiter
     Task TryRefundRollAsync(long userId, long balanceScopeId, CancellationToken ct);
 }
 
+/// <summary>
+/// Cross-instance lock for game rooms / user workflows. Implementations must release on dispose.
+/// </summary>
+public interface IDistributedGameLock
+{
+    Task<IAsyncDisposable> AcquireAsync(string resource, CancellationToken ct);
+}
+
 /// <summary>Once per configured local day: credit <see cref="DailyBonusOptions.PercentOfBalance"/> of balance (capped), minimal "bonus" not a prize.</summary>
 public interface IDailyBonusService
 {

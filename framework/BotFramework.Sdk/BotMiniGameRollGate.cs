@@ -30,3 +30,26 @@ public static class BotMiniGameRollGate
         return false;
     }
 }
+
+public interface IMiniGameRollGateStore
+{
+    Task ExpectBotRollAsync(string gameId, long userId, long chatId, CancellationToken ct);
+    Task ClearAsync(string gameId, long userId, long chatId, CancellationToken ct);
+    Task<bool> ShouldIgnoreUserThrowAsync(string gameId, long userId, long chatId, CancellationToken ct);
+}
+
+public sealed class NullMiniGameRollGateStore : IMiniGameRollGateStore
+{
+    public static readonly NullMiniGameRollGateStore Instance = new();
+
+    private NullMiniGameRollGateStore() { }
+
+    public Task ExpectBotRollAsync(string gameId, long userId, long chatId, CancellationToken ct) =>
+        Task.CompletedTask;
+
+    public Task ClearAsync(string gameId, long userId, long chatId, CancellationToken ct) =>
+        Task.CompletedTask;
+
+    public Task<bool> ShouldIgnoreUserThrowAsync(string gameId, long userId, long chatId, CancellationToken ct) =>
+        Task.FromResult(false);
+}

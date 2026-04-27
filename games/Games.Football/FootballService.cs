@@ -25,8 +25,11 @@ public sealed class FootballService(
     IDomainEventBus events,
     IRuntimeTuningAccessor tuning,
     IMiniGameSessionGhostHeal ghostHeal,
-    ITelegramDiceDailyRollLimiter telegramDiceRolls) : IFootballService
+    ITelegramDiceDailyRollLimiter telegramDiceRolls,
+    IMiniGameSessionStore? sessions = null) : IFootballService
 {
+    private IMiniGameSessionStore Sessions => sessions ?? NullMiniGameSessionStore.Instance;
+
     public static readonly IReadOnlyDictionary<int, int> Multipliers = new Dictionary<int, int>
     {
         [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 2,
@@ -48,9 +51,13 @@ public sealed class FootballService(
             async c =>
             {
                 if (await bets.FindAsync(userId, chatId, c) == null)
+                {
                     BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Football);
+                    await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Football, c);
+                }
             },
             ghostHeal,
+            Sessions,
             ct);
         if (!session.Ok)
             return new FootballBetResult(FootballBetError.BusyOtherGame, 0, balance, 0, session.Blocker, 0, 0);
@@ -77,6 +84,7 @@ public sealed class FootballService(
         }
 
         BotMiniGameSession.RegisterPlacedBet(userId, chatId, MiniGameIds.Football);
+        await Sessions.RegisterPlacedBetAsync(userId, chatId, MiniGameIds.Football, ct);
 
         analytics.Track("football", "bet", new Dictionary<string, object?>
         {
@@ -100,6 +108,7 @@ public sealed class FootballService(
 
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Football);
+        await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Football, ct);
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
 
         analytics.Track("football", "throw", new Dictionary<string, object?>
@@ -124,6 +133,7 @@ public sealed class FootballService(
         await economics.CreditAsync(userId, chatId, bet.Amount, "football.send_dice_failed", ct);
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Football);
+        await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Football, ct);
         await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
 
         analytics.Track("football", "bet_aborted", new Dictionary<string, object?>

@@ -22,8 +22,13 @@ public sealed partial class AdminService(
     IAdminStore store,
     IEconomicsService economics,
     IAnalyticsService analytics,
-    ILogger<AdminService> logger) : IAdminService
+    ILogger<AdminService> logger,
+    IMiniGameSessionStore? sessions = null,
+    IMiniGameRollGateStore? rollGates = null) : IAdminService
 {
+    private IMiniGameSessionStore Sessions => sessions ?? NullMiniGameSessionStore.Instance;
+    private IMiniGameRollGateStore RollGates => rollGates ?? NullMiniGameRollGateStore.Instance;
+
     public async Task<int> UserSyncAsync(long callerId, CancellationToken ct)
     {
         var users = await store.ListUsersAsync(ct);
@@ -89,22 +94,28 @@ public sealed partial class AdminService(
         {
             await economics.CreditAsync(bet.UserId, bet.ChatId, bet.Amount, $"admin.clearbets.{bet.GameId}", ct);
             BotMiniGameSession.ClearCompletedRound(bet.UserId, bet.ChatId, bet.GameId);
+            await Sessions.ClearCompletedRoundAsync(bet.UserId, bet.ChatId, bet.GameId, ct);
             switch (bet.GameId)
             {
                 case MiniGameIds.DiceCube:
                     BotMiniGameRollGate.Clear("dicecube", bet.UserId, bet.ChatId);
+                    await RollGates.ClearAsync("dicecube", bet.UserId, bet.ChatId, ct);
                     break;
                 case MiniGameIds.Football:
                     BotMiniGameRollGate.Clear("football", bet.UserId, bet.ChatId);
+                    await RollGates.ClearAsync("football", bet.UserId, bet.ChatId, ct);
                     break;
                 case MiniGameIds.Basketball:
                     BotMiniGameRollGate.Clear("basketball", bet.UserId, bet.ChatId);
+                    await RollGates.ClearAsync("basketball", bet.UserId, bet.ChatId, ct);
                     break;
                 case MiniGameIds.Bowling:
                     BotMiniGameRollGate.Clear("bowling", bet.UserId, bet.ChatId);
+                    await RollGates.ClearAsync("bowling", bet.UserId, bet.ChatId, ct);
                     break;
                 case MiniGameIds.Darts:
                     BotMiniGameRollGate.Clear("darts", bet.UserId, bet.ChatId);
+                    await RollGates.ClearAsync("darts", bet.UserId, bet.ChatId, ct);
                     if (bet.BotMessageId is { } botMessageId)
                     {
                         DartsDiceRoundBinding.Unbind(bet.ChatId, botMessageId);
