@@ -188,9 +188,33 @@ public sealed partial class DiceCubeHandler(
 
             if (r.Outcome == CubeRollOutcome.NoBet)
             {
-                await ctx.Bot.SendMessage(chatId, Loc("roll.no_bet"),
-                    parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
-                return;
+                // Bot dice with no bet → already settled or bad state, skip silently.
+                if (msg.From is { IsBot: true }) return;
+
+                // User threw 🎲 without a prior /dice command → quick-play with default bet.
+                var defaultBet = tuning.GetSection<DiceCubeOptions>(DiceCubeOptions.SectionName).DefaultBet;
+                var betR = await service.PlaceBetAsync(userId, displayName, chatId, defaultBet, ctx.Ct);
+                if (betR.Error != CubeBetError.None)
+                {
+                    var errText = betR.Error switch
+                    {
+                        CubeBetError.InvalidAmount  => Loc("bet.invalid"),
+                        CubeBetError.NotEnoughCoins => string.Format(Loc("bet.not_enough"), betR.Balance),
+                        CubeBetError.AlreadyPending => string.Format(Loc("bet.already_pending"), betR.PendingAmount),
+                        CubeBetError.BusyOtherGame  => string.Format(Loc("bet.busy_other"), MiniGameLabels.Ru(betR.BlockingGameId!)),
+                        CubeBetError.Cooldown       => string.Format(Loc("bet.cooldown"), betR.CooldownSeconds),
+                        CubeBetError.DailyRollLimit => string.Format(Loc("bet.daily_roll_limit"), betR.DailyRollUsed, betR.DailyRollLimit),
+                        _                           => Loc("bet.failed"),
+                    };
+                    await ctx.Bot.SendMessage(chatId, errText, parseMode: ParseMode.Html,
+                        replyParameters: reply, cancellationToken: ctx.Ct);
+                    return;
+                }
+
+                // Bet placed — immediately settle using the already-known face value.
+                await ctx.Bot.SendMessage(chatId, Loc("roll.quick_wait"), parseMode: ParseMode.Html,
+                    replyParameters: reply, cancellationToken: ctx.Ct);
+                r = await service.RollAsync(userId, displayName, chatId, face, ctx.Ct);
             }
 
             var net = r.Payout - r.Bet;

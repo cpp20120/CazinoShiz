@@ -178,9 +178,32 @@ public sealed partial class FootballHandler(
 
             if (r.Outcome == FootballThrowOutcome.NoBet)
             {
-                await ctx.Bot.SendMessage(chatId, Loc("throw.no_bet"),
-                    parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
-                return;
+                // Bot dice with no bet → already settled or bad state, skip silently.
+                if (msg.From is { IsBot: true }) return;
+
+                // User threw ⚽ without a prior /football command → quick-play with default bet.
+                var defaultBet = tuning.GetSection<FootballOptions>(FootballOptions.SectionName).DefaultBet;
+                var betR = await service.PlaceBetAsync(userId, displayName, chatId, defaultBet, ctx.Ct);
+                if (betR.Error != FootballBetError.None)
+                {
+                    var errText = betR.Error switch
+                    {
+                        FootballBetError.InvalidAmount  => Loc("bet.invalid"),
+                        FootballBetError.NotEnoughCoins => string.Format(Loc("bet.not_enough"), betR.Balance),
+                        FootballBetError.AlreadyPending => string.Format(Loc("bet.already_pending"), betR.PendingAmount),
+                        FootballBetError.BusyOtherGame  => string.Format(Loc("bet.busy_other"), MiniGameLabels.Ru(betR.BlockingGameId!)),
+                        FootballBetError.DailyRollLimit => string.Format(Loc("bet.daily_roll_limit"), betR.DailyRollUsed, betR.DailyRollLimit),
+                        _                               => Loc("bet.failed"),
+                    };
+                    await ctx.Bot.SendMessage(chatId, errText, parseMode: ParseMode.Html,
+                        replyParameters: reply, cancellationToken: ctx.Ct);
+                    return;
+                }
+
+                // Bet placed — immediately settle using the already-known face value.
+                await ctx.Bot.SendMessage(chatId, Loc("throw.quick_wait"), parseMode: ParseMode.Html,
+                    replyParameters: reply, cancellationToken: ctx.Ct);
+                r = await service.ThrowAsync(userId, displayName, chatId, face, ctx.Ct);
             }
 
             var net = r.Payout - r.Bet;

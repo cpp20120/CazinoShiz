@@ -43,6 +43,7 @@ public sealed class FootballModule : IModule
             ["bet.daily_roll_limit"] = "Лимит бросков кубика на сегодня исчерпан ({0}/{1}). Попробуй завтра. 🎲",
             ["bet.failed"] = "Не удалось принять ставку",
             ["throw.no_bet"] = "Сначала сделай ставку: <code>/football</code>, <code>/football bet</code> или <code>/football bet &lt;сумма&gt;</code>.",
+            ["throw.quick_wait"] = "⏳ Нет ставки — применяю ставку по умолчанию и считаю результат…",
             ["throw.win"] = "Выпало <b>{0}</b> — x{1}. Ставка: {2} · выплата: <b>{3}</b> · чистыми: <b>+{4}</b>. Баланс: {5}",
             ["throw.lose"] = "Выпало <b>{0}</b>. <b>Проигрыш: −{1}</b> монет (ставка сгорела). Баланс: {2}",
         }),

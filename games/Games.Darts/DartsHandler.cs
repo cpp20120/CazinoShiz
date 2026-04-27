@@ -23,8 +23,20 @@ public sealed partial class DartsHandler(
         var diceMsg = ctx.MessageOrEdited;
         if (diceMsg?.Dice?.Emoji == DiceEmoji)
         {
-            if (!DartsDiceRoundBinding.TryGetRoundId(diceMsg.Chat.Id, diceMsg.MessageId, out var roundId))
+            var hasBoundRound = DartsDiceRoundBinding.TryGetRoundId(diceMsg.Chat.Id, diceMsg.MessageId, out var roundId);
+
+            // User sent 🎯 without a prior /darts command → quick-play path.
+            if (!hasBoundRound && diceMsg.From is { IsBot: false } userFrom && diceMsg.Dice is { Value: > 0 })
+            {
+                var userQuickId   = userFrom.Id;
+                if (userQuickId == 0) return;
+                var userQuickName = userFrom.Username ?? userFrom.FirstName ?? $"User ID: {userQuickId}";
+                var quickReply    = new ReplyParameters { MessageId = diceMsg.MessageId };
+                await HandleQuickPlayAsync(ctx, diceMsg, userQuickId, userQuickName, diceMsg.Chat.Id, quickReply);
                 return;
+            }
+
+            if (!hasBoundRound) return;
             if (!BotMiniGameDiceOwner.TryResolveDicePlayer(diceMsg, out var uid, out var dname))
                 return;
             if (diceMsg.From is { IsBot: false }
@@ -117,7 +129,23 @@ public sealed partial class DartsHandler(
         {
             await ctx.Bot.SendMessage(chatId, text, replyParameters: reply, cancellationToken: ctx.Ct);
         }
-        catch (Exception ex) { LogReplyFailed(userId, ex); return; }
+        catch (Exception ex)
+        {
+            LogReplyFailed(userId, ex);
+            if (r.Error == DartsBetError.None)
+            {
+                try
+                {
+                    await service.AbortQueuedRoundIfBetReplyFailedAsync(r.RoundId, userId, chatId, ctx.Ct);
+                }
+                catch (Exception abortEx)
+                {
+                    LogAbortBetReplyFailed(userId, abortEx);
+                }
+            }
+
+            return;
+        }
 
         if (r.Error == DartsBetError.None)
             BotMiniGameRollGate.ExpectBotRoll(RollGateId, userId, chatId);
@@ -142,6 +170,16 @@ public sealed partial class DartsHandler(
 
             if (r.Outcome == DartsThrowOutcome.NoBet)
             {
+                // Two valid paths for the same bot 🎯 :
+                // 1) DartsBotDiceSender: value available immediately → ThrowAsync + result text there.
+                // 2) This handler: value only on a later edit → bind in sender, we settle here.
+                // When (1) already ran, the round is deleted and we see NoBet here — do not send throw.no_bet
+                // (that line is for real user errors). User-originated NoBet still gets throw.no_bet below.
+                if (msg.From is { IsBot: true })
+                {
+                    LogRoundAlreadyHandledBySender(roundId, userId);
+                    return;
+                }
                 await ctx.Bot.SendMessage(chatId, Loc("throw.no_bet"),
                     parseMode: ParseMode.Html, replyParameters: reply, cancellationToken: ctx.Ct);
                 return;
@@ -171,6 +209,58 @@ public sealed partial class DartsHandler(
 
     private string Loc(string key) => localizer.Get("darts", key);
 
+    private async Task HandleQuickPlayAsync(UpdateContext ctx, Message msg, long userId, string displayName,
+        long chatId, ReplyParameters reply)
+    {
+        var defaultBet = tuning.GetSection<DartsOptions>(DartsOptions.SectionName).DefaultBet;
+        var face = msg.Dice!.Value;
+
+        // Acknowledge immediately so the user sees activity while we process.
+        try
+        {
+            await ctx.Bot.SendMessage(chatId, Loc("throw.quick_wait"), parseMode: ParseMode.Html,
+                replyParameters: reply, cancellationToken: ctx.Ct);
+        }
+        catch (Exception ex) { LogReplyFailed(userId, ex); return; }
+
+        var r = await service.QuickThrowAsync(userId, displayName, chatId, face, defaultBet, ctx.Ct);
+
+        string text;
+        switch (r.Outcome)
+        {
+            case DartsThrowOutcome.BetInvalid:
+                text = Loc("bet.invalid"); break;
+            case DartsThrowOutcome.BetNotEnoughCoins:
+                text = string.Format(Loc("bet.not_enough"), r.Balance); break;
+            case DartsThrowOutcome.BetBusyOtherGame:
+                text = string.Format(Loc("bet.busy_other"), MiniGameLabels.Ru(r.BlockingGameId!)); break;
+            case DartsThrowOutcome.BetDailyLimit:
+                text = string.Format(Loc("bet.daily_roll_limit"), r.DailyRollUsed, r.DailyRollLimit); break;
+            case DartsThrowOutcome.Thrown:
+                var net = r.Payout - r.Bet;
+                text = r.Payout > 0
+                    ? string.Format(Loc("throw.win"), r.Face, r.Multiplier, r.Bet, r.Payout, net, r.Balance)
+                    : string.Format(Loc("throw.lose"), r.Face, r.Bet, r.Balance);
+                break;
+            default:
+                return;
+        }
+
+        try
+        {
+            await Task.Delay(4000, ctx.Ct);
+            await ctx.Bot.SendMessage(chatId, text, parseMode: ParseMode.Html,
+                replyParameters: reply, cancellationToken: ctx.Ct);
+        }
+        catch (Exception ex) { LogReplyFailed(userId, ex); }
+    }
+
     [LoggerMessage(EventId = 2201, Level = LogLevel.Error, Message = "darts.reply.failed user={UserId}")]
     partial void LogReplyFailed(long userId, Exception exception);
+
+    [LoggerMessage(EventId = 2202, Level = LogLevel.Error, Message = "darts.abort_bet_reply_failed user={UserId}")]
+    partial void LogAbortBetReplyFailed(long userId, Exception exception);
+
+    [LoggerMessage(EventId = 2203, Level = LogLevel.Debug, Message = "darts.handler.skip_no_bet_bot round={RoundId} user={UserId} (already settled in DartsBotDiceSender)")]
+    partial void LogRoundAlreadyHandledBySender(long roundId, long userId);
 }
