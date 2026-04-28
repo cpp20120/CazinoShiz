@@ -67,20 +67,20 @@ public sealed class BowlingService(
         var existing = await bets.FindAsync(userId, chatId, ct);
         if (existing != null) return BowlingBetResult.Fail(BowlingBetError.AlreadyPending, balance, existing.Amount);
 
-        var gate = await telegramDiceRolls.TryConsumeRollAsync(userId, chatId, ct);
+        var gate = await telegramDiceRolls.TryConsumeRollAsync(userId, chatId, MiniGameIds.Bowling, ct);
         if (gate.Status == TelegramDiceRollGateStatus.LimitExceeded)
             return new BowlingBetResult(
                 BowlingBetError.DailyRollLimit, 0, balance, 0, null, gate.UsedToday, gate.Limit);
 
         if (!await economics.TryDebitAsync(userId, chatId, amount, "bowling.bet", ct))
         {
-            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Bowling, ct);
             return BowlingBetResult.Fail(BowlingBetError.NotEnoughCoins, balance);
         }
 
         if (!await bets.InsertAsync(new BowlingBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
         {
-            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Bowling, ct);
             await economics.CreditAsync(userId, chatId, amount, "bowling.bet.refund", ct);
             return BowlingBetResult.Fail(BowlingBetError.AlreadyPending, balance);
         }
@@ -136,7 +136,7 @@ public sealed class BowlingService(
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Bowling);
         await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Bowling, ct);
-        await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
+        await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Bowling, ct);
 
         analytics.Track("bowling", "bet_aborted", new Dictionary<string, object?>
         {

@@ -215,6 +215,7 @@ Framework migrations (`_framework` module), see `FrameworkMigrations.cs`:
 | `008_users_last_daily_bonus` | `users.last_daily_bonus_on DATE` for `/daily` |
 | `009_users_telegram_dice_daily` | `users.telegram_dice_rolls_on`, `telegram_dice_roll_count` — shared daily cap for 🎰🎲🎯🎳🏀⚽ (see `Bot:TelegramDiceDailyLimit`) |
 | `010_runtime_tuning` | `runtime_tuning` — JSON patch merged over file/env for whitelisted `Bot` + `Games` keys; edited from `/admin/settings` |
+| `012_telegram_dice_daily_per_game` | `telegram_dice_daily_rolls` with `(telegram_user_id, balance_scope_id, game_id)` PK for per-game daily caps |
 
 ## Poker (DDD split)
 
@@ -329,7 +330,7 @@ Every write action from the admin UI is recorded in `admin_audit`:
 | `TrustedChannel` | no | @username for race GIF broadcast |
 | `StartingCoins` | no | Coins for new users (default 100) |
 | `DailyBonus` (nested) | no | `Enabled`, `PercentOfBalance` (% of balance, e.g. `0.35` = 0.35 %), `MaxBonus`, `TimezoneOffsetHours` |
-| `TelegramDiceDailyLimit` (nested) | no | `MaxRollsPerUserPerDay` (**0** = unlimited; sample default **5** for 🎰🎲🎯🎳🏀⚽), `TimezoneOffsetHours` (same convention as `DailyBonus`) — per wallet (chat scope) |
+| `TelegramDiceDailyLimit` (nested) | no | `MaxRollsPerUserPerDayByGame` maps `dice`, `dicecube`, `darts`, `football`, `basketball`, `bowling` to per-day caps (**0** = unlimited for that game); `MaxRollsPerUserPerDay` is only a fallback for missing game ids; `TimezoneOffsetHours` follows `DailyBonus` — per wallet (chat scope) |
 
 ### `Games` section (excerpt)
 

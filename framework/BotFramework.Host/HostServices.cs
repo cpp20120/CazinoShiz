@@ -112,16 +112,17 @@ public readonly record struct TelegramDiceRollGateResult(
     int Limit = 0);
 
 /// <summary>
-/// Per-(user, chat) daily counter for Telegram mini-games that consume a random dice outcome.
-/// When <c>Bot:TelegramDiceDailyLimit:MaxRollsPerUserPerDay</c> is 0, both methods allow all rolls (no-op).
+/// Per-(user, chat, game) daily counter for Telegram mini-games that consume a random dice outcome.
+/// When the configured per-game max is 0, both methods allow all rolls (no-op).
 /// </summary>
 public interface ITelegramDiceDailyRollLimiter
 {
     /// <summary>Increments today's roll count if under the cap. Call only after <c>EnsureUserAsync</c>.</summary>
-    Task<TelegramDiceRollGateResult> TryConsumeRollAsync(long userId, long balanceScopeId, CancellationToken ct);
+    Task<TelegramDiceRollGateResult> TryConsumeRollAsync(
+        long userId, long balanceScopeId, string gameId, CancellationToken ct);
 
     /// <summary>Decrements today's count (not below 0) if the bet was rolled back — e.g. debit refunded after failed DB insert or bot <c>SendDice</c> abort.</summary>
-    Task TryRefundRollAsync(long userId, long balanceScopeId, CancellationToken ct);
+    Task TryRefundRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct);
 }
 
 /// <summary>

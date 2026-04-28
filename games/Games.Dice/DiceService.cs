@@ -66,7 +66,7 @@ public sealed class DiceService(
 
         await economics.EnsureUserAsync(userId, chatId, displayName, ct);
 
-        var gate = await telegramDiceRolls.TryConsumeRollAsync(userId, chatId, ct);
+        var gate = await telegramDiceRolls.TryConsumeRollAsync(userId, chatId, MiniGameIds.Dice, ct);
         if (gate.Status == TelegramDiceRollGateStatus.LimitExceeded)
             return new DicePlayResult(
                 DiceOutcome.DailyRollLimitExceeded,
@@ -79,7 +79,7 @@ public sealed class DiceService(
 
         if (!await economics.TryDebitAsync(userId, chatId, loss, reason: "dice.stake", ct))
         {
-            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, ct);
+            await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Dice, ct);
             analytics.Track("dice", "not_enough_coins", new Dictionary<string, object?>
             {
                 ["user_id"] = userId,

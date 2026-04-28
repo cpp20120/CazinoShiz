@@ -66,7 +66,7 @@ public sealed partial class DartsBotDiceSender(
         if (row is not { Status: DartsRoundStatus.Queued })
             return;
 
-        await diceRolls.TryRefundRollAsync(userId, chatId, ct);
+        await diceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Darts, ct);
         await economics.CreditAsync(userId, chatId, row.Amount, "darts.bot_dice.refund", ct);
         await rounds.DeleteAsync(roundId, ct);
 

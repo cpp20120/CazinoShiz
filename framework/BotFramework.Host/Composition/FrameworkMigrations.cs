@@ -197,5 +197,47 @@ internal sealed class FrameworkMigrations : IModuleMigrations
             );
             CREATE INDEX IF NOT EXISTS ix_mini_game_roll_gates_expires ON mini_game_roll_gates (expires_at);
             """),
+
+        new Migration("012_telegram_dice_daily_per_game", """
+            CREATE TABLE IF NOT EXISTS telegram_dice_daily_rolls (
+                telegram_user_id    BIGINT       NOT NULL,
+                balance_scope_id    BIGINT       NOT NULL,
+                game_id             TEXT         NOT NULL,
+                rolls_on            DATE,
+                roll_count          INTEGER      NOT NULL DEFAULT 0,
+                updated_at          TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                PRIMARY KEY (telegram_user_id, balance_scope_id, game_id)
+            );
+            CREATE INDEX IF NOT EXISTS ix_telegram_dice_daily_rolls_scope_game
+                ON telegram_dice_daily_rolls (balance_scope_id, game_id, rolls_on);
+
+            INSERT INTO telegram_dice_daily_rolls (
+                telegram_user_id,
+                balance_scope_id,
+                game_id,
+                rolls_on,
+                roll_count,
+                updated_at
+            )
+            SELECT
+                u.telegram_user_id,
+                u.balance_scope_id,
+                g.game_id,
+                u.telegram_dice_rolls_on,
+                u.telegram_dice_roll_count,
+                now()
+            FROM users u
+            CROSS JOIN (VALUES
+                ('dice'),
+                ('dicecube'),
+                ('darts'),
+                ('football'),
+                ('basketball'),
+                ('bowling')
+            ) AS g(game_id)
+            WHERE u.telegram_dice_rolls_on IS NOT NULL
+              AND u.telegram_dice_roll_count > 0
+            ON CONFLICT (telegram_user_id, balance_scope_id, game_id) DO NOTHING;
+            """),
     ];
 }

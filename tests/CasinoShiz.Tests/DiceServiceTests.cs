@@ -1,4 +1,6 @@
 using BotFramework.Host;
+using BotFramework.Sdk;
+using Games.Basketball;
 using Games.Dice;
 using Xunit;
 
@@ -57,6 +59,38 @@ public class DiceServiceTests
         Assert.Equal(DiceOutcome.DailyRollLimitExceeded, result.Outcome);
         Assert.Equal(3, result.DailyDiceUsed);
         Assert.Equal(10, result.DailyDiceLimit);
+    }
+
+    [Fact]
+    public async Task DailyRollLimit_IsTrackedIndependentlyPerGame()
+    {
+        BotMiniGameSession.DangerousResetAllForTests();
+        try
+        {
+            var limiter = new GameScopedTelegramDiceDailyRollLimiter(maxRollsPerGame: 1);
+            var economics = new FakeEconomicsService();
+            var dice = MakeService(economics, limiter: limiter);
+            var basketball = new BasketballService(
+                economics,
+                new NullAnalyticsService(),
+                new InMemoryBasketballBetStore(),
+                new NullEventBus(),
+                new FakeRuntimeTuning(),
+                new NullMiniGameSessionGhostHeal(),
+                limiter);
+
+            var firstDice = await dice.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+            var secondDice = await dice.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+            var basketballBet = await basketball.PlaceBetAsync(1, "u", 100, 10, default);
+
+            Assert.Equal(DiceOutcome.Played, firstDice.Outcome);
+            Assert.Equal(DiceOutcome.DailyRollLimitExceeded, secondDice.Outcome);
+            Assert.Equal(BasketballBetError.None, basketballBet.Error);
+        }
+        finally
+        {
+            BotMiniGameSession.DangerousResetAllForTests();
+        }
     }
 
     [Fact]

@@ -103,34 +103,71 @@ sealed class FakeEconomicsService : IEconomicsService
 sealed class NullTelegramDiceDailyRollLimiter : ITelegramDiceDailyRollLimiter
 {
     public Task<TelegramDiceRollGateResult> TryConsumeRollAsync(
-        long userId, long balanceScopeId, CancellationToken ct) =>
+        long userId, long balanceScopeId, string gameId, CancellationToken ct) =>
         Task.FromResult(new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, 0, 0));
 
-    public Task TryRefundRollAsync(long userId, long balanceScopeId, CancellationToken ct) =>
+    public Task TryRefundRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct) =>
         Task.CompletedTask;
 }
 
 sealed class RejectingTelegramDiceDailyRollLimiter : ITelegramDiceDailyRollLimiter
 {
     public Task<TelegramDiceRollGateResult> TryConsumeRollAsync(
-        long userId, long balanceScopeId, CancellationToken ct) =>
+        long userId, long balanceScopeId, string gameId, CancellationToken ct) =>
         Task.FromResult(new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.LimitExceeded, 3, 10));
 
-    public Task TryRefundRollAsync(long userId, long balanceScopeId, CancellationToken ct) =>
+    public Task TryRefundRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct) =>
         Task.CompletedTask;
 }
 
 sealed class RecordingTelegramDiceDailyRollLimiter : ITelegramDiceDailyRollLimiter
 {
     public int RefundCount { get; private set; }
+    public List<string> ConsumedGameIds { get; } = [];
+    public List<string> RefundedGameIds { get; } = [];
 
     public Task<TelegramDiceRollGateResult> TryConsumeRollAsync(
-        long userId, long balanceScopeId, CancellationToken ct) =>
-        Task.FromResult(new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, 1, 99));
+        long userId, long balanceScopeId, string gameId, CancellationToken ct)
+    {
+        ConsumedGameIds.Add(gameId);
+        return Task.FromResult(new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, 1, 99));
+    }
 
-    public Task TryRefundRollAsync(long userId, long balanceScopeId, CancellationToken ct)
+    public Task TryRefundRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct)
     {
         RefundCount++;
+        RefundedGameIds.Add(gameId);
+        return Task.CompletedTask;
+    }
+}
+
+sealed class GameScopedTelegramDiceDailyRollLimiter(int maxRollsPerGame) : ITelegramDiceDailyRollLimiter
+{
+    private readonly Dictionary<(long UserId, long ScopeId, string GameId), int> _counts = new();
+
+    public Task<TelegramDiceRollGateResult> TryConsumeRollAsync(
+        long userId, long balanceScopeId, string gameId, CancellationToken ct)
+    {
+        var key = (userId, balanceScopeId, gameId);
+        var count = _counts.GetValueOrDefault(key);
+        if (count >= maxRollsPerGame)
+            return Task.FromResult(
+                new TelegramDiceRollGateResult(
+                    TelegramDiceRollGateStatus.LimitExceeded,
+                    count,
+                    maxRollsPerGame));
+
+        count++;
+        _counts[key] = count;
+        return Task.FromResult(
+            new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, count, maxRollsPerGame));
+    }
+
+    public Task TryRefundRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct)
+    {
+        var key = (userId, balanceScopeId, gameId);
+        if (_counts.TryGetValue(key, out var count) && count > 0)
+            _counts[key] = count - 1;
         return Task.CompletedTask;
     }
 }
