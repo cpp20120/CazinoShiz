@@ -6,23 +6,18 @@ using Games.Horse;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Options;
-using Telegram.Bot;
-using Telegram.Bot.Types;
 
 namespace CasinoShiz.Host.Pages.Admin;
 
 public sealed partial class HorseModel(
     IHorseService horse,
+    IHorseRaceNotifier notifier,
     INpgsqlConnectionFactory connections,
     HorseGifCache gifCache,
     IOptions<HorseOptions> options,
-    IOptions<BotFrameworkOptions> botOptions,
-    IAdminAuditLog audit,
-    ITelegramBotClient bot,
-    ILogger<HorseModel> logger) : PageModel
+    IAdminAuditLog audit) : PageModel
 {
     private readonly HorseOptions _opts = options.Value;
-    private readonly BotFrameworkOptions _botOpts = botOptions.Value;
 
     public int BetsToday { get; private set; }
     public IReadOnlyDictionary<int, double> Koefs { get; private set; } = new Dictionary<int, double>();
@@ -59,10 +54,11 @@ public sealed partial class HorseModel(
 
         gifCache.Put(TodayRaceDate, outcome.GifBytes);
 
-        var (channelStatus, dmsOk, dmsFail) = await BroadcastAsync(outcome, ct);
+        await notifier.SendResultGifsAsync(outcome, TodayRaceDate, ct);
+        notifier.ScheduleWinnerAnnouncements(outcome);
         var flash = $"Race done. Winner: horse {outcome.Winner + 1}. " +
             $"Payouts: {outcome.Transactions.Count}. " +
-            $"Channel: {channelStatus}. DMs: {dmsOk}/{dmsOk + dmsFail}.";
+            $"Chats: {outcome.BetScopeIds.Count}.";
         TempData["Flash"] = flash;
 
         await audit.LogAsync(actor.UserId, actor.Name, "horse.run_race",
@@ -70,67 +66,6 @@ public sealed partial class HorseModel(
 
         return RedirectToPage();
     }
-
-    private async Task<(string ChannelStatus, int DmsOk, int DmsFail)> BroadcastAsync(
-        RaceOutcome outcome, CancellationToken ct)
-    {
-        var caption = $"🐎 Race {TodayRaceDate} · winner horse #{outcome.Winner + 1}";
-
-        string? reusableFileId = null;
-        var channelStatus = "skipped";
-        var trusted = _botOpts.TrustedChannel?.Trim();
-        if (!string.IsNullOrEmpty(trusted))
-        {
-            var target = trusted.StartsWith('@') ? trusted : "@" + trusted;
-            try
-            {
-                await using var stream = new MemoryStream(outcome.GifBytes);
-                var sent = await bot.SendAnimation(
-                    target, InputFile.FromStream(stream, "horses.gif"),
-                    caption: caption, cancellationToken: ct);
-                reusableFileId = sent.Animation?.FileId;
-                channelStatus = "ok";
-            }
-            catch (Exception ex)
-            {
-                LogBroadcastFailed(target, ex);
-                channelStatus = "failed";
-            }
-        }
-
-        int dmsOk = 0, dmsFail = 0;
-        foreach (var p in outcome.Participants)
-        {
-            var personal = p.Payout > 0
-                ? $"🏆 Race {TodayRaceDate}: horse #{outcome.Winner + 1} won. You bet {p.TotalBet}, payout {p.Payout}."
-                : $"🐎 Race {TodayRaceDate}: horse #{outcome.Winner + 1} won. You bet {p.TotalBet}, no payout.";
-            try
-            {
-                InputFile gif = reusableFileId is not null
-                    ? InputFile.FromFileId(reusableFileId)
-                    : InputFile.FromStream(new MemoryStream(outcome.GifBytes), "horses.gif");
-
-                var sent = await bot.SendAnimation(
-                    p.UserId, gif, caption: personal, cancellationToken: ct);
-                reusableFileId ??= sent.Animation?.FileId;
-                dmsOk++;
-            }
-            catch (Exception ex)
-            {
-                LogDmFailed(p.UserId, ex);
-                dmsFail++;
-            }
-        }
-        return (channelStatus, dmsOk, dmsFail);
-    }
-
-    [LoggerMessage(EventId = 4701, Level = LogLevel.Warning,
-        Message = "admin.horse.broadcast.failed target={Target}")]
-    private partial void LogBroadcastFailed(string target, Exception exception);
-
-    [LoggerMessage(EventId = 4702, Level = LogLevel.Information,
-        Message = "admin.horse.dm.failed user={UserId}")]
-    private partial void LogDmFailed(long userId, Exception exception);
 
     private async Task LoadAsync(CancellationToken ct)
     {

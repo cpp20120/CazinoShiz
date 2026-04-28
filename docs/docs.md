@@ -350,7 +350,7 @@ Every write action from the admin UI is recorded in `admin_audit`:
 | `dicecube:MaxBet`, `MinSecondsBetweenBets` | Stake cap and per-chat cooldown |
 | `horse:*` | See below |
 
-**`Games:horse`** — `HorseCount`, `MinBetsToRun`, `AnnounceDelayMs`, `TimezoneOffsetHours`, `Admins` (Telegram user IDs allowed to `/horserun`), `AutoRunEnabled`, `AutoRunLocalHour`, `AutoRunLocalMinute`. When `AutoRunEnabled` is true, `HorseScheduledRaceJob` runs **one global** race per calendar day after the configured local time, if there are enough bets (`MinBetsToRun`). It settles payouts like `/horserun global` but does **not** post GIFs to Telegram (players use `/horse result`; use `/admin/horse` for channel broadcast).
+**`Games:horse`** — `HorseCount`, `MinBetsToRun`, `AnnounceDelayMs`, `TimezoneOffsetHours`, `Admins` (Telegram user IDs allowed to `/horserun`), `AutoRunEnabled`, `AutoRunLocalHour`, `AutoRunLocalMinute`. When `AutoRunEnabled` is true, `HorseScheduledRaceJob` runs **one global** race per calendar day after the configured local time, if there are enough bets (`MinBetsToRun`). It settles payouts like `/horserun global` and posts the result GIF only to chats that placed bets.
 
 Other games (darts, bowling, football, …) use multipliers in their **service** classes unless bound to options.
 
@@ -606,8 +606,8 @@ All UI in Russian. Command names are ASCII.
 
 | Command | Effect |
 |---|---|
-| `/horserun` | In a **group/supergroup**: run race for **this chat's** pool only. In **private**: global (all chats). |
-| `/horserun global` (or `all`) | Global merged race (same as `/admin/horse` run) |
+| `/horserun` | In a **group/supergroup**: run race for **this chat's** pool only. In **private**: global (all chats with bets). |
+| `/horserun global` (or `all`) | Global merged race; result GIF is posted only to chats that placed bets |
 | `/codegen [count]` | Generate copy-paste-ready `/redeem <uuid>` freespin codes |
 | `/run pay <id> <amount>` | Manual coin adjustment |
 | `/run userinfo` | Reply to message → Telegram user ID |

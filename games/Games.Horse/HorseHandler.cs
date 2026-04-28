@@ -12,7 +12,6 @@
 
 using BotFramework.Host;
 using BotFramework.Sdk;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -26,8 +25,7 @@ public sealed partial class HorseHandler(
     IHorseService service,
     ILocalizer localizer,
     IOptions<HorseOptions> options,
-    IHostApplicationLifetime lifetime,
-    ILogger<HorseHandler> logger) : IUpdateHandler
+    IHorseRaceNotifier notifier) : IUpdateHandler
 {
     private readonly HorseOptions _opts = options.Value;
 
@@ -137,37 +135,9 @@ public sealed partial class HorseHandler(
         await ctx.Bot.SendMessage(chatId, Loc("run.started"),
             replyParameters: reply, cancellationToken: ctx.Ct);
 
-        Message gifMessage;
-        await using (var gifStream = new MemoryStream(outcome.GifBytes))
-            gifMessage = await ctx.Bot.SendAnimation(chatId, InputFile.FromStream(gifStream, "horses.gif"),
-                cancellationToken: ctx.Ct);
-
         var raceDate = HorseTimeHelper.GetRaceDate(_opts.TimezoneOffsetHours);
-        var fileId = gifMessage.Animation?.FileId;
-        var resultScope = kind == HorseRunKind.Global ? 0L : chatId;
-        if (fileId != null)
-            await service.SaveFileIdAsync(raceDate, resultScope, fileId, ctx.Ct);
-
-        var announceCt = lifetime.ApplicationStopping;
-        var bot = ctx.Bot;
-        var transactions = outcome.Transactions;
-        var delayMs = _opts.AnnounceDelayMs;
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(delayMs, announceCt);
-                var text = transactions.Count > 0
-                    ? string.Join("\n", new[] { Loc("run.winners_header") + "\n" }
-                        .Concat(transactions.Select((tx, i) =>
-                            string.Format(Loc("run.winner_line"), i + 1, tx.UserId, tx.Amount))))
-                    : Loc("run.no_winners");
-                await bot.SendMessage(chatId, text, parseMode: ParseMode.Html, cancellationToken: announceCt);
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex) { LogHorseRunAnnounceFailed(ex); }
-        }, announceCt);
+        await notifier.SendResultGifsAsync(outcome, raceDate, ctx.Ct);
+        notifier.ScheduleWinnerAnnouncements(outcome);
     }
 
     private async Task HandleResultAsync(UpdateContext ctx, Message msg)
@@ -211,7 +181,4 @@ public sealed partial class HorseHandler(
     }
 
     private string Loc(string key) => localizer.Get("horse", key);
-
-    [LoggerMessage(EventId = 2401, Level = LogLevel.Debug, Message = "horse.run.announce failed")]
-    partial void LogHorseRunAnnounceFailed(Exception exception);
 }

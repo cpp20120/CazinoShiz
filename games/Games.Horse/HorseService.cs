@@ -134,6 +134,12 @@ public sealed partial class HorseService(
 
         if (bets.Count < _opts.MinBetsToRun) return RaceFail(HorseError.NotEnoughBets);
 
+        var betScopeIds = bets
+            .Select(b => b.BalanceScopeId)
+            .Where(scopeId => scopeId != 0)
+            .Distinct()
+            .ToList();
+
         var stakes = new Dictionary<int, int>();
         for (var i = 0; i < _opts.HorseCount; i++) stakes[i] = 0;
         foreach (var bet in bets) stakes[bet.HorseId] += bet.Amount;
@@ -147,7 +153,11 @@ public sealed partial class HorseService(
             return GifEncoder.RenderFramesToGif(frames, width, height);
         }, ct);
 
-        await resultStore.UpsertAsync(new HorseResultRow(raceDate, resultScope, winner, null), ct);
+        IEnumerable<long> resultScopes = kind == HorseRunKind.Global
+            ? betScopeIds.Prepend(0L).Distinct()
+            : [resultScope];
+        foreach (var scopeId in resultScopes)
+            await resultStore.UpsertAsync(new HorseResultRow(raceDate, scopeId, winner, null), ct);
 
         var transactions = Payoff(bets, ks, winner);
 
@@ -189,8 +199,10 @@ public sealed partial class HorseService(
         await events.PublishAsync(new HorseRaceFinished(raceDate, winner + 1, bets.Count,
             transactions.Count, pot, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()), ct);
 
-        var txForUi = transactions.Select(t => (t.UserId, t.Amount)).ToList();
-        return new RaceOutcome(HorseError.None, winner, gifBytes, txForUi, participants);
+        var txForUi = transactions
+            .Select(t => new RaceTransaction(t.UserId, t.BalanceScopeId, t.Amount))
+            .ToList();
+        return new RaceOutcome(HorseError.None, winner, gifBytes, txForUi, participants, betScopeIds);
     }
 
     public static Dictionary<int, double> GetKoefs(Dictionary<int, int> stakes)

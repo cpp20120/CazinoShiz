@@ -13,6 +13,7 @@ public sealed class HorseModule : IModule
         services
             .BindOptions<HorseOptions>(HorseOptions.SectionName)
             .AddScoped<IHorseService, HorseService>()
+            .AddScoped<IHorseRaceNotifier, HorseRaceNotifier>()
             .AddScoped<IHorseBetStore, HorseBetStore>()
             .AddScoped<IHorseResultStore, HorseResultStore>()
             .AddHandler<HorseHandler>()

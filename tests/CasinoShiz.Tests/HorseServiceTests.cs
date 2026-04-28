@@ -375,6 +375,21 @@ public class HorseServiceTests
     }
 
     [Fact]
+    public async Task RunRaceAsync_Global_ReturnsScopesThatPlacedBets()
+    {
+        const long scopeA = 1000L, scopeB = 2000L;
+        var bets = new InMemoryHorseBetStore();
+        var svc = MakeService(bets: bets, horseCount: 1, minBetsToRun: 1, admins: [99L]);
+        await svc.PlaceBetAsync(1, "u1", scopeA, 1, 50, default);
+        await svc.PlaceBetAsync(2, "u2", scopeB, 1, 50, default);
+
+        var result = await svc.RunRaceAsync(99, HorseRunKind.Global, 0, default);
+
+        Assert.Equal(new[] { scopeA, scopeB }, result.BetScopeIds.Order());
+        Assert.All(result.Transactions, tx => Assert.Contains(tx.BalanceScopeId, result.BetScopeIds));
+    }
+
+    [Fact]
     public async Task RunRaceAsync_ThisChat_LeavesOtherScopesIntact()
     {
         const long scopeA = 1000L, scopeB = 2000L;

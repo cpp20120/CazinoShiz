@@ -8,7 +8,7 @@ namespace Games.Horse;
 /// <summary>
 /// When <see cref="HorseOptions.AutoRunEnabled"/> is true, runs one global race per calendar day
 /// (see <see cref="HorseOptions.TimezoneOffsetHours"/>) after the configured local wall time.
-/// Settles payouts like <c>/horserun global</c>; it does not post to Telegram (users see <c>/horse result</c>).
+/// Settles payouts like <c>/horserun global</c> and posts the result only to chats that placed bets.
 /// </summary>
 public sealed partial class HorseScheduledRaceJob(
     IServiceProvider services,
@@ -51,6 +51,7 @@ public sealed partial class HorseScheduledRaceJob(
                 using var scope = services.CreateScope();
                 var sp = scope.ServiceProvider;
                 var horse = sp.GetRequiredService<IHorseService>();
+                var notifier = sp.GetRequiredService<IHorseRaceNotifier>();
                 var results = sp.GetRequiredService<IHorseResultStore>();
 
                 var existing = await results.FindAsync(raceDate, 0, stoppingToken).ConfigureAwait(false);
@@ -81,6 +82,8 @@ public sealed partial class HorseScheduledRaceJob(
                 switch (outcome.Error)
                 {
                     case HorseError.None:
+                        await notifier.SendResultGifsAsync(outcome, raceDate, stoppingToken).ConfigureAwait(false);
+                        notifier.ScheduleWinnerAnnouncements(outcome);
                         LogAutoRunOk(raceDate, outcome.Winner + 1);
                         break;
                     case HorseError.NotEnoughBets:
