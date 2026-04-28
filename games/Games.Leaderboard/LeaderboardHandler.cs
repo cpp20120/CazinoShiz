@@ -15,7 +15,8 @@ public sealed class LeaderboardHandler(
     ILeaderboardService service,
     IDailyBonusService dailyBonus,
     ILocalizer localizer,
-    IConfiguration configuration) : IUpdateHandler
+    IConfiguration configuration,
+    ILogger<LeaderboardHandler> logger) : IUpdateHandler
 {
     public async Task HandleAsync(UpdateContext ctx)
     {
@@ -108,7 +109,21 @@ public sealed class LeaderboardHandler(
         if (userId == 0) return;
         var displayName = msg.From?.Username ?? msg.From?.FirstName ?? $"User ID: {userId}";
 
-        var r = await dailyBonus.TryClaimAsync(userId, msg.Chat.Id, displayName, ctx.Ct);
+        DailyBonusClaimResult r;
+        try
+        {
+            r = await dailyBonus.TryClaimAsync(userId, msg.Chat.Id, displayName, ctx.Ct);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "daily command failed user={UserId} scope={Scope}", userId, msg.Chat.Id);
+            await ctx.Bot.SendMessage(msg.Chat.Id, Loc("daily.failed"),
+                parseMode: ParseMode.Html,
+                replyParameters: new ReplyParameters { MessageId = msg.MessageId },
+                cancellationToken: ctx.Ct);
+            return;
+        }
+
         var text = r.Status switch
         {
             DailyBonusClaimStatus.Claimed => string.Format(Loc("daily.claimed"), r.BonusCoins, r.NewBalance),

@@ -127,7 +127,16 @@ public sealed class BowlingService(
         await TelegramMiniGameRedeemDrops.MaybePublishAsync(
             events, bowling.RedeemDropChance, userId, chatId, MiniGameIds.Bowling, occurredAt, ct);
 
-        return new BowlingRollResult(BowlingRollOutcome.Rolled, face, bet.Amount, multiplier, payout, balance);
+        var daily = await telegramDiceRolls.GetRollStatusAsync(userId, chatId, MiniGameIds.Bowling, ct);
+        return new BowlingRollResult(
+            BowlingRollOutcome.Rolled,
+            face,
+            bet.Amount,
+            multiplier,
+            payout,
+            balance,
+            daily.UsedToday,
+            daily.Limit);
     }
 
     public async Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct)

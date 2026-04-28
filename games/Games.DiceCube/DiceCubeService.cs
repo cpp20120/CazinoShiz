@@ -187,7 +187,16 @@ public sealed class DiceCubeService(
         await TelegramMiniGameRedeemDrops.MaybePublishAsync(
             events, cube.RedeemDropChance, userId, chatId, MiniGameIds.DiceCube, occurredAt, ct);
 
-        return new CubeRollResult(CubeRollOutcome.Rolled, face, bet.Amount, multiplier, payout, balance);
+        var daily = await telegramDiceRolls.GetRollStatusAsync(userId, chatId, MiniGameIds.DiceCube, ct);
+        return new CubeRollResult(
+            CubeRollOutcome.Rolled,
+            face,
+            bet.Amount,
+            multiplier,
+            payout,
+            balance,
+            daily.UsedToday,
+            daily.Limit);
     }
 
     public async Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct)

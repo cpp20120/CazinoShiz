@@ -121,6 +121,10 @@ public interface ITelegramDiceDailyRollLimiter
     Task<TelegramDiceRollGateResult> TryConsumeRollAsync(
         long userId, long balanceScopeId, string gameId, CancellationToken ct);
 
+    /// <summary>Reads today's current roll count without changing it.</summary>
+    Task<TelegramDiceRollGateResult> GetRollStatusAsync(
+        long userId, long balanceScopeId, string gameId, CancellationToken ct);
+
     /// <summary>Grants one extra roll for today by moving the user's daily counter back one slot.</summary>
     Task GrantExtraRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct);
 

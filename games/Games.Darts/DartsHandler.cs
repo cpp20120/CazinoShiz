@@ -192,9 +192,12 @@ public sealed partial class DartsHandler(
             }
 
             var net = r.Payout - r.Bet;
-            var text = r.Payout > 0
-                ? string.Format(Loc("throw.win"), r.Face, r.Multiplier, r.Bet, r.Payout, net, r.Balance)
-                : string.Format(Loc("throw.lose"), r.Face, r.Bet, r.Balance);
+            var text = AppendRemainingAttempts(
+                r.Payout > 0
+                    ? string.Format(Loc("throw.win"), r.Face, r.Multiplier, r.Bet, r.Payout, net, r.Balance)
+                    : string.Format(Loc("throw.lose"), r.Face, r.Bet, r.Balance),
+                r.DailyRollUsed,
+                r.DailyRollLimit);
             try
             {
                 await Task.Delay(4000, ctx.Ct);
@@ -246,9 +249,12 @@ public sealed partial class DartsHandler(
                 text = string.Format(Loc("bet.daily_roll_limit"), r.DailyRollUsed, r.DailyRollLimit); break;
             case DartsThrowOutcome.Thrown:
                 var net = r.Payout - r.Bet;
-                text = r.Payout > 0
-                    ? string.Format(Loc("throw.win"), r.Face, r.Multiplier, r.Bet, r.Payout, net, r.Balance)
-                    : string.Format(Loc("throw.lose"), r.Face, r.Bet, r.Balance);
+                text = AppendRemainingAttempts(
+                    r.Payout > 0
+                        ? string.Format(Loc("throw.win"), r.Face, r.Multiplier, r.Bet, r.Payout, net, r.Balance)
+                        : string.Format(Loc("throw.lose"), r.Face, r.Bet, r.Balance),
+                    r.DailyRollUsed,
+                    r.DailyRollLimit);
                 break;
             default:
                 return;
@@ -262,6 +268,11 @@ public sealed partial class DartsHandler(
         }
         catch (Exception ex) { LogReplyFailed(userId, ex); }
     }
+
+    private string AppendRemainingAttempts(string text, int used, int limit) =>
+        limit > 0
+            ? text + "\n" + string.Format(Loc("throw.daily_roll_remaining"), Math.Max(0, limit - used), limit)
+            : text;
 
     [LoggerMessage(EventId = 2201, Level = LogLevel.Error, Message = "darts.reply.failed user={UserId}")]
     partial void LogReplyFailed(long userId, Exception exception);

@@ -67,14 +67,16 @@ public sealed partial class DiceHandler(
 
         var net = result.Prize - result.Loss;
         var isWin = net > 0;
-        var text = string.Join("\n",
-        [
+        var lines = new[]
+        {
             isWin
                 ? string.Format(Loc("result.win"), result.Prize, result.Loss, net)
                 : string.Format(Loc("result.lose"), result.Loss, result.Prize, -net),
             string.Format(Loc("result.balance"), result.NewBalance),
             result.Gas > 0 ? string.Format(Loc("result.gas"), result.Gas) : "",
-        ]);
+            FormatRemainingAttempts(result.DailyDiceUsed, result.DailyDiceLimit),
+        };
+        var text = string.Join("\n", lines);
 
         try
         {
@@ -89,6 +91,11 @@ public sealed partial class DiceHandler(
     }
 
     private string Loc(string key) => localizer.Get("dice", key);
+
+    private string FormatRemainingAttempts(int used, int limit) =>
+        limit > 0
+            ? string.Format(Loc("result.daily_roll_remaining"), Math.Max(0, limit - used), limit)
+            : "";
 
     [LoggerMessage(EventId = 2001, Level = LogLevel.Error, Message = "dice.reply.failed user={UserId}")]
     partial void LogReplyFailed(long userId, Exception exception);

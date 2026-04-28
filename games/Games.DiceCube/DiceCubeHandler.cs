@@ -223,9 +223,12 @@ public sealed partial class DiceCubeHandler(
             }
 
             var net = r.Payout - r.Bet;
-            var text = r.Payout > 0
-                ? string.Format(Loc("roll.win"), r.Face, r.Multiplier, r.Bet, r.Payout, net, r.Balance)
-                : string.Format(Loc("roll.lose"), r.Face, r.Bet, r.Balance);
+            var text = AppendRemainingAttempts(
+                r.Payout > 0
+                    ? string.Format(Loc("roll.win"), r.Face, r.Multiplier, r.Bet, r.Payout, net, r.Balance)
+                    : string.Format(Loc("roll.lose"), r.Face, r.Bet, r.Balance),
+                r.DailyRollUsed,
+                r.DailyRollLimit);
             try
             {
                 await Task.Delay(4000, ctx.Ct);
@@ -246,6 +249,11 @@ public sealed partial class DiceCubeHandler(
     }
 
     private string Loc(string key) => localizer.Get("dicecube", key);
+
+    private string AppendRemainingAttempts(string text, int used, int limit) =>
+        limit > 0
+            ? text + "\n" + string.Format(Loc("roll.daily_roll_remaining"), Math.Max(0, limit - used), limit)
+            : text;
 
     [LoggerMessage(EventId = 2101, Level = LogLevel.Error, Message = "dicecube.reply.failed user={UserId}")]
     partial void LogReplyFailed(long userId, Exception exception);

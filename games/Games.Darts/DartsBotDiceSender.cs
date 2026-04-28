@@ -99,6 +99,13 @@ public sealed partial class DartsBotDiceSender(
                 result.Face, result.Multiplier, result.Bet, result.Payout, net, result.Balance)
             : string.Format(localizer.Get("darts", "throw.lose"),
                 result.Face, result.Bet, result.Balance);
+        if (result.DailyRollLimit > 0)
+        {
+            text += "\n" + string.Format(
+                localizer.Get("darts", "throw.daily_roll_remaining"),
+                Math.Max(0, result.DailyRollLimit - result.DailyRollUsed),
+                result.DailyRollLimit);
+        }
 
         try
         {

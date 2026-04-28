@@ -54,7 +54,7 @@ public sealed partial class DailyBonusService(
         var coins = row.coins;
         var version = row.version;
         var lastDay = row.last_daily_bonus_on;
-        if (lastDay.HasValue && ToDateOnly(lastDay.Value) == today)
+        if (lastDay == today)
         {
             await tx.RollbackAsync(ct);
             return new DailyBonusClaimResult(DailyBonusClaimStatus.AlreadyClaimedToday, 0, coins);
@@ -112,13 +112,11 @@ public sealed partial class DailyBonusService(
         return DateOnly.FromDateTime(shifted.DateTime);
     }
 
-    private static DateOnly ToDateOnly(DateTime d) => DateOnly.FromDateTime(d.Date);
-
     private sealed class WalletForDailyRow
     {
         public int coins { get; init; }
         public long version { get; init; }
-        public DateTime? last_daily_bonus_on { get; init; }
+        public DateOnly? last_daily_bonus_on { get; init; }
     }
 
     [LoggerMessage(LogLevel.Information, "daily_bonus.credited user={UserId} scope={Scope} bonus={Bonus} balance={Balance}")]

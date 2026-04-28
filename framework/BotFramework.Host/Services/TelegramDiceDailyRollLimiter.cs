@@ -79,6 +79,34 @@ internal sealed class TelegramDiceDailyRollLimiter(
         return new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, newCount, max);
     }
 
+    public async Task<TelegramDiceRollGateResult> GetRollStatusAsync(
+        long userId, long balanceScopeId, string gameId, CancellationToken ct)
+    {
+        var o = tuning.TelegramDiceDailyLimit;
+        var max = o.GetMaxRollsPerUserPerDay(gameId);
+        if (max <= 0)
+            return new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, 0, 0);
+
+        var today = TodayInOffset(o.TimezoneOffsetHours);
+
+        await using var conn = await connections.OpenAsync(ct).ConfigureAwait(false);
+        var row = await conn.QuerySingleOrDefaultAsync<DiceRollRow?>(
+            new CommandDefinition(
+                """
+                SELECT rolls_on AS RollsOn,
+                       roll_count AS RollCount
+                FROM telegram_dice_daily_rolls
+                WHERE telegram_user_id = @userId
+                  AND balance_scope_id = @balanceScopeId
+                  AND game_id = @gameId
+                """,
+                new { userId, balanceScopeId, gameId },
+                cancellationToken: ct)).ConfigureAwait(false);
+
+        var count = row?.RollsOn == today ? row.RollCount : 0;
+        return new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, count, max);
+    }
+
     public async Task GrantExtraRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct)
     {
         var o = tuning.TelegramDiceDailyLimit;

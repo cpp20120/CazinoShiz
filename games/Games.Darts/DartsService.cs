@@ -168,7 +168,16 @@ public sealed class DartsService(
         await TelegramMiniGameRedeemDrops.MaybePublishAsync(
             events, darts.RedeemDropChance, userId, chatId, MiniGameIds.Darts, occurredAt, ct);
 
-        return new DartsThrowResult(DartsThrowOutcome.Thrown, face, bet.Amount, multiplier, payout, balance);
+        var daily = await telegramDiceRolls.GetRollStatusAsync(userId, chatId, MiniGameIds.Darts, ct);
+        return new DartsThrowResult(
+            DartsThrowOutcome.Thrown,
+            face,
+            bet.Amount,
+            multiplier,
+            payout,
+            balance,
+            DailyRollUsed: daily.UsedToday,
+            DailyRollLimit: daily.Limit);
     }
 
     public async Task AbortQueuedRoundIfBetReplyFailedAsync(long roundId, long userId, long chatId, CancellationToken ct)
@@ -258,6 +267,14 @@ public sealed class DartsService(
         await TelegramMiniGameRedeemDrops.MaybePublishAsync(
             events, darts.RedeemDropChance, userId, chatId, MiniGameIds.Darts, occurredAt, ct);
 
-        return new DartsThrowResult(DartsThrowOutcome.Thrown, face, amount, multiplier, payout, newBalance);
+        return new DartsThrowResult(
+            DartsThrowOutcome.Thrown,
+            face,
+            amount,
+            multiplier,
+            payout,
+            newBalance,
+            DailyRollUsed: gate.UsedToday,
+            DailyRollLimit: gate.Limit);
     }
 }

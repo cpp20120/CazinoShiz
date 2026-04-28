@@ -125,7 +125,16 @@ public sealed class FootballService(
         await TelegramMiniGameRedeemDrops.MaybePublishAsync(
             events, football.RedeemDropChance, userId, chatId, MiniGameIds.Football, occurredAt, ct);
 
-        return new FootballThrowResult(FootballThrowOutcome.Thrown, face, bet.Amount, multiplier, payout, balance);
+        var daily = await telegramDiceRolls.GetRollStatusAsync(userId, chatId, MiniGameIds.Football, ct);
+        return new FootballThrowResult(
+            FootballThrowOutcome.Thrown,
+            face,
+            bet.Amount,
+            multiplier,
+            payout,
+            balance,
+            daily.UsedToday,
+            daily.Limit);
     }
 
     public async Task AbortPendingBetAfterSendDiceFailedAsync(long userId, long chatId, CancellationToken ct)

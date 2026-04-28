@@ -134,7 +134,14 @@ public sealed class DiceService(
             rolledAt.ToUnixTimeMilliseconds(),
             ct);
 
-        return new DicePlayResult(DiceOutcome.Played, prize, loss, balance, gas);
+        return new DicePlayResult(
+            DiceOutcome.Played,
+            prize,
+            loss,
+            balance,
+            gas,
+            gate.UsedToday,
+            gate.Limit);
     }
 
     private static (int maxFrequent, int maxFrequency) GetMaxFrequency(int[] arr)
