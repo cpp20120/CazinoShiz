@@ -31,6 +31,8 @@ public sealed class SettingsModel(
     public string? Error { get; set; }
     public string? Flash { get; set; }
     public bool CanEdit { get; private set; }
+    [BindProperty]
+    public StickerGameSettingsInput StickerGames { get; set; } = new();
 
     public async Task<IActionResult> OnGetAsync(CancellationToken ct)
     {
@@ -45,6 +47,7 @@ public sealed class SettingsModel(
             cancellationToken: ct));
         PatchJson = string.IsNullOrWhiteSpace(row) ? "{}" : FormatJson(row);
         EffectivePreviewJson = FormatJson(BuildEffectiveExport());
+        LoadStickerGameSettings();
         return Page();
     }
 
@@ -66,6 +69,7 @@ public sealed class SettingsModel(
             Error = ex.Message;
             CanEdit = true;
             EffectivePreviewJson = FormatJson(BuildEffectiveExport());
+            LoadStickerGameSettings();
             return Page();
         }
 
@@ -74,6 +78,7 @@ public sealed class SettingsModel(
             Error = "Payload must be a JSON object.";
             CanEdit = true;
             EffectivePreviewJson = FormatJson(BuildEffectiveExport());
+            LoadStickerGameSettings();
             return Page();
         }
 
@@ -84,6 +89,7 @@ public sealed class SettingsModel(
             Error = err;
             CanEdit = true;
             EffectivePreviewJson = FormatJson(BuildEffectiveExport());
+            LoadStickerGameSettings();
             return Page();
         }
 
@@ -104,8 +110,76 @@ public sealed class SettingsModel(
         Flash = "Saved. Live settings reloaded.";
         PatchJson = FormatJson(compact);
         EffectivePreviewJson = FormatJson(BuildEffectiveExport());
+        LoadStickerGameSettings();
         CanEdit = true;
         logger.LogInformation("runtime_tuning updated by admin {UserId}", actor.UserId);
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostStickerGamesAsync(CancellationToken ct)
+    {
+        var actor = HttpContext.Session.GetAdminSession();
+        if (actor is null)
+            return RedirectToPage("/Admin/Login");
+        if (actor.Role != AdminRole.SuperAdmin)
+            return StatusCode(403);
+
+        if (StickerGames.All.Any(g => g.DailyLimit < 0))
+        {
+            Error = "Daily limits must be 0 or greater.";
+            return await ReloadPageForErrorAsync(ct);
+        }
+
+        if (StickerGames.All.Any(g => g.DropChance < 0 || g.DropChance > 1))
+        {
+            Error = "Drop chances must be between 0 and 1. Example: 0.02 = 2%.";
+            return await ReloadPageForErrorAsync(ct);
+        }
+
+        var patch = await LoadPatchObjectAsync(ct);
+        patch["Bot"] ??= new JsonObject();
+        patch["Games"] ??= new JsonObject();
+        var bot = (JsonObject)patch["Bot"]!;
+        var games = (JsonObject)patch["Games"]!;
+
+        bot["TelegramDiceDailyLimit"] ??= new JsonObject();
+        var daily = (JsonObject)bot["TelegramDiceDailyLimit"]!;
+        daily["MaxRollsPerUserPerDayByGame"] = new JsonObject
+        {
+            ["dice"] = StickerGames.DiceDailyLimit,
+            ["dicecube"] = StickerGames.DiceCubeDailyLimit,
+            ["darts"] = StickerGames.DartsDailyLimit,
+            ["football"] = StickerGames.FootballDailyLimit,
+            ["basketball"] = StickerGames.BasketballDailyLimit,
+            ["bowling"] = StickerGames.BowlingDailyLimit,
+        };
+
+        SetDropChance(games, "dice", StickerGames.DiceDropChance);
+        SetDropChance(games, "dicecube", StickerGames.DiceCubeDropChance);
+        SetDropChance(games, "darts", StickerGames.DartsDropChance);
+        SetDropChance(games, "football", StickerGames.FootballDropChance);
+        SetDropChance(games, "basketball", StickerGames.BasketballDropChance);
+        SetDropChance(games, "bowling", StickerGames.BowlingDropChance);
+
+        var sanitized = RuntimeTuningPayloadSanitizer.Sanitize(patch);
+        var err = ValidateMerged(configuration, sanitized);
+        if (err is not null)
+        {
+            Error = err;
+            return await ReloadPageForErrorAsync(ct);
+        }
+
+        var compact = sanitized.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
+        await SavePatchAsync(compact, ct);
+        await tuning.ReloadFromDatabaseAsync(ct);
+        await audit.LogAsync(actor.UserId, actor.Name, "runtime_tuning.sticker_games.save",
+            new { games = StickerGames.All.Select(g => g.GameId).ToArray() }, ct);
+
+        Flash = "Sticker game drop chances and daily limits saved.";
+        PatchJson = FormatJson(compact);
+        EffectivePreviewJson = FormatJson(BuildEffectiveExport());
+        LoadStickerGameSettings();
+        CanEdit = true;
         return Page();
     }
 
@@ -128,6 +202,71 @@ public sealed class SettingsModel(
             ["transfer"] = JsonSerializer.SerializeToNode(tuning.GetSection<TransferOptions>(TransferOptions.SectionName)),
         };
         return new JsonObject { ["Bot"] = bot, ["Games"] = games };
+    }
+
+    private async Task<IActionResult> ReloadPageForErrorAsync(CancellationToken ct)
+    {
+        CanEdit = true;
+        await using var conn = await connections.OpenAsync(ct);
+        var row = await conn.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(
+            "SELECT payload::text FROM runtime_tuning WHERE id = 1",
+            cancellationToken: ct));
+        PatchJson = string.IsNullOrWhiteSpace(row) ? "{}" : FormatJson(row);
+        EffectivePreviewJson = FormatJson(BuildEffectiveExport());
+        return Page();
+    }
+
+    private async Task<JsonObject> LoadPatchObjectAsync(CancellationToken ct)
+    {
+        await using var conn = await connections.OpenAsync(ct);
+        var row = await conn.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(
+            "SELECT payload::text FROM runtime_tuning WHERE id = 1",
+            cancellationToken: ct));
+
+        if (string.IsNullOrWhiteSpace(row))
+            return new JsonObject();
+
+        return JsonNode.Parse(row) as JsonObject ?? new JsonObject();
+    }
+
+    private async Task SavePatchAsync(string compactJson, CancellationToken ct)
+    {
+        await using var conn = await connections.OpenAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            """
+            UPDATE runtime_tuning
+            SET payload = @payload::jsonb, updated_at = now()
+            WHERE id = 1
+            """,
+            new { payload = compactJson },
+            cancellationToken: ct));
+    }
+
+    private static void SetDropChance(JsonObject games, string gameId, double dropChance)
+    {
+        games[gameId] ??= new JsonObject();
+        var game = (JsonObject)games[gameId]!;
+        game["RedeemDropChance"] = dropChance;
+    }
+
+    private void LoadStickerGameSettings()
+    {
+        var daily = tuning.TelegramDiceDailyLimit;
+        StickerGames = new StickerGameSettingsInput
+        {
+            DiceDropChance = tuning.GetSection<DiceOptions>(DiceOptions.SectionName).RedeemDropChance,
+            DiceDailyLimit = daily.GetMaxRollsPerUserPerDay("dice"),
+            DiceCubeDropChance = tuning.GetSection<DiceCubeOptions>(DiceCubeOptions.SectionName).RedeemDropChance,
+            DiceCubeDailyLimit = daily.GetMaxRollsPerUserPerDay("dicecube"),
+            DartsDropChance = tuning.GetSection<DartsOptions>(DartsOptions.SectionName).RedeemDropChance,
+            DartsDailyLimit = daily.GetMaxRollsPerUserPerDay("darts"),
+            FootballDropChance = tuning.GetSection<FootballOptions>(FootballOptions.SectionName).RedeemDropChance,
+            FootballDailyLimit = daily.GetMaxRollsPerUserPerDay("football"),
+            BasketballDropChance = tuning.GetSection<BasketballOptions>(BasketballOptions.SectionName).RedeemDropChance,
+            BasketballDailyLimit = daily.GetMaxRollsPerUserPerDay("basketball"),
+            BowlingDropChance = tuning.GetSection<BowlingOptions>(BowlingOptions.SectionName).RedeemDropChance,
+            BowlingDailyLimit = daily.GetMaxRollsPerUserPerDay("bowling"),
+        };
     }
 
     private static string? ValidateMerged(IConfiguration configuration, JsonObject sanitized)
@@ -184,4 +323,33 @@ public sealed class SettingsModel(
 
     private string FormatJson(JsonObject obj) =>
         obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+
+    public sealed class StickerGameSettingsInput
+    {
+        public double DiceDropChance { get; set; }
+        public int DiceDailyLimit { get; set; }
+        public double DiceCubeDropChance { get; set; }
+        public int DiceCubeDailyLimit { get; set; }
+        public double DartsDropChance { get; set; }
+        public int DartsDailyLimit { get; set; }
+        public double FootballDropChance { get; set; }
+        public int FootballDailyLimit { get; set; }
+        public double BasketballDropChance { get; set; }
+        public int BasketballDailyLimit { get; set; }
+        public double BowlingDropChance { get; set; }
+        public int BowlingDailyLimit { get; set; }
+
+        public IEnumerable<(string GameId, double DropChance, int DailyLimit)> All
+        {
+            get
+            {
+                yield return ("dice", DiceDropChance, DiceDailyLimit);
+                yield return ("dicecube", DiceCubeDropChance, DiceCubeDailyLimit);
+                yield return ("darts", DartsDropChance, DartsDailyLimit);
+                yield return ("football", FootballDropChance, FootballDailyLimit);
+                yield return ("basketball", BasketballDropChance, BasketballDailyLimit);
+                yield return ("bowling", BowlingDropChance, BowlingDailyLimit);
+            }
+        }
+    }
 }

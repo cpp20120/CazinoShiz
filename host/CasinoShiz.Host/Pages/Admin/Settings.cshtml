@@ -27,6 +27,53 @@
         <textarea asp-for="PatchJson" rows="22" style="width:100%;font-family:monospace;font-size:12px;"></textarea>
         <p style="margin-top:12px"><button type="submit">Save &amp; reload</button></p>
     </form>
+
+    <form method="post" asp-page-handler="StickerGames" class="card">
+        <h3>Sticker game testing</h3>
+        <p class="muted">Drop chance uses decimal probability: <code>0.02</code> = 2%, <code>1</code> = always drop. Daily limit <code>0</code> means unlimited.</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Game</th>
+                    <th>Redeem drop chance</th>
+                    <th>Daily roll limit</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>🎰 dice</td>
+                    <td><input asp-for="StickerGames.DiceDropChance" type="number" min="0" max="1" step="0.001" /></td>
+                    <td><input asp-for="StickerGames.DiceDailyLimit" type="number" min="0" step="1" /></td>
+                </tr>
+                <tr>
+                    <td>🎲 dicecube</td>
+                    <td><input asp-for="StickerGames.DiceCubeDropChance" type="number" min="0" max="1" step="0.001" /></td>
+                    <td><input asp-for="StickerGames.DiceCubeDailyLimit" type="number" min="0" step="1" /></td>
+                </tr>
+                <tr>
+                    <td>🎯 darts</td>
+                    <td><input asp-for="StickerGames.DartsDropChance" type="number" min="0" max="1" step="0.001" /></td>
+                    <td><input asp-for="StickerGames.DartsDailyLimit" type="number" min="0" step="1" /></td>
+                </tr>
+                <tr>
+                    <td>⚽ football</td>
+                    <td><input asp-for="StickerGames.FootballDropChance" type="number" min="0" max="1" step="0.001" /></td>
+                    <td><input asp-for="StickerGames.FootballDailyLimit" type="number" min="0" step="1" /></td>
+                </tr>
+                <tr>
+                    <td>🏀 basketball</td>
+                    <td><input asp-for="StickerGames.BasketballDropChance" type="number" min="0" max="1" step="0.001" /></td>
+                    <td><input asp-for="StickerGames.BasketballDailyLimit" type="number" min="0" step="1" /></td>
+                </tr>
+                <tr>
+                    <td>🎳 bowling</td>
+                    <td><input asp-for="StickerGames.BowlingDropChance" type="number" min="0" max="1" step="0.001" /></td>
+                    <td><input asp-for="StickerGames.BowlingDailyLimit" type="number" min="0" step="1" /></td>
+                </tr>
+            </tbody>
+        </table>
+        <p style="margin-top:12px"><button type="submit">Save sticker settings</button></p>
+    </form>
 }
 else
     {
