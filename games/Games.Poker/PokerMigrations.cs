@@ -46,5 +46,15 @@ public sealed class PokerMigrations : IModuleMigrations
             CREATE INDEX ix_poker_seats_user ON poker_seats (user_id);
             CREATE INDEX ix_poker_seats_code ON poker_seats (invite_code);
             """),
+        new Migration("002_group_tables", """
+            ALTER TABLE poker_tables
+                ADD COLUMN IF NOT EXISTS chat_id BIGINT NOT NULL DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS state_message_id INTEGER NULL;
+            CREATE INDEX IF NOT EXISTS ix_poker_tables_chat_open ON poker_tables (chat_id, status);
+            """),
+        new Migration("003_seat_total_committed", """
+            ALTER TABLE poker_seats
+                ADD COLUMN IF NOT EXISTS total_committed INTEGER NOT NULL DEFAULT 0;
+            """),
     ];
 }

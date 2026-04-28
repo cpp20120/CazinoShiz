@@ -35,6 +35,7 @@ public enum PokerSeatStatus
 public sealed class PokerTable
 {
     public string InviteCode { get; set; } = "";
+    public long ChatId { get; set; }
     public long HostUserId { get; set; }
     public PokerTableStatus Status { get; set; } = PokerTableStatus.Seating;
     public PokerPhase Phase { get; set; } = PokerPhase.None;
@@ -47,6 +48,7 @@ public sealed class PokerTable
     public int CurrentSeat { get; set; }
     public int CurrentBet { get; set; }
     public int MinRaise { get; set; }
+    public int? StateMessageId { get; set; }
     public long LastActionAt { get; set; }
     public long CreatedAt { get; set; }
 }
@@ -61,6 +63,7 @@ public sealed class PokerSeat
     public string HoleCards { get; set; } = "";
     public PokerSeatStatus Status { get; set; } = PokerSeatStatus.Seated;
     public int CurrentBet { get; set; }
+    public int TotalCommitted { get; set; }
     public bool HasActedThisRound { get; set; }
     public long ChatId { get; set; }
     public int? StateMessageId { get; set; }

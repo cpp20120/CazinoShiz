@@ -17,15 +17,18 @@ namespace Games.Poker;
 public interface IPokerTableStore
 {
     Task<PokerTable?> FindAsync(string inviteCode, CancellationToken ct);
+    Task<PokerTable?> FindOpenByChatAsync(long chatId, CancellationToken ct);
     Task<bool> CodeExistsAsync(string inviteCode, CancellationToken ct);
     Task InsertAsync(PokerTable table, CancellationToken ct);
     Task UpdateAsync(PokerTable table, CancellationToken ct);
+    Task UpsertStateMessageAsync(string inviteCode, int messageId, CancellationToken ct);
     Task<IReadOnlyList<string>> ListStuckCodesAsync(long cutoffMs, CancellationToken ct);
 }
 
 public interface IPokerSeatStore
 {
     Task<PokerSeat?> FindByUserAsync(long userId, CancellationToken ct);
+    Task<PokerSeat?> FindByUserInTableAsync(long userId, string inviteCode, CancellationToken ct);
     Task<List<PokerSeat>> ListByTableAsync(string inviteCode, CancellationToken ct);
     Task<int> CountByTableAsync(string inviteCode, long exceptUserId, CancellationToken ct);
     Task<bool> AnyForUserAsync(long userId, CancellationToken ct);
@@ -37,14 +40,36 @@ public interface IPokerSeatStore
 
 public sealed class PokerTableStore(INpgsqlConnectionFactory connections) : IPokerTableStore
 {
+    private const string SelectColumns =
+        "invite_code AS InviteCode, chat_id AS ChatId, host_user_id AS HostUserId, status AS Status, phase AS Phase, " +
+        "small_blind AS SmallBlind, big_blind AS BigBlind, pot AS Pot, community_cards AS CommunityCards, " +
+        "deck_state AS DeckState, button_seat AS ButtonSeat, current_seat AS CurrentSeat, current_bet AS CurrentBet, " +
+        "min_raise AS MinRaise, state_message_id AS StateMessageId, last_action_at AS LastActionAt, created_at AS CreatedAt";
+
     public async Task<PokerTable?> FindAsync(string inviteCode, CancellationToken ct)
     {
         await using var conn = await connections.OpenAsync(ct);
         var row = await conn.QuerySingleOrDefaultAsync<TableRow>(new CommandDefinition(
-            "SELECT * FROM poker_tables WHERE invite_code = @inviteCode",
+            $"SELECT {SelectColumns} FROM poker_tables WHERE invite_code = @inviteCode",
             new { inviteCode },
             cancellationToken: ct));
         return row == null ? null : row.ToEntity();
+    }
+
+    public async Task<PokerTable?> FindOpenByChatAsync(long chatId, CancellationToken ct)
+    {
+        await using var conn = await connections.OpenAsync(ct);
+        var row = await conn.QuerySingleOrDefaultAsync<TableRow>(new CommandDefinition(
+            $"""
+            SELECT {SelectColumns}
+            FROM poker_tables
+            WHERE chat_id = @chatId AND status <> @closed
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            new { chatId, closed = (int)PokerTableStatus.Closed },
+            cancellationToken: ct));
+        return row?.ToEntity();
     }
 
     public async Task<bool> CodeExistsAsync(string inviteCode, CancellationToken ct)
@@ -61,19 +86,19 @@ public sealed class PokerTableStore(INpgsqlConnectionFactory connections) : IPok
         await using var conn = await connections.OpenAsync(ct);
         await conn.ExecuteAsync(new CommandDefinition("""
             INSERT INTO poker_tables
-                (invite_code, host_user_id, status, phase, small_blind, big_blind, pot,
+                (invite_code, chat_id, host_user_id, status, phase, small_blind, big_blind, pot,
                  community_cards, deck_state, button_seat, current_seat, current_bet,
-                 min_raise, last_action_at, created_at)
+                 min_raise, state_message_id, last_action_at, created_at)
             VALUES
-                (@InviteCode, @HostUserId, @Status, @Phase, @SmallBlind, @BigBlind, @Pot,
+                (@InviteCode, @ChatId, @HostUserId, @Status, @Phase, @SmallBlind, @BigBlind, @Pot,
                  @CommunityCards, @DeckState, @ButtonSeat, @CurrentSeat, @CurrentBet,
-                 @MinRaise, @LastActionAt, @CreatedAt)
+                 @MinRaise, @StateMessageId, @LastActionAt, @CreatedAt)
             """,
             new TableRow(
-                t.InviteCode, t.HostUserId, (int)t.Status, (int)t.Phase,
+                t.InviteCode, t.ChatId, t.HostUserId, (int)t.Status, (int)t.Phase,
                 t.SmallBlind, t.BigBlind, t.Pot, t.CommunityCards, t.DeckState,
                 t.ButtonSeat, t.CurrentSeat, t.CurrentBet, t.MinRaise,
-                t.LastActionAt, t.CreatedAt),
+                t.StateMessageId, t.LastActionAt, t.CreatedAt),
             cancellationToken: ct));
     }
 
@@ -82,6 +107,7 @@ public sealed class PokerTableStore(INpgsqlConnectionFactory connections) : IPok
         await using var conn = await connections.OpenAsync(ct);
         await conn.ExecuteAsync(new CommandDefinition("""
             UPDATE poker_tables SET
+                chat_id = @ChatId,
                 host_user_id = @HostUserId,
                 status = @Status,
                 phase = @Phase,
@@ -94,14 +120,24 @@ public sealed class PokerTableStore(INpgsqlConnectionFactory connections) : IPok
                 current_seat = @CurrentSeat,
                 current_bet = @CurrentBet,
                 min_raise = @MinRaise,
+                state_message_id = @StateMessageId,
                 last_action_at = @LastActionAt
             WHERE invite_code = @InviteCode
             """,
             new TableRow(
-                t.InviteCode, t.HostUserId, (int)t.Status, (int)t.Phase,
+                t.InviteCode, t.ChatId, t.HostUserId, (int)t.Status, (int)t.Phase,
                 t.SmallBlind, t.BigBlind, t.Pot, t.CommunityCards, t.DeckState,
                 t.ButtonSeat, t.CurrentSeat, t.CurrentBet, t.MinRaise,
-                t.LastActionAt, t.CreatedAt),
+                t.StateMessageId, t.LastActionAt, t.CreatedAt),
+            cancellationToken: ct));
+    }
+
+    public async Task UpsertStateMessageAsync(string inviteCode, int messageId, CancellationToken ct)
+    {
+        await using var conn = await connections.OpenAsync(ct);
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE poker_tables SET state_message_id = @messageId WHERE invite_code = @inviteCode",
+            new { inviteCode, messageId },
             cancellationToken: ct));
     }
 
@@ -116,14 +152,15 @@ public sealed class PokerTableStore(INpgsqlConnectionFactory connections) : IPok
     }
 
     private sealed record TableRow(
-        string InviteCode, long HostUserId, int Status, int Phase,
+        string InviteCode, long ChatId, long HostUserId, int Status, int Phase,
         int SmallBlind, int BigBlind, int Pot, string CommunityCards, string DeckState,
         int ButtonSeat, int CurrentSeat, int CurrentBet, int MinRaise,
-        long LastActionAt, long CreatedAt)
+        int? StateMessageId, long LastActionAt, long CreatedAt)
     {
         public PokerTable ToEntity() => new()
         {
             InviteCode = InviteCode,
+            ChatId = ChatId,
             HostUserId = HostUserId,
             Status = (PokerTableStatus)Status,
             Phase = (PokerPhase)Phase,
@@ -136,6 +173,7 @@ public sealed class PokerTableStore(INpgsqlConnectionFactory connections) : IPok
             CurrentSeat = CurrentSeat,
             CurrentBet = CurrentBet,
             MinRaise = MinRaise,
+            StateMessageId = StateMessageId,
             LastActionAt = LastActionAt,
             CreatedAt = CreatedAt,
         };
@@ -147,7 +185,8 @@ public sealed class PokerSeatStore(INpgsqlConnectionFactory connections) : IPoke
     private const string SelectColumns =
         "invite_code AS InviteCode, position AS Position, user_id AS UserId, display_name AS DisplayName, " +
         "stack AS Stack, hole_cards AS HoleCards, status AS Status, current_bet AS CurrentBet, " +
-        "has_acted_round AS HasActedThisRound, chat_id AS ChatId, state_message_id AS StateMessageId, " +
+        "total_committed AS TotalCommitted, has_acted_round AS HasActedThisRound, " +
+        "chat_id AS ChatId, state_message_id AS StateMessageId, " +
         "joined_at AS JoinedAt";
 
     public async Task<PokerSeat?> FindByUserAsync(long userId, CancellationToken ct)
@@ -156,6 +195,16 @@ public sealed class PokerSeatStore(INpgsqlConnectionFactory connections) : IPoke
         var row = await conn.QuerySingleOrDefaultAsync<SeatRow>(new CommandDefinition(
             $"SELECT {SelectColumns} FROM poker_seats WHERE user_id = @userId LIMIT 1",
             new { userId },
+            cancellationToken: ct));
+        return row?.ToEntity();
+    }
+
+    public async Task<PokerSeat?> FindByUserInTableAsync(long userId, string inviteCode, CancellationToken ct)
+    {
+        await using var conn = await connections.OpenAsync(ct);
+        var row = await conn.QuerySingleOrDefaultAsync<SeatRow>(new CommandDefinition(
+            $"SELECT {SelectColumns} FROM poker_seats WHERE user_id = @userId AND invite_code = @inviteCode LIMIT 1",
+            new { userId, inviteCode },
             cancellationToken: ct));
         return row?.ToEntity();
     }
@@ -194,10 +243,10 @@ public sealed class PokerSeatStore(INpgsqlConnectionFactory connections) : IPoke
         await conn.ExecuteAsync(new CommandDefinition("""
             INSERT INTO poker_seats
                 (invite_code, position, user_id, display_name, stack, hole_cards, status,
-                 current_bet, has_acted_round, chat_id, state_message_id, joined_at)
+                 current_bet, total_committed, has_acted_round, chat_id, state_message_id, joined_at)
             VALUES
                 (@InviteCode, @Position, @UserId, @DisplayName, @Stack, @HoleCards, @Status,
-                 @CurrentBet, @HasActedThisRound, @ChatId, @StateMessageId, @JoinedAt)
+                 @CurrentBet, @TotalCommitted, @HasActedThisRound, @ChatId, @StateMessageId, @JoinedAt)
             """,
             SeatRow.From(s),
             cancellationToken: ct));
@@ -213,6 +262,7 @@ public sealed class PokerSeatStore(INpgsqlConnectionFactory connections) : IPoke
                 hole_cards = @HoleCards,
                 status = @Status,
                 current_bet = @CurrentBet,
+                total_committed = @TotalCommitted,
                 has_acted_round = @HasActedThisRound,
                 chat_id = @ChatId,
                 state_message_id = @StateMessageId
@@ -243,12 +293,12 @@ public sealed class PokerSeatStore(INpgsqlConnectionFactory connections) : IPoke
     private sealed record SeatRow(
         string InviteCode, int Position, long UserId, string DisplayName,
         int Stack, string HoleCards, int Status, int CurrentBet,
-        bool HasActedThisRound, long ChatId, int? StateMessageId, long JoinedAt)
+        int TotalCommitted, bool HasActedThisRound, long ChatId, int? StateMessageId, long JoinedAt)
     {
         public static SeatRow From(PokerSeat s) => new(
             s.InviteCode, s.Position, s.UserId, s.DisplayName,
             s.Stack, s.HoleCards, (int)s.Status, s.CurrentBet,
-            s.HasActedThisRound, s.ChatId, s.StateMessageId, s.JoinedAt);
+            s.TotalCommitted, s.HasActedThisRound, s.ChatId, s.StateMessageId, s.JoinedAt);
 
         public PokerSeat ToEntity() => new()
         {
@@ -260,6 +310,7 @@ public sealed class PokerSeatStore(INpgsqlConnectionFactory connections) : IPoke
             HoleCards = HoleCards,
             Status = (PokerSeatStatus)Status,
             CurrentBet = CurrentBet,
+            TotalCommitted = TotalCommitted,
             HasActedThisRound = HasActedThisRound,
             ChatId = ChatId,
             StateMessageId = StateMessageId,

@@ -1,10 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // PokerHandler — /poker + poker:* dispatcher.
 //
-// Port of src/CasinoShiz.Core/Services/Handlers/PokerHandler.cs. Only works in
-// private chats (the game broadcasts per-seat state privately). Broadcasts go
-// to every seat's stored ChatId; EditMessageText is tried first, SendMessage
-// is the fallback. Raise menu shows min / 2x / pot / max options (capped).
+// Port of src/CasinoShiz.Core/Services/Handlers/PokerHandler.cs. Poker tables
+// are scoped to Telegram groups; the group gets one public board message while
+// hole cards are revealed only through per-user callback alerts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
@@ -40,16 +39,26 @@ public sealed partial class PokerHandler(
         var msg = ctx.Update.Message;
         if (msg?.Text == null) return;
 
-        if (msg.Chat.Type != ChatType.Private)
+        if (msg.Chat.Type is not (ChatType.Group or ChatType.Supergroup))
         {
-            await ctx.Bot.SendMessage(msg.Chat.Id, Loc("err.only_private"),
+            await ctx.Bot.SendMessage(msg.Chat.Id, Loc("err.only_group"),
                 replyParameters: new ReplyParameters { MessageId = msg.MessageId },
                 cancellationToken: ctx.Ct);
             return;
         }
 
         var command = PokerCommandParser.ParseText(msg.Text);
-        await DispatchTextAsync(ctx, msg, command);
+        try
+        {
+            await DispatchTextAsync(ctx, msg, command);
+        }
+        catch (Exception ex)
+        {
+            LogPokerCommandFailed(msg.From?.Id ?? 0, ex);
+            await ctx.Bot.SendMessage(msg.Chat.Id, Loc("err.temporary_failure"),
+                replyParameters: new ReplyParameters { MessageId = msg.MessageId },
+                cancellationToken: ctx.Ct);
+        }
     }
 
     private async Task DispatchTextAsync(UpdateContext ctx, Message msg, PokerCommand command)
@@ -66,6 +75,9 @@ public sealed partial class PokerHandler(
                 break;
             case PokerCommand.Join j:
                 await ExecuteJoin(ctx, userId, displayName, chatId, j.Code);
+                break;
+            case PokerCommand.JoinCurrent:
+                await ExecuteJoin(ctx, userId, displayName, chatId, "");
                 break;
             case PokerCommand.JoinMissingCode:
                 await ctx.Bot.SendMessage(chatId, Loc("err.join_missing_code"), cancellationToken: ctx.Ct);
@@ -94,23 +106,82 @@ public sealed partial class PokerHandler(
 
     private async Task DispatchCallbackAsync(UpdateContext ctx, CallbackQuery cbq)
     {
-        try { await ctx.Bot.AnswerCallbackQuery(cbq.Id, cancellationToken: ctx.Ct); } catch { /* best-effort */ }
-
         var command = PokerCommandParser.ParseCallback(cbq.Data);
-        if (command == null) return;
+        if (command == null)
+        {
+            await AnswerCallbackAsync(ctx, cbq);
+            return;
+        }
+
+        if (cbq.Message?.Chat.Type is not (ChatType.Group or ChatType.Supergroup))
+        {
+            await AnswerCallbackAsync(ctx, cbq, Loc("err.only_group"), true);
+            return;
+        }
 
         var userId = cbq.From.Id;
         var chatId = cbq.Message?.Chat.Id ?? userId;
+        var displayName = cbq.From.Username ?? cbq.From.FirstName ?? $"User ID: {userId}";
 
         switch (command)
         {
+            case PokerCommand.JoinCurrent:
+                try
+                {
+                    await ExecuteJoin(ctx, userId, displayName, chatId, "");
+                    await AnswerCallbackAsync(ctx, cbq);
+                }
+                catch (Exception ex) { await SendCallbackFailureAsync(ctx, cbq, userId, ex); }
+                break;
+            case PokerCommand.Start:
+                try
+                {
+                    await ExecuteStart(ctx, userId, chatId);
+                    await AnswerCallbackAsync(ctx, cbq);
+                }
+                catch (Exception ex) { await SendCallbackFailureAsync(ctx, cbq, userId, ex); }
+                break;
             case PokerCommand.PlayerAction pa:
-                await ApplyAction(ctx, userId, chatId, pa.Action, pa.Amount);
+                try
+                {
+                    await ApplyAction(ctx, userId, chatId, pa.Action, pa.Amount);
+                    await AnswerCallbackAsync(ctx, cbq);
+                }
+                catch (Exception ex) { await SendCallbackFailureAsync(ctx, cbq, userId, ex); }
                 break;
             case PokerCommand.RaiseMenu:
-                await ShowRaiseMenu(ctx, userId, chatId);
+                try
+                {
+                    await ShowRaiseMenu(ctx, userId, chatId);
+                    await AnswerCallbackAsync(ctx, cbq);
+                }
+                catch (Exception ex) { await SendCallbackFailureAsync(ctx, cbq, userId, ex); }
+                break;
+            case PokerCommand.ShowCards:
+                try { await ShowCardsAsync(ctx, cbq, userId, chatId); }
+                catch (Exception ex) { await SendCallbackFailureAsync(ctx, cbq, userId, ex); }
                 break;
         }
+    }
+
+    private async Task AnswerCallbackAsync(UpdateContext ctx, CallbackQuery cbq, string? text = null, bool showAlert = false)
+    {
+        try
+        {
+            await ctx.Bot.AnswerCallbackQuery(cbq.Id, text, showAlert: showAlert, cancellationToken: ctx.Ct);
+        }
+        catch { /* best-effort */ }
+    }
+
+    private async Task SendCallbackFailureAsync(UpdateContext ctx, CallbackQuery cbq, long userId, Exception ex)
+    {
+        LogPokerCommandFailed(userId, ex);
+        try
+        {
+            await ctx.Bot.AnswerCallbackQuery(cbq.Id, Loc("err.temporary_failure"), showAlert: true,
+                cancellationToken: ctx.Ct);
+        }
+        catch { /* best-effort */ }
     }
 
     private async Task ExecuteCreate(UpdateContext ctx, long userId, string displayName, long chatId)
@@ -119,27 +190,30 @@ public sealed partial class PokerHandler(
         if (r.Error != PokerError.None) { await SendError(ctx, chatId, r.Error); return; }
         await ctx.Bot.SendMessage(chatId, string.Format(Loc("created"), r.InviteCode, r.BuyIn),
             parseMode: ParseMode.Html, cancellationToken: ctx.Ct);
+        var (snap, _) = await service.FindMyTableAsync(userId, chatId, ctx.Ct);
+        if (snap != null) await BroadcastAsync(ctx, snap);
     }
 
     private async Task ExecuteJoin(UpdateContext ctx, long userId, string displayName, long chatId, string code)
     {
         var r = await service.JoinTableAsync(userId, displayName, chatId, code, ctx.Ct);
         if (r.Error != PokerError.None) { await SendError(ctx, chatId, r.Error); return; }
-        await ctx.Bot.SendMessage(chatId, string.Format(Loc("joined"), code.ToUpperInvariant(), r.Seated, r.Max),
+        var joinedCode = r.Snapshot?.Table.InviteCode ?? code.ToUpperInvariant();
+        await ctx.Bot.SendMessage(chatId, string.Format(Loc("joined"), joinedCode, r.Seated, r.Max),
             parseMode: ParseMode.Html, cancellationToken: ctx.Ct);
         if (r.Snapshot != null) await BroadcastAsync(ctx, r.Snapshot);
     }
 
     private async Task ExecuteStart(UpdateContext ctx, long userId, long chatId)
     {
-        var r = await service.StartHandAsync(userId, ctx.Ct);
+        var r = await service.StartHandAsync(userId, chatId, ctx.Ct);
         if (r.Error != PokerError.None) { await SendError(ctx, chatId, r.Error); return; }
         if (r.Snapshot != null) await BroadcastAsync(ctx, r.Snapshot);
     }
 
     private async Task ExecuteLeave(UpdateContext ctx, long userId, long chatId)
     {
-        var r = await service.LeaveTableAsync(userId, ctx.Ct);
+        var r = await service.LeaveTableAsync(userId, chatId, ctx.Ct);
         if (r.Error != PokerError.None) { await SendError(ctx, chatId, r.Error); return; }
         var leftText = r.TableClosed
             ? $"{Loc("left")}\n{Loc("table_closed")}"
@@ -150,14 +224,14 @@ public sealed partial class PokerHandler(
 
     private async Task ExecuteStatus(UpdateContext ctx, long userId, long chatId)
     {
-        var (snap, mySeat) = await service.FindMyTableAsync(userId, ctx.Ct);
+        var (snap, mySeat) = await service.FindMyTableAsync(userId, chatId, ctx.Ct);
         if (snap == null || mySeat == null) { await SendError(ctx, chatId, PokerError.NoTable); return; }
-        await SendOrEditStateAsync(ctx, snap, mySeat);
+        await SendOrEditStateAsync(ctx, snap);
     }
 
     private async Task ApplyAction(UpdateContext ctx, long userId, long chatId, string verb, int amount)
     {
-        var r = await service.ApplyPlayerActionAsync(userId, verb, amount, ctx.Ct);
+        var r = await service.ApplyPlayerActionAsync(userId, chatId, verb, amount, ctx.Ct);
         if (r.Error != PokerError.None) { await SendError(ctx, chatId, r.Error); return; }
         if (r.Snapshot != null) await BroadcastAsync(ctx, r.Snapshot, r.Showdown);
     }
@@ -169,17 +243,14 @@ public sealed partial class PokerHandler(
         {
             string key = r.AutoKind == AutoAction.Fold ? "auto.fold" : "auto.check";
             string msg = string.Format(Loc(key), r.AutoActorName);
-            foreach (var s in r.Snapshot.Seats.Where(s => s.ChatId != 0))
-            {
-                try { await bot.SendMessage(s.ChatId, msg, cancellationToken: ct); } catch { /* seat may have stale chat */ }
-            }
+            try { await bot.SendMessage(r.Snapshot.Table.ChatId, msg, cancellationToken: ct); } catch { /* group may be stale */ }
         }
         await BroadcastUsingBotAsync(bot, r.Snapshot, ct, r.Showdown);
     }
 
     private async Task ShowRaiseMenu(UpdateContext ctx, long userId, long chatId)
     {
-        var (snap, seat) = await service.FindMyTableAsync(userId, ctx.Ct);
+        var (snap, seat) = await service.FindMyTableAsync(userId, chatId, ctx.Ct);
         if (snap == null || seat == null) return;
         var table = snap.Table;
 
@@ -207,6 +278,21 @@ public sealed partial class PokerHandler(
             parseMode: ParseMode.Html, replyMarkup: markup, cancellationToken: ctx.Ct);
     }
 
+    private async Task ShowCardsAsync(UpdateContext ctx, CallbackQuery cbq, long userId, long chatId)
+    {
+        var (snap, seat) = await service.FindMyTableAsync(userId, chatId, ctx.Ct);
+        if (snap == null || seat == null)
+        {
+            await AnswerCallbackAsync(ctx, cbq, Loc("err.no_table"), true);
+            return;
+        }
+
+        var text = string.IsNullOrWhiteSpace(seat.HoleCards)
+            ? Loc("cards.none")
+            : string.Format(Loc("cards.yours"), PokerStateRenderer.RenderCards(seat.HoleCards));
+        await AnswerCallbackAsync(ctx, cbq, text, true);
+    }
+
     private Task BroadcastAsync(UpdateContext ctx, TableSnapshot snapshot, List<ShowdownEntry>? showdown = null) =>
         BroadcastUsingBotAsync(ctx.Bot, snapshot, ctx.Ct, showdown);
 
@@ -218,30 +304,26 @@ public sealed partial class PokerHandler(
                 snapshot.Table,
                 showdown.Select(e => (e.Seat, e.Rank, e.Won, e.HoleCards)),
                 localizer);
-            foreach (var s in snapshot.Seats.Where(s => s.ChatId != 0))
-            {
-                try { await bot.SendMessage(s.ChatId, text, parseMode: ParseMode.Html, cancellationToken: ct); }
-                catch (Exception ex) { LogPokerShowdownSendFailed(s.UserId, ex); }
-            }
+            try { await bot.SendMessage(snapshot.Table.ChatId, text, parseMode: ParseMode.Html, cancellationToken: ct); }
+            catch (Exception ex) { LogPokerShowdownSendFailed(snapshot.Table.ChatId, ex); }
         }
 
-        foreach (var seat in snapshot.Seats.Where(s => s.ChatId != 0))
-            await SendOrEditStateUsingBotAsync(bot, snapshot, seat, ct);
+        await SendOrEditStateUsingBotAsync(bot, snapshot, ct);
     }
 
-    private Task SendOrEditStateAsync(UpdateContext ctx, TableSnapshot snapshot, PokerSeat viewer) =>
-        SendOrEditStateUsingBotAsync(ctx.Bot, snapshot, viewer, ctx.Ct);
+    private Task SendOrEditStateAsync(UpdateContext ctx, TableSnapshot snapshot) =>
+        SendOrEditStateUsingBotAsync(ctx.Bot, snapshot, ctx.Ct);
 
-    private async Task SendOrEditStateUsingBotAsync(ITelegramBotClient bot, TableSnapshot snapshot, PokerSeat viewer, CancellationToken ct)
+    private async Task SendOrEditStateUsingBotAsync(ITelegramBotClient bot, TableSnapshot snapshot, CancellationToken ct)
     {
-        string text = PokerStateRenderer.RenderTable(snapshot.Table, snapshot.Seats, viewer.UserId, localizer);
-        InlineKeyboardMarkup? markup = BuildActionMarkup(snapshot.Table, viewer);
+        string text = PokerStateRenderer.RenderTable(snapshot.Table, snapshot.Seats, null, localizer);
+        InlineKeyboardMarkup? markup = BuildGroupMarkup(snapshot);
 
-        if (viewer.StateMessageId.HasValue)
+        if (snapshot.Table.StateMessageId.HasValue)
         {
             try
             {
-                await bot.EditMessageText(viewer.ChatId, viewer.StateMessageId.Value, text,
+                await bot.EditMessageText(snapshot.Table.ChatId, snapshot.Table.StateMessageId.Value, text,
                     parseMode: ParseMode.Html, replyMarkup: markup, cancellationToken: ct);
                 return;
             }
@@ -251,20 +333,43 @@ public sealed partial class PokerHandler(
 
         try
         {
-            var sent = await bot.SendMessage(viewer.ChatId, text,
+            var sent = await bot.SendMessage(snapshot.Table.ChatId, text,
                 parseMode: ParseMode.Html, replyMarkup: markup, cancellationToken: ct);
-            await service.SetStateMessageIdAsync(viewer.UserId, sent.MessageId, ct);
+            await service.SetTableStateMessageIdAsync(snapshot.Table.InviteCode, sent.MessageId, ct);
         }
         catch (Exception ex)
         {
-            LogPokerStateSendFailed(viewer.UserId, ex);
+            LogPokerStateSendFailed(snapshot.Table.ChatId, ex);
         }
+    }
+
+    private InlineKeyboardMarkup? BuildGroupMarkup(TableSnapshot snapshot)
+    {
+        var table = snapshot.Table;
+        if (table.Status is PokerTableStatus.Seating or PokerTableStatus.HandComplete)
+        {
+            return new InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton.WithCallbackData(Loc("btn.join"), "poker:join"),
+                    InlineKeyboardButton.WithCallbackData(Loc("btn.start"), "poker:start"),
+                ],
+            ]);
+        }
+
+        var current = snapshot.Seats.FirstOrDefault(s => s.Position == table.CurrentSeat);
+        if (current == null)
+        {
+            return new InlineKeyboardMarkup([
+                [InlineKeyboardButton.WithCallbackData(Loc("btn.cards"), "poker:cards")],
+            ]);
+        }
+
+        return BuildActionMarkup(table, current);
     }
 
     private InlineKeyboardMarkup? BuildActionMarkup(PokerTable table, PokerSeat viewer)
     {
         if (table.Status != PokerTableStatus.HandActive) return null;
-        if (viewer.Position != table.CurrentSeat) return null;
         if (viewer.Status != PokerSeatStatus.Seated) return null;
 
         int toCall = Math.Max(0, table.CurrentBet - viewer.CurrentBet);
@@ -280,7 +385,11 @@ public sealed partial class PokerHandler(
             InlineKeyboardButton.WithCallbackData(Loc("btn.raise"), "poker:raise_menu"),
             InlineKeyboardButton.WithCallbackData(Loc("btn.allin"), "poker:allin"),
         };
-        return new InlineKeyboardMarkup([row1.ToArray(), row2.ToArray()]);
+        var row3 = new[]
+        {
+            InlineKeyboardButton.WithCallbackData(Loc("btn.cards"), "poker:cards"),
+        };
+        return new InlineKeyboardMarkup([row1.ToArray(), row2.ToArray(), row3]);
     }
 
     private async Task SendError(UpdateContext ctx, long chatId, PokerError error)
@@ -299,6 +408,7 @@ public sealed partial class PokerHandler(
             PokerError.CannotCheck => Loc("err.cannot_check"),
             PokerError.RaiseTooSmall => Loc("err.raise_too_small"),
             PokerError.RaiseTooLarge => Loc("err.raise_too_large"),
+            PokerError.TableAlreadyExists => Loc("err.table_already_exists"),
             _ => Loc("err.invalid_action"),
         };
         await ctx.Bot.SendMessage(chatId, text, parseMode: ParseMode.Html, cancellationToken: ctx.Ct);
@@ -311,4 +421,7 @@ public sealed partial class PokerHandler(
 
     [LoggerMessage(EventId = 2502, Level = LogLevel.Debug, Message = "poker.state.send_failed user={U}")]
     partial void LogPokerStateSendFailed(long u, Exception exception);
+
+    [LoggerMessage(EventId = 2503, Level = LogLevel.Warning, Message = "poker.command.failed user={UserId}")]
+    partial void LogPokerCommandFailed(long userId, Exception exception);
 }

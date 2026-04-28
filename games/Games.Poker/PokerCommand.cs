@@ -6,6 +6,7 @@ public abstract record PokerCommand
     public sealed record Unknown(string Action) : PokerCommand;
     public sealed record Create : PokerCommand;
     public sealed record Join(string Code) : PokerCommand;
+    public sealed record JoinCurrent : PokerCommand;
     public sealed record JoinMissingCode : PokerCommand;
     public sealed record Start : PokerCommand;
     public sealed record Leave : PokerCommand;
@@ -15,6 +16,7 @@ public abstract record PokerCommand
 
     public sealed record PlayerAction(string Action, int Amount) : PokerCommand;
     public sealed record RaiseMenu : PokerCommand;
+    public sealed record ShowCards : PokerCommand;
 }
 
 public static class PokerCommandParser
@@ -30,7 +32,7 @@ public static class PokerCommandParser
             "create" => new PokerCommand.Create(),
             "join" => parts.Length > 2
                 ? new PokerCommand.Join(parts[2].ToUpperInvariant())
-                : new PokerCommand.JoinMissingCode(),
+                : new PokerCommand.JoinCurrent(),
             "start" => new PokerCommand.Start(),
             "leave" => new PokerCommand.Leave(),
             "status" => new PokerCommand.Status(),
@@ -53,6 +55,9 @@ public static class PokerCommandParser
             "raise" when tokens.Length > 2 && int.TryParse(tokens[2], out int amt)
                 => new PokerCommand.PlayerAction("raise", amt),
             "raise_menu" => new PokerCommand.RaiseMenu(),
+            "join" => new PokerCommand.JoinCurrent(),
+            "start" => new PokerCommand.Start(),
+            "cards" => new PokerCommand.ShowCards(),
             _ => null,
         };
     }

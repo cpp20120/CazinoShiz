@@ -28,11 +28,13 @@ public class PokerDomainApplyTests
     private static PokerSeat MakeSeat(int pos, int stack = 500, int currentBet = 0,
         PokerSeatStatus status = PokerSeatStatus.Seated,
         bool hasActed = false,
-        string holeCards = "") => new()
+        string holeCards = "",
+        int totalCommitted = 0) => new()
     {
         Position = pos,
         Stack = stack,
         CurrentBet = currentBet,
+        TotalCommitted = totalCommitted,
         Status = status,
         HasActedThisRound = hasActed,
         HoleCards = holeCards,
@@ -192,6 +194,15 @@ public class PokerDomainApplyTests
         var seat = MakeSeat(1, stack: 200, currentBet: 0);
         PokerDomain.Apply(table, seat, new PokerAction(PokerActionKind.Call));
         Assert.Equal(40, table.Pot);
+    }
+
+    [Fact]
+    public void Apply_Call_TracksTotalCommitted()
+    {
+        var table = MakeTable(currentBet: 20, pot: 20);
+        var seat = MakeSeat(1, stack: 200, currentBet: 0, totalCommitted: 10);
+        PokerDomain.Apply(table, seat, new PokerAction(PokerActionKind.Call));
+        Assert.Equal(30, seat.TotalCommitted);
     }
 
     [Fact]
@@ -406,6 +417,26 @@ public class PokerDomainApplyTests
 
         Assert.True(s1.Stack > 0, "Full house should beat trips");
         Assert.Equal(0, s2.Stack);
+    }
+
+    [Fact]
+    public void ResolveAfterAction_HandEndedShowdown_SettlesSidePots()
+    {
+        var table = MakeTable(pot: 300, phase: PokerPhase.River, currentBet: 0);
+        table.CommunityCards = "2C 7D 9H JS QC";
+        var shortWinner = MakeSeat(1, stack: 0, currentBet: 0, hasActed: true,
+            status: PokerSeatStatus.AllIn, holeCards: "AS AD", totalCommitted: 50);
+        var bigStackWinner = MakeSeat(2, stack: 0, currentBet: 0, hasActed: true,
+            status: PokerSeatStatus.Seated, holeCards: "KH KD", totalCommitted: 125);
+        var caller = MakeSeat(3, stack: 0, currentBet: 0, hasActed: true,
+            status: PokerSeatStatus.Seated, holeCards: "3S 4D", totalCommitted: 125);
+        var seats = new List<PokerSeat> { shortWinner, bigStackWinner, caller };
+
+        PokerDomain.ResolveAfterAction(table, seats);
+
+        Assert.Equal(150, shortWinner.Stack);
+        Assert.Equal(150, bigStackWinner.Stack);
+        Assert.Equal(0, caller.Stack);
     }
 
     [Fact]

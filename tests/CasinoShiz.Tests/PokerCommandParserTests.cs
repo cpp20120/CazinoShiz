@@ -38,9 +38,9 @@ public class PokerCommandParserTests
     }
 
     [Fact]
-    public void ParseText_Join_MissingCode_ReturnsMissingCode()
+    public void ParseText_Join_MissingCode_ReturnsJoinCurrent()
     {
-        Assert.IsType<PokerCommand.JoinMissingCode>(PokerCommandParser.ParseText("/poker join"));
+        Assert.IsType<PokerCommand.JoinCurrent>(PokerCommandParser.ParseText("/poker join"));
     }
 
     [Fact]
@@ -132,6 +132,16 @@ public class PokerCommandParserTests
     {
         var cmd = PokerCommandParser.ParseCallback("poker:raise_menu");
         Assert.IsType<PokerCommand.RaiseMenu>(cmd);
+    }
+
+    [Theory]
+    [InlineData("poker:join", typeof(PokerCommand.JoinCurrent))]
+    [InlineData("poker:start", typeof(PokerCommand.Start))]
+    [InlineData("poker:cards", typeof(PokerCommand.ShowCards))]
+    public void ParseCallback_TableButtons_ReturnCommands(string data, Type expectedType)
+    {
+        var cmd = PokerCommandParser.ParseCallback(data);
+        Assert.IsType(expectedType, cmd);
     }
 
     [Fact]

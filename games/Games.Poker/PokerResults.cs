@@ -18,6 +18,7 @@ public enum PokerError
     RaiseTooSmall,
     RaiseTooLarge,
     InvalidAction,
+    TableAlreadyExists,
 }
 
 public enum HandTransition

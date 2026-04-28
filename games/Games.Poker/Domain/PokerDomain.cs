@@ -10,6 +10,7 @@ public static class PokerDomain
         {
             s.HoleCards = "";
             s.CurrentBet = 0;
+            s.TotalCommitted = 0;
             s.HasActedThisRound = false;
             s.Status = s.Stack > 0 ? PokerSeatStatus.Seated : PokerSeatStatus.SittingOut;
         }
@@ -91,6 +92,7 @@ public static class PokerDomain
                 var toCall = Math.Min(seat.Stack, table.CurrentBet - seat.CurrentBet);
                 seat.Stack -= toCall;
                 seat.CurrentBet += toCall;
+                seat.TotalCommitted += toCall;
                 table.Pot += toCall;
                 if (seat.Stack == 0) seat.Status = PokerSeatStatus.AllIn;
                 break;
@@ -99,6 +101,7 @@ public static class PokerDomain
             {
                 var put = seat.Stack;
                 seat.CurrentBet += put;
+                seat.TotalCommitted += put;
                 table.Pot += put;
                 seat.Stack = 0;
                 seat.Status = PokerSeatStatus.AllIn;
@@ -115,6 +118,7 @@ public static class PokerDomain
                 var put = action.Amount - seat.CurrentBet;
                 seat.Stack -= put;
                 table.Pot += put;
+                seat.TotalCommitted += put;
                 var raiseAmt = action.Amount - table.CurrentBet;
                 seat.CurrentBet = action.Amount;
                 table.MinRaise = Math.Max(table.MinRaise, raiseAmt);
@@ -184,6 +188,7 @@ public static class PokerDomain
         var posted = Math.Min(seat.Stack, amount);
         seat.Stack -= posted;
         seat.CurrentBet += posted;
+        seat.TotalCommitted += posted;
         table.Pot += posted;
         if (seat.Stack == 0) seat.Status = PokerSeatStatus.AllIn;
     }
@@ -311,29 +316,72 @@ public static class PokerDomain
                 .OrderByDescending(x => x.rank, Comparer<HandRank>.Default)
                 .ToList();
 
-            var best = ranked[0].rank;
-            var winners = ranked.Where(x => x.rank.CompareTo(best) == 0).ToList();
-            var share = table.Pot / winners.Count;
-            var remainder = table.Pot - share * winners.Count;
+            var wonByUser = ranked.ToDictionary(x => x.seat.UserId, _ => 0);
+            var committedLevels = seats
+                .Where(s => s.TotalCommitted > 0)
+                .Select(s => s.TotalCommitted)
+                .Distinct()
+                .Order()
+                .ToList();
+
+            if (committedLevels.Count == 0)
+                committedLevels.Add(table.Pot);
+
+            var awarded = 0;
+            var previousLevel = 0;
+            foreach (var level in committedLevels)
+            {
+                var potSlice = seats.Sum(s => Math.Max(0, Math.Min(s.TotalCommitted, level) - previousLevel));
+                if (potSlice <= 0) continue;
+
+                var eligible = ranked
+                    .Where(x => committedLevels.Count == 1 && x.seat.TotalCommitted == 0 || x.seat.TotalCommitted >= level)
+                    .ToList();
+                if (eligible.Count == 0) eligible = ranked;
+
+                var best = eligible[0].rank;
+                var winners = eligible.Where(x => x.rank.CompareTo(best) == 0).ToList();
+                var share = potSlice / winners.Count;
+                var remainder = potSlice - share * winners.Count;
+
+                foreach (var winner in winners)
+                {
+                    var won = share + (remainder > 0 ? 1 : 0);
+                    if (remainder > 0) remainder--;
+                    winner.seat.Stack += won;
+                    wonByUser[winner.seat.UserId] += won;
+                    awarded += won;
+                }
+
+                previousLevel = level;
+            }
+
+            if (table.Pot > awarded)
+            {
+                var best = ranked[0].rank;
+                var winners = ranked.Where(x => x.rank.CompareTo(best) == 0).ToList();
+                var remainderPot = table.Pot - awarded;
+                var share = remainderPot / winners.Count;
+                var remainder = remainderPot - share * winners.Count;
+                foreach (var winner in winners)
+                {
+                    var won = share + (remainder > 0 ? 1 : 0);
+                    if (remainder > 0) remainder--;
+                    winner.seat.Stack += won;
+                    wonByUser[winner.seat.UserId] += won;
+                }
+            }
 
             foreach (var (s, r) in ranked)
-            {
-                var won = 0;
-                if (winners.Any(w => w.seat.UserId == s.UserId))
-                {
-                    won = share + (remainder > 0 ? 1 : 0);
-                    if (remainder > 0) remainder--;
-                    s.Stack += won;
-                }
-                results.Add(new ShowdownEntry(s, r, won, s.HoleCards));
-            }
+                results.Add(new ShowdownEntry(s, r, wonByUser[s.UserId], s.HoleCards));
+
             table.Pot = 0;
         }
 
         table.Status = PokerTableStatus.HandComplete;
         table.Phase = PokerPhase.None;
 
-        foreach (var s in seats) { s.HoleCards = ""; s.CurrentBet = 0; s.HasActedThisRound = false; }
+        foreach (var s in seats) { s.HoleCards = ""; s.CurrentBet = 0; s.TotalCommitted = 0; s.HasActedThisRound = false; }
         return results;
     }
 }

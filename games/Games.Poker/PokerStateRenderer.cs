@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 using System.Text;
+using System.Net;
 using BotFramework.Host;
 using Games.Poker.Domain;
 
@@ -45,7 +46,7 @@ public static class PokerStateRenderer
         return rendered.Count == 0 ? "—" : string.Join(" ", rendered);
     }
 
-    public static string RenderTable(PokerTable table, IList<PokerSeat> seats, long viewerUserId, ILocalizer localizer)
+    public static string RenderTable(PokerTable table, IList<PokerSeat> seats, long? viewerUserId, ILocalizer localizer)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"🃏 <b>{string.Format(localizer.Get("poker", "state.header"), table.InviteCode)}</b> · {PhaseName(table.Phase, localizer)}");
@@ -77,11 +78,12 @@ public static class PokerStateRenderer
                 _ => "",
             };
             var bet = s.CurrentBet > 0 ? $" · {string.Format(localizer.Get("poker", "seat.bet"), s.CurrentBet)}" : "";
-            var you = s.UserId == viewerUserId ? $" ({localizer.Get("poker", "seat.you")})" : "";
-            sb.AppendLine($"{marker} {s.DisplayName}{you} — {s.Stack}{bet}{status}");
+            var you = viewerUserId.HasValue && s.UserId == viewerUserId.Value ? $" ({localizer.Get("poker", "seat.you")})" : "";
+            sb.AppendLine($"{marker} {WebUtility.HtmlEncode(s.DisplayName)}{you} — {s.Stack}{bet}{status}");
         }
 
-        var me = sorted.FirstOrDefault(s => s.UserId == viewerUserId);
+        if (!viewerUserId.HasValue) return sb.ToString().TrimEnd();
+        var me = sorted.FirstOrDefault(s => s.UserId == viewerUserId.Value);
         if (me == null || string.IsNullOrEmpty(me.HoleCards)) return sb.ToString().TrimEnd();
         sb.AppendLine();
         sb.AppendLine(string.Format(localizer.Get("poker", "state.your_cards"), RenderCards(me.HoleCards)));
@@ -109,7 +111,7 @@ public static class PokerStateRenderer
         foreach (var (seat, rank, won, holeCards) in results)
         {
             var cards = string.IsNullOrEmpty(holeCards) ? "—" : RenderCards(holeCards);
-            var line = $"{seat.DisplayName} — <b>{cards}</b>";
+            var line = $"{WebUtility.HtmlEncode(seat.DisplayName)} — <b>{cards}</b>";
             if (rank.HasValue) line += $" · {HandEvaluator.CategoryNameRu(rank.Value.Category)}";
             if (won > 0) line += $" · <b>+{won}</b>";
             sb.AppendLine(line);

@@ -9,16 +9,13 @@
 //   • Domain events (PokerHandStarted / PokerHandEnded) are published on the
 //     IDomainEventBus for cross-module subscribers.
 //
-// Concurrency: per-table SemaphoreSlim gates (keyed by invite code) plus
-// PostgreSQL advisory locks with the same keys. The local gate keeps one
-// process efficient; advisory lock extends the protection across instances.
-// Table-creating operations gate by "u:{userId}" until a code is assigned.
+// Concurrency: per-table SemaphoreSlim gates keyed by invite code. Table-creating
+// operations gate by "u:{userId}" until a code is assigned.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using System.Collections.Concurrent;
 using BotFramework.Host;
 using BotFramework.Sdk;
-using Dapper;
 using Games.Poker.Domain;
 using Microsoft.Extensions.Options;
 using static Games.Poker.PokerResultHelpers;
@@ -27,14 +24,16 @@ namespace Games.Poker;
 
 public interface IPokerService
 {
-    Task<(TableSnapshot? Snapshot, PokerSeat? MySeat)> FindMyTableAsync(long userId, CancellationToken ct);
+    Task<(TableSnapshot? Snapshot, PokerSeat? MySeat)> FindMyTableAsync(
+        long userId, long currentChatId, CancellationToken ct);
     Task<CreateResult> CreateTableAsync(long userId, string displayName, long chatId, CancellationToken ct);
     Task<JoinResult> JoinTableAsync(long userId, string displayName, long chatId, string code, CancellationToken ct);
-    Task<StartResult> StartHandAsync(long userId, CancellationToken ct);
-    Task<ActionResult> ApplyPlayerActionAsync(long userId, string verb, int amount, CancellationToken ct);
+    Task<StartResult> StartHandAsync(long userId, long currentChatId, CancellationToken ct);
+    Task<ActionResult> ApplyPlayerActionAsync(
+        long userId, long currentChatId, string verb, int amount, CancellationToken ct);
     Task<ActionResult?> RunAutoActionAsync(string inviteCode, CancellationToken ct);
-    Task<LeaveResult> LeaveTableAsync(long userId, CancellationToken ct);
-    Task SetStateMessageIdAsync(long userId, int messageId, CancellationToken ct);
+    Task<LeaveResult> LeaveTableAsync(long userId, long currentChatId, CancellationToken ct);
+    Task SetTableStateMessageIdAsync(string inviteCode, int messageId, CancellationToken ct);
     Task<IReadOnlyList<string>> ListStuckCodesAsync(long cutoffMs, CancellationToken ct);
 }
 
@@ -42,7 +41,6 @@ public sealed partial class PokerService(
     IPokerTableStore tables,
     IPokerSeatStore seats,
     IEconomicsService economics,
-    INpgsqlConnectionFactory connections,
     IAnalyticsService analytics,
     IDomainEventBus events,
     IOptions<PokerOptions> options,
@@ -73,36 +71,33 @@ public sealed partial class PokerService(
 
     private readonly PokerOptions _opts = options.Value;
 
-    public async Task<(TableSnapshot? Snapshot, PokerSeat? MySeat)> FindMyTableAsync(long userId, CancellationToken ct)
+    public async Task<(TableSnapshot? Snapshot, PokerSeat? MySeat)> FindMyTableAsync(
+        long userId, long currentChatId, CancellationToken ct)
     {
-        var seat = await seats.FindByUserAsync(userId, ct);
-        if (seat == null) return (null, null);
-        var table = await tables.FindAsync(seat.InviteCode, ct);
+        var table = await tables.FindOpenByChatAsync(currentChatId, ct);
         if (table == null) return (null, null);
+        var seat = await seats.FindByUserInTableAsync(userId, table.InviteCode, ct);
+        if (seat == null) return (null, null);
         var list = await seats.ListByTableAsync(table.InviteCode, ct);
         return (new TableSnapshot(table, list), list.First(s => s.UserId == userId));
     }
 
     public async Task<CreateResult> CreateTableAsync(long userId, string displayName, long chatId, CancellationToken ct)
     {
-        var lockKey = $"u:{userId}";
+        var lockKey = $"chat:{chatId}";
         var gate = GetGate(lockKey);
         await gate.WaitAsync(ct);
-        await using var distributedLock = await AcquireDistributedLockAsync(lockKey, ct);
         try
         {
             await economics.EnsureUserAsync(userId, chatId, displayName, ct);
+            var existingTable = await tables.FindOpenByChatAsync(chatId, ct);
+            if (existingTable != null) return Fail(PokerError.TableAlreadyExists);
+
             var balance = await economics.GetBalanceAsync(userId, chatId, ct);
             if (balance < _opts.BuyIn)
             {
                 LogPokerCreateNotEnoughCoins(userId, balance);
                 return Fail(PokerError.NotEnoughCoins);
-            }
-
-            if (await seats.AnyForUserAsync(userId, ct))
-            {
-                LogPokerCreateAlreadySeated(userId);
-                return Fail(PokerError.AlreadySeated);
             }
 
             string code = await GenerateUniqueCodeAsync(ct);
@@ -111,6 +106,7 @@ public sealed partial class PokerService(
             var table = new PokerTable
             {
                 InviteCode = code,
+                ChatId = chatId,
                 HostUserId = userId,
                 Status = PokerTableStatus.Seating,
                 Phase = PokerPhase.None,
@@ -161,20 +157,29 @@ public sealed partial class PokerService(
     public async Task<JoinResult> JoinTableAsync(long userId, string displayName, long chatId, string code, CancellationToken ct)
     {
         code = code.ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            var groupTable = await tables.FindOpenByChatAsync(chatId, ct);
+            if (groupTable == null) return JoinFail(PokerError.NoTable);
+            code = groupTable.InviteCode;
+        }
+
         var gate = GetGate(code);
         await gate.WaitAsync(ct);
-        await using var distributedLock = await AcquireDistributedLockAsync(code, ct);
         try
         {
             await economics.EnsureUserAsync(userId, chatId, displayName, ct);
-            var balance = await economics.GetBalanceAsync(userId, chatId, ct);
-            if (balance < _opts.BuyIn) return JoinFail(PokerError.NotEnoughCoins);
-            if (await seats.AnyForUserAsync(userId, ct)) return JoinFail(PokerError.AlreadySeated);
-
             var table = await tables.FindAsync(code, ct);
             if (table == null || table.Status == PokerTableStatus.Closed) return JoinFail(PokerError.TableNotFound);
+            if (table.ChatId != 0 && table.ChatId != chatId) return JoinFail(PokerError.TableNotFound);
             if (table.Status != PokerTableStatus.Seating && table.Status != PokerTableStatus.HandComplete)
                 return JoinFail(PokerError.HandInProgress);
+
+            var existingSeat = await seats.FindByUserInTableAsync(userId, table.InviteCode, ct);
+            if (existingSeat != null) return JoinFail(PokerError.AlreadySeated);
+
+            var balance = await economics.GetBalanceAsync(userId, chatId, ct);
+            if (balance < _opts.BuyIn) return JoinFail(PokerError.NotEnoughCoins);
 
             var list = await seats.ListByTableAsync(code, ct);
             if (list.Count >= _opts.MaxPlayers) return JoinFail(PokerError.TableFull);
@@ -223,20 +228,19 @@ public sealed partial class PokerService(
         finally { gate.Release(); }
     }
 
-    public async Task<StartResult> StartHandAsync(long userId, CancellationToken ct)
+    public async Task<StartResult> StartHandAsync(long userId, long currentChatId, CancellationToken ct)
     {
-        var precheck = await seats.FindByUserAsync(userId, ct);
-        if (precheck == null) return StartFail(PokerError.NoTable);
+        var precheckTable = await tables.FindOpenByChatAsync(currentChatId, ct);
+        if (precheckTable == null) return StartFail(PokerError.NoTable);
 
-        var gate = GetGate(precheck.InviteCode);
+        var gate = GetGate(precheckTable.InviteCode);
         await gate.WaitAsync(ct);
-        await using var distributedLock = await AcquireDistributedLockAsync(precheck.InviteCode, ct);
         try
         {
-            var mySeat = await seats.FindByUserAsync(userId, ct);
-            if (mySeat == null) return StartFail(PokerError.NoTable);
-            var table = await tables.FindAsync(mySeat.InviteCode, ct);
+            var table = await tables.FindOpenByChatAsync(currentChatId, ct);
             if (table == null) return StartFail(PokerError.NoTable);
+            var mySeat = await seats.FindByUserInTableAsync(userId, table.InviteCode, ct);
+            if (mySeat == null) return StartFail(PokerError.NoTable);
             if (table.HostUserId != userId) return StartFail(PokerError.NotHost);
             if (table.Status == PokerTableStatus.HandActive) return StartFail(PokerError.HandInProgress);
 
@@ -263,20 +267,20 @@ public sealed partial class PokerService(
         finally { gate.Release(); }
     }
 
-    public async Task<ActionResult> ApplyPlayerActionAsync(long userId, string verb, int amount, CancellationToken ct)
+    public async Task<ActionResult> ApplyPlayerActionAsync(
+        long userId, long currentChatId, string verb, int amount, CancellationToken ct)
     {
-        var precheck = await seats.FindByUserAsync(userId, ct);
-        if (precheck == null) return ActionFail(PokerError.NoTable);
+        var precheckTable = await tables.FindOpenByChatAsync(currentChatId, ct);
+        if (precheckTable == null) return ActionFail(PokerError.NoTable);
 
-        var gate = GetGate(precheck.InviteCode);
+        var gate = GetGate(precheckTable.InviteCode);
         await gate.WaitAsync(ct);
-        await using var distributedLock = await AcquireDistributedLockAsync(precheck.InviteCode, ct);
         try
         {
-            var seat = await seats.FindByUserAsync(userId, ct);
-            if (seat == null) return ActionFail(PokerError.NoTable);
-            var table = await tables.FindAsync(seat.InviteCode, ct);
+            var table = await tables.FindOpenByChatAsync(currentChatId, ct);
             if (table == null || table.Status != PokerTableStatus.HandActive) return ActionFail(PokerError.NotYourTurn);
+            var seat = await seats.FindByUserInTableAsync(userId, table.InviteCode, ct);
+            if (seat == null) return ActionFail(PokerError.NoTable);
             var list = await seats.ListByTableAsync(table.InviteCode, ct);
 
             var live = list.First(s => s.UserId == userId);
@@ -312,7 +316,6 @@ public sealed partial class PokerService(
     {
         var gate = GetGate(inviteCode);
         await gate.WaitAsync(ct);
-        await using var distributedLock = await AcquireDistributedLockAsync(inviteCode, ct);
         try
         {
             var table = await tables.FindAsync(inviteCode, ct);
@@ -342,22 +345,22 @@ public sealed partial class PokerService(
         finally { gate.Release(); }
     }
 
-    public async Task<LeaveResult> LeaveTableAsync(long userId, CancellationToken ct)
+    public async Task<LeaveResult> LeaveTableAsync(long userId, long currentChatId, CancellationToken ct)
     {
-        var precheck = await seats.FindByUserAsync(userId, ct);
-        if (precheck == null) return LeaveFail(PokerError.NoTable);
+        var precheckTable = await tables.FindOpenByChatAsync(currentChatId, ct);
+        if (precheckTable == null) return LeaveFail(PokerError.NoTable);
 
-        var gate = GetGate(precheck.InviteCode);
+        var gate = GetGate(precheckTable.InviteCode);
         await gate.WaitAsync(ct);
-        await using var distributedLock = await AcquireDistributedLockAsync(precheck.InviteCode, ct);
         try
         {
-            var seat = await seats.FindByUserAsync(userId, ct);
+            var table = await tables.FindOpenByChatAsync(currentChatId, ct);
+            if (table == null) return LeaveFail(PokerError.NoTable);
+            var seat = await seats.FindByUserInTableAsync(userId, table.InviteCode, ct);
             if (seat == null) return LeaveFail(PokerError.NoTable);
 
-            var table = await tables.FindAsync(seat.InviteCode, ct);
             if (seat.Stack > 0)
-                await economics.CreditAsync(userId, seat.ChatId, seat.Stack, "poker.leave", ct);
+                await TryRefundSeatStackAsync(seat, "poker.leave", ct);
 
             if (table != null && table.Status == PokerTableStatus.HandActive && seat.Status == PokerSeatStatus.Seated)
             {
@@ -379,7 +382,7 @@ public sealed partial class PokerService(
                     ["mid_hand"] = true,
                 });
                 var remaining = allSeats.Where(s => s.UserId != userId).ToList();
-                return new LeaveResult(PokerError.None, after.Snapshot ?? new TableSnapshot(table, remaining), false);
+                return new LeaveResult(PokerError.None, new TableSnapshot(table, remaining), false);
             }
 
             await seats.DeleteAsync(seat.InviteCode, seat.Position, ct);
@@ -415,19 +418,54 @@ public sealed partial class PokerService(
         finally { gate.Release(); }
     }
 
-    public async Task SetStateMessageIdAsync(long userId, int messageId, CancellationToken ct)
+    public async Task SetTableStateMessageIdAsync(string inviteCode, int messageId, CancellationToken ct)
     {
-        var gate = GetGate($"u:{userId}");
+        var gate = GetGate(inviteCode);
         await gate.WaitAsync(ct);
         try
         {
-            await seats.UpsertStateMessageAsync(userId, messageId, ct);
+            await tables.UpsertStateMessageAsync(inviteCode, messageId, ct);
         }
         finally { gate.Release(); }
     }
 
     public Task<IReadOnlyList<string>> ListStuckCodesAsync(long cutoffMs, CancellationToken ct) =>
         tables.ListStuckCodesAsync(cutoffMs, ct);
+
+    private async Task RefreshSeatChatAsync(PokerSeat seat, long currentChatId, CancellationToken ct)
+    {
+        if (seat.ChatId == currentChatId) return;
+
+        seat.ChatId = currentChatId;
+        seat.StateMessageId = null;
+        await seats.UpdateAsync(seat, ct);
+        LogPokerSeatChatRefreshed(seat.InviteCode, seat.UserId, currentChatId);
+    }
+
+    private async Task<bool> TryClearStaleSeatAsync(PokerSeat seat, CancellationToken ct)
+    {
+        var table = await tables.FindAsync(seat.InviteCode, ct);
+        if (table is { Status: not PokerTableStatus.Closed }) return false;
+
+        if (seat.Stack > 0)
+            await TryRefundSeatStackAsync(seat, "poker.stale_refund", ct);
+        await seats.DeleteAsync(seat.InviteCode, seat.Position, ct);
+
+        LogPokerStaleSeatCleared(seat.InviteCode, seat.UserId);
+        return true;
+    }
+
+    private async Task TryRefundSeatStackAsync(PokerSeat seat, string reason, CancellationToken ct)
+    {
+        try
+        {
+            await economics.CreditAsync(seat.UserId, seat.ChatId, seat.Stack, reason, ct);
+        }
+        catch (Exception ex)
+        {
+            LogPokerRefundFailed(seat.InviteCode, seat.UserId, seat.Stack, ex);
+        }
+    }
 
     private async Task RefundBuyInAfterCreateFailureAsync(long userId, long chatId, string code, Exception exception, CancellationToken ct)
     {
@@ -457,48 +495,6 @@ public sealed partial class PokerService(
         }
 
         LogPokerJoinFailedAfterDebit(code, userId, exception);
-    }
-
-    private async Task<IAsyncDisposable> AcquireDistributedLockAsync(string key, CancellationToken ct)
-    {
-        var lockId = HashLockKey(key);
-        var conn = await connections.OpenAsync(ct);
-        await conn.ExecuteAsync(new CommandDefinition(
-            "SELECT pg_advisory_lock(@lockId)",
-            new { lockId },
-            cancellationToken: ct));
-        return new AdvisoryLockHandle(conn, lockId);
-    }
-
-    private static long HashLockKey(string key)
-    {
-        const long offset = unchecked((long)1469598103934665603UL);
-        const long prime = 1099511628211;
-        long hash = offset;
-        foreach (var ch in key)
-        {
-            hash ^= ch;
-            hash *= prime;
-        }
-
-        return hash;
-    }
-
-    private sealed class AdvisoryLockHandle(Npgsql.NpgsqlConnection connection, long lockId) : IAsyncDisposable
-    {
-        public async ValueTask DisposeAsync()
-        {
-            try
-            {
-                await connection.ExecuteAsync(new CommandDefinition(
-                    "SELECT pg_advisory_unlock(@lockId)",
-                    new { lockId }));
-            }
-            finally
-            {
-                await connection.DisposeAsync();
-            }
-        }
     }
 
     // ───────────────────────── orchestration ─────────────────────────
@@ -619,6 +615,15 @@ public sealed partial class PokerService(
 
     [LoggerMessage(LogLevel.Information, "poker.leave.ok code={Code} user={UserId} closed={Closed}")]
     partial void LogPokerLeft(string code, long userId, bool closed);
+
+    [LoggerMessage(LogLevel.Information, "poker.seat.chat_refreshed code={Code} user={UserId} chat={ChatId}")]
+    partial void LogPokerSeatChatRefreshed(string code, long userId, long chatId);
+
+    [LoggerMessage(LogLevel.Warning, "poker.seat.stale_cleared code={Code} user={UserId}")]
+    partial void LogPokerStaleSeatCleared(string code, long userId);
+
+    [LoggerMessage(LogLevel.Error, "poker.refund_failed code={Code} user={UserId} amount={Amount}")]
+    partial void LogPokerRefundFailed(string code, long userId, int amount, Exception exception);
 
     [LoggerMessage(LogLevel.Information, "poker.hand.end code={Code} reason={Reason} pot={Pot}")]
     partial void LogPokerHandEnded(string code, string reason, int pot);
