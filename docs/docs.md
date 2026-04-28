@@ -8,15 +8,15 @@ A Telegram casino/gambling mini-game bot. Russian-language UI. Games: slots (�
 |---|---|
 | Runtime | ASP.NET Core, .NET 10 (preview SDK) |
 | Telegram | `Telegram.Bot` 22.x (polling + webhook) |
-| Persistence | **PostgreSQL 16** via Dapper (balance hot path with `SELECT ... FOR UPDATE`). No EF Core in live tree. |
+| Persistence | **PostgreSQL 16** via Dapper on the live game/balance paths (balance hot path with `SELECT ... FOR UPDATE`). EF Core packages and `EfRepository<T>` exist for optional module-owned repositories. |
 | Migrations | Dapper-based, tracked in `__module_migrations`, applied at startup by `ModuleMigrationRunner` |
 | Event bus | DotNetCore.CAP 10.x — PostgreSQL outbox + Redis transport when `Redis:Enabled=true`; `InProcessEventBus` fallback for single-instance / dev |
 | Update fan-out | Redis Streams (opt-in via `Redis:Enabled`) — partitioned by `chatId % N`, consumer groups |
 | Analytics | ClickHouse 24.x via `ClickHouse.Client` 7.x (buffered, degrades gracefully) |
 | Dashboards | Grafana 11 with auto-provisioned ClickHouse + Prometheus datasources |
 | Graphics | SkiaSharp 3.x (horse race GIF renderer, offloaded to thread pool) |
-| Tests | xUnit, 650+ tests covering domain + services + router + framework |
-| Deploy | Docker Compose (bot + postgres + redis + clickhouse + grafana) / Helm chart |
+| Tests | xUnit, 680+ tests covering domain + services + router + framework |
+| Deploy | Docker Compose (bot + postgres + redis + clickhouse + prometheus + grafana) / Helm chart |
 
 Horse race “day” and scheduled auto-run use `Games:horse:TimezoneOffsetHours` (default **7**, same convention as daily bonus / Telegram dice cap). `HorseTimeHelper.GetRaceDate(offsetHours)` builds the `MM-dd-yyyy` pool key.
 
@@ -24,11 +24,11 @@ Horse race “day” and scheduled auto-run use `Games:horse:TimezoneOffsetHours
 
 ```
 CasinoShiz/
-├── docker-compose.yml                — bot + postgres + redis + clickhouse + grafana
+├── docker-compose.yml                — bot + db/cache/analytics + monitoring stack
 ├── Dockerfile                        — dotnet/sdk:10.0-preview multi-stage
 ├── CasinoShiz.slnx                   — solution manifest
-├── .env.example                      — required env vars template
-├── data/                             — volumes (postgres, redis, clickhouse)
+├── .env                              — local env file consumed by compose (git-ignored)
+├── prometheus/                       — scrape config for exporters, cAdvisor, dotnet-monitor
 ├── grafana/                          — datasource + dashboards provisioning
 ├── helm/                             — Kubernetes Helm chart
 │   ├── values.yaml                   — default values (safe to commit)
@@ -45,6 +45,7 @@ CasinoShiz/
 │   ├── Games.Dice/                   — slots 🎰
 │   ├── Games.DiceCube/               — dice cube 🎲
 │   ├── Games.Darts/                  — darts 🎯
+│   ├── Games.Football/               — football ⚽
 │   ├── Games.Bowling/                — bowling 🎳
 │   ├── Games.Basketball/             — basketball 🏀
 │   ├── Games.Blackjack/              — blackjack
@@ -58,17 +59,18 @@ CasinoShiz/
 ├── host/
 │   └── CasinoShiz.Host/              — composition root
 │       ├── Program.cs                — AddBotFramework().AddModule<T>()…Build().UseBotFramework()
+│       ├── Debug/                    — optional debug module/handlers
 │       ├── appsettings.json
 │       └── Pages/Admin/              — Razor pages for /admin UI
 └── tests/
-    └── CasinoShiz.Tests/             — 650+ xUnit tests
+    └── CasinoShiz.Tests/             — 680+ xUnit tests
 ```
 
 ## Architecture
 
 ### Host composition
 
-`BotFrameworkBuilder.AddBotFramework()` registers framework singletons (Telegram client, router, pipeline, middlewares, `IEconomicsService`, `IDailyBonusService`, event bus, Redis Streams, admin auth, migrations runner). Each `.AddModule<T>()` instantiates the module, runs `ConfigureServices(IModuleServiceCollection)`, and folds its handlers/locales/migrations/commands/admin pages into the shared aggregate. `UseBotFramework()` wires the webhook endpoint, health endpoints, session middleware, and admin gate.
+`BotFrameworkBuilder.AddBotFramework()` registers framework singletons (Telegram client, router, pipeline, middlewares, `IEconomicsService`, `IDailyBonusService`, event bus, Redis Streams, admin auth, migrations runner). Each `.AddModule<T>()` instantiates the module, runs `ConfigureServices(IModuleServiceCollection)`, and folds its handlers/locales/migrations/commands/admin pages into the shared aggregate. The current host also registers `DebugModule` before the game modules. `UseBotFramework()` wires the webhook endpoint, health endpoints, session middleware, and admin gate.
 
 ### Request flow
 
@@ -215,6 +217,7 @@ Framework migrations (`_framework` module), see `FrameworkMigrations.cs`:
 | `008_users_last_daily_bonus` | `users.last_daily_bonus_on DATE` for `/daily` |
 | `009_users_telegram_dice_daily` | `users.telegram_dice_rolls_on`, `telegram_dice_roll_count` — shared daily cap for 🎰🎲🎯🎳🏀⚽ (see `Bot:TelegramDiceDailyLimit`) |
 | `010_runtime_tuning` | `runtime_tuning` — JSON patch merged over file/env for whitelisted `Bot` + `Games` keys; edited from `/admin/settings` |
+| `011_delivery_and_coordination` | `processed_updates`, `game_command_idempotency`, `mini_game_sessions`, `mini_game_roll_gates` |
 | `012_telegram_dice_daily_per_game` | `telegram_dice_daily_rolls` with `(telegram_user_id, balance_scope_id, game_id)` PK for per-game daily caps |
 
 ## Poker (DDD split)
@@ -307,10 +310,15 @@ Every write action from the admin UI is recorded in `admin_audit`:
 
 - `/admin` — dashboard: stats, user search
 - `/admin/users` — user list, balance set/adjust (SuperAdmin only, via `IEconomicsService.AdjustUncheckedAsync`)
+- `/admin/people` — merged person view across known chats/scopes
+- `/admin/groups` — known chat list
+- `/admin/ledger` — economics ledger search/recovery
 - `/admin/horse` — race control panel: today's bets, koefs, "Run race" button (SuperAdmin only)
+- `/admin/horse/image` — horse race image/GIF preview endpoint
 - `/admin/bets` — pending bets
 - `/admin/history` — race history
 - `/admin/events` — event log
+- `/admin/settings` — live runtime JSON patch editor (SuperAdmin only)
 
 ## Configuration
 
@@ -321,7 +329,7 @@ Every write action from the admin UI is recorded in `admin_audit`:
 | Key | Required | Description |
 |---|---|---|
 | `Token` | yes | Telegram bot API token |
-| `Username` | yes | Bot @username (with or without @) |
+| `Username` / `BotUsername` | yes | Bot @username (with or without @); `BotUsername` is accepted as a config alias and used in `appsettings.json` |
 | `Admins` | yes | List of Telegram user IDs with SuperAdmin access |
 | `ReadOnlyAdmins` | no | List of Telegram user IDs with ReadOnly access |
 | `AdminWebToken` | no | Token for password-based admin login |
@@ -364,7 +372,7 @@ dotnet run --project host/CasinoShiz.Host
 dotnet test
 
 # Full stack (Postgres + Redis + ClickHouse + Prometheus + Grafana)
-cp .env.example .env   # fill Bot__Token, Bot__Username, Bot__Admins__0
+# Create/fill .env with Bot__Token, Bot__BotUsername (or Bot__Username), Bot__Admins__0
 docker compose up --build
 ```
 
@@ -383,6 +391,15 @@ docker compose up --build
 | Grafana | 3001 | `http://localhost:3001` | Dashboards (admin/admin) |
 
 `dotnet-monitor` runs as an internal compose service and exposes only its Prometheus metrics endpoint to the Docker network. The bot uses `DOTNET_DiagnosticPorts=/diag/dotnet-monitor.sock,nosuspend`, so metrics are collected when the monitor is available without blocking bot startup if the monitor is absent.
+
+Compose also runs `postgres-exporter`, `redis-exporter`, `cadvisor`, and `dotnet-monitor` for Prometheus-backed Grafana dashboards. `db-backup` is a manual/one-shot helper that writes a `pg_dump` to the repository root when explicitly run.
+
+Provisioned Grafana dashboards:
+
+- `overview.json` — ClickHouse event overview
+- `infra-pg-redis.json` — PostgreSQL and Redis exporter metrics
+- `infra-services.json` — cAdvisor container CPU/memory plus connection panels
+- `dotnet-runtime.json` — `dotnet-monitor` runtime metrics for the bot
 
 ### Helm (Kubernetes)
 
@@ -461,7 +478,7 @@ Raw query: `curl 'http://localhost:8123/?query=SELECT+*+FROM+analytics.events_v2
 
 ## Testing
 
-650+ xUnit tests under `tests/CasinoShiz.Tests/`. No external database in CI — games use in-memory fakes (`FakeEconomicsService`, `InMemoryBlackjackHandStore`, etc.). `DailyBonusMath` unit-tests the bonus coin formula.
+680+ xUnit tests under `tests/CasinoShiz.Tests/`. No external database in CI — games use in-memory fakes (`FakeEconomicsService`, `InMemoryBlackjackHandStore`, etc.). `DailyBonusMath` unit-tests the bonus coin formula.
 
 ```bash
 dotnet test
@@ -473,7 +490,7 @@ Coverage: domain logic (poker, secret hitler, blackjack, dice), services, taxes,
 
 ## Database schema
 
-All persistence is PostgreSQL + Dapper. No EF Core in the live codebase.
+All game/balance persistence is PostgreSQL + Dapper. EF Core packages and a generic `EfRepository<T>` are present for optional module-owned repositories, but the shipped game hot paths and framework tables documented below are Dapper-backed.
 
 ### Framework tables
 

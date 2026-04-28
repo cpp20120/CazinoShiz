@@ -14,6 +14,9 @@ data/
 *.DotSettings.user
 src/
 experiments/
+publish/
+*.dmp
+*.gcdump
 
 **/values.secrets.yaml
 **/values.secrets.yml
