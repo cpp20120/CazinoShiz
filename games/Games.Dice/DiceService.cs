@@ -2,11 +2,9 @@
 // DiceService — application service for the 🎰 slots roll.
 //
 // Ported from src/CasinoShiz.Core/Services/Dice/DiceService.cs, minus the
-// per-user attempts counter, bank-tax windowing, and freespin-code issuance.
-// Those depended on the shared UserState row and the Redeem module and will
-// come back when #15 ports the remainder (tracked as a follow-up). The core
-// gameplay — decode Telegram's encoded dice value, pick a sticker triple,
-// compute prize from the published payout table — ships verbatim.
+// per-user attempts counter and bank-tax windowing. The core gameplay — decode
+// Telegram's encoded dice value, pick a sticker triple, compute prize from the
+// published payout table — ships verbatim.
 //
 // Stateless by design: no aggregate, no repository. Each call is debit →
 // resolve → credit → audit → analytics → publish, all in the same request
@@ -125,6 +123,15 @@ public sealed class DiceService(
                 Prize: prize,
                 Loss: loss,
                 OccurredAt: rolledAt.ToUnixTimeMilliseconds()),
+            ct);
+
+        await TelegramMiniGameRedeemDrops.MaybePublishAsync(
+            events,
+            diceOpts.RedeemDropChance,
+            userId,
+            chatId,
+            MiniGameIds.Dice,
+            rolledAt.ToUnixTimeMilliseconds(),
             ct);
 
         return new DicePlayResult(DiceOutcome.Played, prize, loss, balance, gas);

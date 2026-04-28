@@ -7,7 +7,7 @@ namespace Games.Redeem;
 
 public interface IRedeemService
 {
-    Task<Guid> IssueAdminCodeAsync(long userId, CancellationToken ct);
+    Task<Guid> IssueAdminCodeAsync(long userId, CancellationToken ct, string? freeSpinGameId = null);
     Task<BeginRedeemResult> BeginRedeemAsync(
         long userId, long balanceScopeId, string displayName, string codeText, CancellationToken ct);
     Task<CompleteRedeemResult> CompleteRedeemAsync(long userId, long balanceScopeId, Guid codeGuid, CancellationToken ct);
@@ -17,6 +17,7 @@ public interface IRedeemService
 public sealed partial class RedeemService(
     IRedeemStore store,
     IEconomicsService economics,
+    ITelegramDiceDailyRollLimiter telegramDiceRolls,
     IAnalyticsService analytics,
     IDomainEventBus events,
     IOptions<RedeemOptions> options,
@@ -24,7 +25,7 @@ public sealed partial class RedeemService(
 {
     private readonly RedeemOptions _opts = options.Value;
 
-    public async Task<Guid> IssueAdminCodeAsync(long userId, CancellationToken ct)
+    public async Task<Guid> IssueAdminCodeAsync(long userId, CancellationToken ct, string? freeSpinGameId = null)
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var code = new RedeemCode
@@ -33,6 +34,7 @@ public sealed partial class RedeemService(
             Active = true,
             IssuedBy = userId,
             IssuedAt = now,
+            FreeSpinGameId = string.IsNullOrWhiteSpace(freeSpinGameId) ? _opts.FreeSpinGameId : freeSpinGameId,
         };
         await store.InsertAsync(code, ct);
 
@@ -40,9 +42,10 @@ public sealed partial class RedeemService(
         {
             ["user_id"] = userId,
             ["code"] = code.Code.ToString(),
+            ["free_spin_game_id"] = code.FreeSpinGameId,
         });
 
-        await events.PublishAsync(new RedeemCodeIssued(code.Code, userId, now), ct);
+        await events.PublishAsync(new RedeemCodeIssued(code.Code, userId, code.FreeSpinGameId, now), ct);
         LogIssued(userId, code.Code);
         return code.Code;
     }
@@ -98,19 +101,19 @@ public sealed partial class RedeemService(
         var claimed = await store.MarkRedeemedAsync(codeGuid, userId, now, ct);
         if (!claimed) return new CompleteRedeemResult(RedeemError.AlreadyRedeemed);
 
-        await economics.CreditAsync(userId, balanceScopeId, _opts.CoinReward, "redeem", ct);
+        await telegramDiceRolls.GrantExtraRollAsync(userId, balanceScopeId, code.FreeSpinGameId, ct);
 
         analytics.Track("redeem", "success", new Dictionary<string, object?>
         {
             ["user_id"] = userId,
             ["code"] = codeGuid.ToString(),
-            ["reward"] = _opts.CoinReward,
+            ["free_spin_game_id"] = code.FreeSpinGameId,
             ["redeem_interval_ms"] = now - code.IssuedAt,
         });
 
-        await events.PublishAsync(new RedeemCodeRedeemed(codeGuid, code.IssuedBy, userId, _opts.CoinReward, now), ct);
-        LogRedeemed(userId, codeGuid, _opts.CoinReward);
-        return new CompleteRedeemResult(RedeemError.None, _opts.CoinReward);
+        await events.PublishAsync(new RedeemCodeRedeemed(codeGuid, code.IssuedBy, userId, code.FreeSpinGameId, now), ct);
+        LogRedeemed(userId, codeGuid, code.FreeSpinGameId);
+        return new CompleteRedeemResult(RedeemError.None, code.FreeSpinGameId);
     }
 
     public void ReportCaptcha(long userId, string codeText, string pattern, bool passed)
@@ -126,6 +129,6 @@ public sealed partial class RedeemService(
     [LoggerMessage(LogLevel.Information, "redeem.issued user={UserId} code={Code}")]
     partial void LogIssued(long userId, Guid code);
 
-    [LoggerMessage(LogLevel.Information, "redeem.redeemed user={UserId} code={Code} reward={Reward}")]
-    partial void LogRedeemed(long userId, Guid code, int reward);
+    [LoggerMessage(LogLevel.Information, "redeem.redeemed user={UserId} code={Code} free_spin_game_id={FreeSpinGameId}")]
+    partial void LogRedeemed(long userId, Guid code, string freeSpinGameId);
 }

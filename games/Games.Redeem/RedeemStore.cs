@@ -17,7 +17,7 @@ public sealed class RedeemStore(INpgsqlConnectionFactory connections) : IRedeemS
         await using var conn = await connections.OpenAsync(ct);
         var row = await conn.QuerySingleOrDefaultAsync<CodeRow>(new CommandDefinition(
             "SELECT code AS Code, active AS Active, issued_by AS IssuedBy, issued_at AS IssuedAt, " +
-            "redeemed_by AS RedeemedBy, redeemed_at AS RedeemedAt " +
+            "free_spin_game_id AS FreeSpinGameId, redeemed_by AS RedeemedBy, redeemed_at AS RedeemedAt " +
             "FROM redeem_codes WHERE code = @code",
             new { code },
             cancellationToken: ct));
@@ -28,9 +28,9 @@ public sealed class RedeemStore(INpgsqlConnectionFactory connections) : IRedeemS
     {
         await using var conn = await connections.OpenAsync(ct);
         await conn.ExecuteAsync(new CommandDefinition(
-            "INSERT INTO redeem_codes (code, active, issued_by, issued_at) " +
-            "VALUES (@Code, @Active, @IssuedBy, @IssuedAt)",
-            new { c.Code, c.Active, c.IssuedBy, c.IssuedAt },
+            "INSERT INTO redeem_codes (code, active, issued_by, issued_at, free_spin_game_id) " +
+            "VALUES (@Code, @Active, @IssuedBy, @IssuedAt, @FreeSpinGameId)",
+            new { c.Code, c.Active, c.IssuedBy, c.IssuedAt, c.FreeSpinGameId },
             cancellationToken: ct));
     }
 
@@ -46,7 +46,7 @@ public sealed class RedeemStore(INpgsqlConnectionFactory connections) : IRedeemS
     }
 
     private sealed record CodeRow(
-        Guid Code, bool Active, long IssuedBy, long IssuedAt, long? RedeemedBy, long? RedeemedAt)
+        Guid Code, bool Active, long IssuedBy, long IssuedAt, string FreeSpinGameId, long? RedeemedBy, long? RedeemedAt)
     {
         public RedeemCode ToEntity() => new()
         {
@@ -54,6 +54,7 @@ public sealed class RedeemStore(INpgsqlConnectionFactory connections) : IRedeemS
             Active = Active,
             IssuedBy = IssuedBy,
             IssuedAt = IssuedAt,
+            FreeSpinGameId = FreeSpinGameId,
             RedeemedBy = RedeemedBy,
             RedeemedAt = RedeemedAt,
         };

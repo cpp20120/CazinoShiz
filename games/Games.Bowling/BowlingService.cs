@@ -119,10 +119,13 @@ public sealed class BowlingService(
             ["bet"] = bet.Amount, ["multiplier"] = multiplier, ["payout"] = payout,
         });
 
+        var bowling = tuning.GetSection<BowlingOptions>(BowlingOptions.SectionName);
+        var occurredAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         await events.PublishAsync(
-            new BowlingRollCompleted(userId, chatId, face, bet.Amount, multiplier, payout,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
+            new BowlingRollCompleted(userId, chatId, face, bet.Amount, multiplier, payout, occurredAt),
             ct);
+        await TelegramMiniGameRedeemDrops.MaybePublishAsync(
+            events, bowling.RedeemDropChance, userId, chatId, MiniGameIds.Bowling, occurredAt, ct);
 
         return new BowlingRollResult(BowlingRollOutcome.Rolled, face, bet.Amount, multiplier, payout, balance);
     }

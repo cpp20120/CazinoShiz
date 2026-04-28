@@ -14,4 +14,7 @@ public sealed class DiceCubeOptions
 
     /// <summary>0 = disabled. Min seconds after the previous round ended in this chat before a new <c>/dice bet</c>.</summary>
     public int MinSecondsBetweenBets { get; init; } = 8;
+
+    /// <summary>Chance per resolved 🎲 roll to drop a redeem code for one extra 🎲 roll. 0.01 = 1%.</summary>
+    public double RedeemDropChance { get; init; }
 }

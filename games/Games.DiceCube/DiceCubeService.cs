@@ -180,10 +180,12 @@ public sealed class DiceCubeService(
             ["bet"] = bet.Amount, ["multiplier"] = multiplier, ["payout"] = payout,
         });
 
+        var occurredAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         await events.PublishAsync(
-            new DiceCubeRollCompleted(userId, chatId, face, bet.Amount, multiplier, payout,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
+            new DiceCubeRollCompleted(userId, chatId, face, bet.Amount, multiplier, payout, occurredAt),
             ct);
+        await TelegramMiniGameRedeemDrops.MaybePublishAsync(
+            events, cube.RedeemDropChance, userId, chatId, MiniGameIds.DiceCube, occurredAt, ct);
 
         return new CubeRollResult(CubeRollOutcome.Rolled, face, bet.Amount, multiplier, payout, balance);
     }

@@ -79,6 +79,69 @@ internal sealed class TelegramDiceDailyRollLimiter(
         return new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, newCount, max);
     }
 
+    public async Task GrantExtraRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct)
+    {
+        var o = tuning.TelegramDiceDailyLimit;
+        if (o.GetMaxRollsPerUserPerDay(gameId) <= 0) return;
+
+        var today = TodayInOffset(o.TimezoneOffsetHours);
+
+        await using var conn = await connections.OpenAsync(ct).ConfigureAwait(false);
+        await using var tx = await conn.BeginTransactionAsync(ct).ConfigureAwait(false);
+
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                """
+                INSERT INTO telegram_dice_daily_rolls (
+                    telegram_user_id,
+                    balance_scope_id,
+                    game_id,
+                    rolls_on,
+                    roll_count
+                )
+                VALUES (@userId, @balanceScopeId, @gameId, @today, 0)
+                ON CONFLICT (telegram_user_id, balance_scope_id, game_id) DO NOTHING
+                """,
+                new { userId, balanceScopeId, gameId, today = today.ToDateTime(TimeOnly.MinValue) },
+                transaction: tx,
+                cancellationToken: ct)).ConfigureAwait(false);
+
+        var row = await conn.QuerySingleAsync<DiceRollRow>(
+            new CommandDefinition(
+                """
+                SELECT rolls_on AS RollsOn,
+                       roll_count AS RollCount
+                FROM telegram_dice_daily_rolls
+                WHERE telegram_user_id = @userId
+                  AND balance_scope_id = @balanceScopeId
+                  AND game_id = @gameId
+                FOR UPDATE
+                """,
+                new { userId, balanceScopeId, gameId },
+                transaction: tx,
+                cancellationToken: ct)).ConfigureAwait(false);
+
+        var count = row.RollsOn == today ? row.RollCount : 0;
+        var newCount = count - 1;
+
+        await conn.ExecuteAsync(
+            new CommandDefinition(
+                """
+                UPDATE telegram_dice_daily_rolls SET
+                    rolls_on = @today,
+                    roll_count = @newCount,
+                    updated_at = now()
+                WHERE telegram_user_id = @userId
+                  AND balance_scope_id = @balanceScopeId
+                  AND game_id = @gameId
+                """,
+                new { userId, balanceScopeId, gameId, today = today.ToDateTime(TimeOnly.MinValue), newCount },
+                transaction: tx,
+                cancellationToken: ct)).ConfigureAwait(false);
+
+        await tx.CommitAsync(ct).ConfigureAwait(false);
+    }
+
     public async Task TryRefundRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct)
     {
         var o = tuning.TelegramDiceDailyLimit;

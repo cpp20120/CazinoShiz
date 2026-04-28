@@ -151,7 +151,7 @@ Mini-games that use Telegram’s random dice (🎲 🎯 🎳 🏀 ⚽) are tuned
 
 **Rule of thumb:** for a fair \(n\)-faced die with pay multipliers \(m_1…m_n\), long-run RTP per coin staked is \(\frac{1}{n}\sum m_i\) when wins pay `stake × m_face`. Keep \(\sum m_i < n` on six-sided games (and the analogous sum on the five-faced ball games).
 
-Slots (🎰) use a **fixed cost + gas** (`TaxService.GetGas`) and a fixed prize table over 64 encoded outcomes — tune mainly via `Games:dice:Cost` in config.
+Slots (🎰) use a **fixed cost + gas** (`TaxService.GetGas`) and a fixed prize table over 64 encoded outcomes — tune mainly via `Games:dice:Cost` in config. Redeem-code drops are controlled per sticker game with `RedeemDropChance` (`0.02` = 2% per resolved roll/throw); a dropped code grants one extra roll for the same game that dropped it.
 
 `DailyBonus` (see below) is a controlled **drip of coins** to players; it should stay a small % with a cap so it does not erase house edge in aggregate.
 
@@ -345,6 +345,7 @@ Every write action from the admin UI is recorded in `admin_audit`:
 | Key | Description |
 |---|---|
 | `dice:Cost` | 🎰 slot spin stake (before gas) |
+| `*:RedeemDropChance` | Chance per resolved sticker game roll/throw to drop a copy-paste `/redeem <uuid>` code for that same game (`0.02` = 2%) |
 | `dicecube:Mult4` / `Mult5` / `Mult6` | Pay multipliers for faces 4–6 on `/dice` + 🎲 |
 | `dicecube:MaxBet`, `MinSecondsBetweenBets` | Stake cap and per-chat cooldown |
 | `horse:*` | See below |
@@ -573,6 +574,7 @@ Day-scoped on `race_date` (`MM-dd-yyyy` in `Games:horse:TimezoneOffsetHours`). B
 | `code` | UUID | PRIMARY KEY |
 | `active` | BOOLEAN | false once redeemed |
 | `issued_by` | BIGINT | |
+| `free_spin_game_id` | TEXT | same-game extra roll target (`dice`, `darts`, `bowling`, …) |
 | `redeemed_by` | BIGINT NULL | |
 
 ## Bot commands
@@ -583,7 +585,7 @@ All UI in Russian. Command names are ASCII.
 
 | Command | Effect |
 |---|---|
-| `🎰` | Spin the slot machine — `Games:dice:Cost` + gas, fixed prize table |
+| `🎰` | Spin the slot machine — `Games:dice:Cost` + gas, fixed prize table, optional same-game redeem-code drop |
 | `/dice bet <amount>` | Bot sends `🎲` after bet (reply to you); you can still send your own `🎲`. 4→×1, 5→×2, 6→×2 (`Games:dicecube:Mult*`) |
 | `/darts bet <amount>` | Bot sends `🎯` or you throw. 4→×1, 5→×2, 6→×2 |
 | `/football bet` / `/basket bet` | Bot sends ⚽/🏀 or you throw. 4→×2, 5→×2 (uniform 1…5) |
@@ -594,7 +596,7 @@ All UI in Russian. Command names are ASCII.
 | `/poker …` | Texas Hold'em — create / join / start / fold / call / raise / check / leave |
 | `/blackjack <bet>` | Start a hand; inline keyboard drives hit / stand / double |
 | `/sh …` | Secret Hitler (5–10 players) — create / join / start / nominate / vote / leave |
-| `/redeem <uuid>` | Redeem freespin code (private chat only, emoji captcha) |
+| `/redeem <uuid>` | Redeem one extra roll for the code's game (private chat only, emoji captcha) |
 | `/balance` | Current coin balance (this chat’s wallet) |
 | `/daily` | Once per day (after offset): small % of balance, capped — see `Bot:DailyBonus` |
 | `/top` | Per-chat leaderboard |
@@ -606,7 +608,7 @@ All UI in Russian. Command names are ASCII.
 |---|---|
 | `/horserun` | In a **group/supergroup**: run race for **this chat's** pool only. In **private**: global (all chats). |
 | `/horserun global` (or `all`) | Global merged race (same as `/admin/horse` run) |
-| `/codegen [count]` | Generate freespin codes |
+| `/codegen [count]` | Generate copy-paste-ready `/redeem <uuid>` freespin codes |
 | `/run pay <id> <amount>` | Manual coin adjustment |
 | `/run userinfo` | Reply to message → Telegram user ID |
 | `/run cancel_blackjack <id>` | Refund and remove stuck hand |

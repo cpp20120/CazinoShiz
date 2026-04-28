@@ -19,5 +19,9 @@ public sealed class RedeemMigrations : IModuleMigrations
             );
             CREATE INDEX ix_redeem_codes_active ON redeem_codes (active);
             """),
+        new Migration("002_free_spin_game_id", """
+            ALTER TABLE redeem_codes
+                ADD COLUMN free_spin_game_id TEXT NOT NULL DEFAULT 'dice';
+            """),
     ];
 }

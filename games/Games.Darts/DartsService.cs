@@ -160,10 +160,13 @@ public sealed class DartsService(
             ["bet"] = bet.Amount, ["multiplier"] = multiplier, ["payout"] = payout, ["round_id"] = roundId,
         });
 
+        var darts = tuning.GetSection<DartsOptions>(DartsOptions.SectionName);
+        var occurredAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         await events.PublishAsync(
-            new DartsThrowCompleted(userId, chatId, face, bet.Amount, multiplier, payout,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
+            new DartsThrowCompleted(userId, chatId, face, bet.Amount, multiplier, payout, occurredAt),
             ct);
+        await TelegramMiniGameRedeemDrops.MaybePublishAsync(
+            events, darts.RedeemDropChance, userId, chatId, MiniGameIds.Darts, occurredAt, ct);
 
         return new DartsThrowResult(DartsThrowOutcome.Thrown, face, bet.Amount, multiplier, payout, balance);
     }
@@ -247,10 +250,13 @@ public sealed class DartsService(
             ["bet"] = amount, ["multiplier"] = multiplier, ["payout"] = payout,
         });
 
+        var darts = tuning.GetSection<DartsOptions>(DartsOptions.SectionName);
+        var occurredAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         await events.PublishAsync(
-            new DartsThrowCompleted(userId, chatId, face, amount, multiplier, payout,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
+            new DartsThrowCompleted(userId, chatId, face, amount, multiplier, payout, occurredAt),
             ct);
+        await TelegramMiniGameRedeemDrops.MaybePublishAsync(
+            events, darts.RedeemDropChance, userId, chatId, MiniGameIds.Darts, occurredAt, ct);
 
         return new DartsThrowResult(DartsThrowOutcome.Thrown, face, amount, multiplier, payout, newBalance);
     }

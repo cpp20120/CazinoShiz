@@ -106,6 +106,9 @@ sealed class NullTelegramDiceDailyRollLimiter : ITelegramDiceDailyRollLimiter
         long userId, long balanceScopeId, string gameId, CancellationToken ct) =>
         Task.FromResult(new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, 0, 0));
 
+    public Task GrantExtraRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct) =>
+        Task.CompletedTask;
+
     public Task TryRefundRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct) =>
         Task.CompletedTask;
 }
@@ -116,6 +119,9 @@ sealed class RejectingTelegramDiceDailyRollLimiter : ITelegramDiceDailyRollLimit
         long userId, long balanceScopeId, string gameId, CancellationToken ct) =>
         Task.FromResult(new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.LimitExceeded, 3, 10));
 
+    public Task GrantExtraRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct) =>
+        Task.CompletedTask;
+
     public Task TryRefundRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct) =>
         Task.CompletedTask;
 }
@@ -124,6 +130,7 @@ sealed class RecordingTelegramDiceDailyRollLimiter : ITelegramDiceDailyRollLimit
 {
     public int RefundCount { get; private set; }
     public List<string> ConsumedGameIds { get; } = [];
+    public List<string> GrantedGameIds { get; } = [];
     public List<string> RefundedGameIds { get; } = [];
 
     public Task<TelegramDiceRollGateResult> TryConsumeRollAsync(
@@ -131,6 +138,12 @@ sealed class RecordingTelegramDiceDailyRollLimiter : ITelegramDiceDailyRollLimit
     {
         ConsumedGameIds.Add(gameId);
         return Task.FromResult(new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, 1, 99));
+    }
+
+    public Task GrantExtraRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct)
+    {
+        GrantedGameIds.Add(gameId);
+        return Task.CompletedTask;
     }
 
     public Task TryRefundRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct)
@@ -161,6 +174,13 @@ sealed class GameScopedTelegramDiceDailyRollLimiter(int maxRollsPerGame) : ITele
         _counts[key] = count;
         return Task.FromResult(
             new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, count, maxRollsPerGame));
+    }
+
+    public Task GrantExtraRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct)
+    {
+        var key = (userId, balanceScopeId, gameId);
+        _counts[key] = _counts.GetValueOrDefault(key) - 1;
+        return Task.CompletedTask;
     }
 
     public Task TryRefundRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct)

@@ -119,10 +119,13 @@ public sealed class BasketballService(
             ["bet"] = bet.Amount, ["multiplier"] = multiplier, ["payout"] = payout,
         });
 
+        var basketball = tuning.GetSection<BasketballOptions>(BasketballOptions.SectionName);
+        var occurredAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         await events.PublishAsync(
-            new BasketballThrowCompleted(userId, chatId, face, bet.Amount, multiplier, payout,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()),
+            new BasketballThrowCompleted(userId, chatId, face, bet.Amount, multiplier, payout, occurredAt),
             ct);
+        await TelegramMiniGameRedeemDrops.MaybePublishAsync(
+            events, basketball.RedeemDropChance, userId, chatId, MiniGameIds.Basketball, occurredAt, ct);
 
         return new BasketballThrowResult(BasketballThrowOutcome.Thrown, face, bet.Amount, multiplier, payout, balance);
     }

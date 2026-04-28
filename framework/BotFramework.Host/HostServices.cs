@@ -121,6 +121,9 @@ public interface ITelegramDiceDailyRollLimiter
     Task<TelegramDiceRollGateResult> TryConsumeRollAsync(
         long userId, long balanceScopeId, string gameId, CancellationToken ct);
 
+    /// <summary>Grants one extra roll for today by moving the user's daily counter back one slot.</summary>
+    Task GrantExtraRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct);
+
     /// <summary>Decrements today's count (not below 0) if the bet was rolled back — e.g. debit refunded after failed DB insert or bot <c>SendDice</c> abort.</summary>
     Task TryRefundRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct);
 }

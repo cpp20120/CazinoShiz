@@ -1,3 +1,4 @@
+using BotFramework.Sdk;
 using Games.Redeem;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -12,15 +13,16 @@ public class RedeemServiceTests
     private static RedeemService MakeService(
         InMemoryRedeemStore? store = null,
         FakeEconomicsService? economics = null,
+        RecordingTelegramDiceDailyRollLimiter? telegramDiceRolls = null,
         NullEventBus? bus = null,
-        int coinReward = 50,
         int captchaItems = 6) =>
         new(
             store ?? new InMemoryRedeemStore(),
             economics ?? new FakeEconomicsService(),
+            telegramDiceRolls ?? new RecordingTelegramDiceDailyRollLimiter(),
             new NullAnalyticsService(),
             bus ?? new NullEventBus(),
-            Options.Create(new RedeemOptions { CoinReward = coinReward, CaptchaItems = captchaItems }),
+            Options.Create(new RedeemOptions { CaptchaItems = captchaItems }),
             NullLogger<RedeemService>.Instance);
 
     // ── IssueAdminCodeAsync ──────────────────────────────────────────────────
@@ -173,28 +175,41 @@ public class RedeemServiceTests
     }
 
     [Fact]
-    public async Task CompleteRedeemAsync_ValidCode_CreditsCoinReward()
+    public async Task CompleteRedeemAsync_ValidCode_GrantsFreeSpin()
     {
         var store = new InMemoryRedeemStore();
-        var econ = new FakeEconomicsService();
-        var svc = MakeService(store, econ, coinReward: 75);
+        var telegramDiceRolls = new RecordingTelegramDiceDailyRollLimiter();
+        var svc = MakeService(store, telegramDiceRolls: telegramDiceRolls);
         var guid = await svc.IssueAdminCodeAsync(1, default);
 
         await svc.CompleteRedeemAsync(2, DmScope, guid, default);
 
-        Assert.Single(econ.Credits);
-        Assert.Equal(75, econ.Credits[0].Amount);
+        Assert.Equal([MiniGameIds.Dice], telegramDiceRolls.GrantedGameIds);
     }
 
     [Fact]
-    public async Task CompleteRedeemAsync_ValidCode_ReturnsCoinReward()
+    public async Task CompleteRedeemAsync_ValidCode_ReturnsFreeSpinGameId()
     {
         var store = new InMemoryRedeemStore();
-        var svc = MakeService(store, coinReward: 100);
+        var svc = MakeService(store);
         var guid = await svc.IssueAdminCodeAsync(1, default);
 
         var result = await svc.CompleteRedeemAsync(2, DmScope, guid, default);
-        Assert.Equal(100, result.CoinReward);
+        Assert.Equal(MiniGameIds.Dice, result.FreeSpinGameId);
+    }
+
+    [Fact]
+    public async Task CompleteRedeemAsync_GameSpecificCode_GrantsThatGame()
+    {
+        var store = new InMemoryRedeemStore();
+        var telegramDiceRolls = new RecordingTelegramDiceDailyRollLimiter();
+        var svc = MakeService(store, telegramDiceRolls: telegramDiceRolls);
+        var guid = await svc.IssueAdminCodeAsync(1, default, MiniGameIds.Bowling);
+
+        var result = await svc.CompleteRedeemAsync(2, DmScope, guid, default);
+
+        Assert.Equal(MiniGameIds.Bowling, result.FreeSpinGameId);
+        Assert.Equal([MiniGameIds.Bowling], telegramDiceRolls.GrantedGameIds);
     }
 
     [Fact]

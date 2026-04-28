@@ -18,4 +18,4 @@ public sealed record BeginRedeemResult(
 
 public sealed record CompleteRedeemResult(
     RedeemError Error,
-    int CoinReward = 0);
+    string FreeSpinGameId = "");

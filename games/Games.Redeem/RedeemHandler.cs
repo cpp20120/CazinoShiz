@@ -1,4 +1,5 @@
 using BotFramework.Host;
+using BotFramework.Host.Composition;
 using BotFramework.Host.Services;
 using BotFramework.Sdk;
 using Microsoft.Extensions.Hosting;
@@ -17,10 +18,12 @@ public sealed partial class RedeemHandler(
     IRedeemService service,
     ILocalizer localizer,
     IOptions<RedeemOptions> options,
+    IOptions<BotFrameworkOptions> botOptions,
     IHostApplicationLifetime lifetime,
     ILogger<RedeemHandler> logger) : IUpdateHandler
 {
     private readonly RedeemOptions _opts = options.Value;
+    private readonly BotFrameworkOptions _botOpts = botOptions.Value;
 
     public async Task HandleAsync(UpdateContext ctx)
     {
@@ -42,10 +45,17 @@ public sealed partial class RedeemHandler(
     private async Task HandleCodeGenAsync(UpdateContext ctx, Message msg)
     {
         var userId = msg.From?.Id ?? 0;
-        if (userId == 0 || !_opts.Admins.Contains(userId)) return;
+        if (userId == 0 || !IsCodegenAdmin(userId)) return;
 
-        var code = await service.IssueAdminCodeAsync(userId, ctx.Ct);
-        await ctx.Bot.SendMessage(msg.Chat.Id, code.ToString(), cancellationToken: ctx.Ct);
+        var count = ParseCodegenCount(msg.Text);
+        var lines = new List<string>(count);
+        for (var i = 0; i < count; i++)
+        {
+            var code = await service.IssueAdminCodeAsync(userId, ctx.Ct);
+            lines.Add($"/redeem {code}");
+        }
+
+        await ctx.Bot.SendMessage(msg.Chat.Id, string.Join('\n', lines), cancellationToken: ctx.Ct);
     }
 
     private async Task HandleRedeemAsync(UpdateContext ctx, Message msg)
@@ -134,11 +144,20 @@ public sealed partial class RedeemHandler(
             return;
         }
 
-        await ctx.Bot.SendMessage(chatId,
-            string.Format(Loc("redeem.success"), result.CoinReward),
-            parseMode: ParseMode.Html,
-            cancellationToken: ctx.Ct);
+        await ctx.Bot.SendMessage(chatId, Loc("redeem.success"), cancellationToken: ctx.Ct);
     }
+
+    private int ParseCodegenCount(string? text)
+    {
+        var parts = text?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? [];
+        if (parts.Length <= 1 || !int.TryParse(parts[1], out var requested))
+            return 1;
+
+        return Math.Clamp(requested, 1, Math.Max(1, _opts.MaxCodegenCount));
+    }
+
+    private bool IsCodegenAdmin(long userId) =>
+        _opts.Admins.Contains(userId) || _botOpts.Admins.Contains(userId);
 
     private async Task ScheduleTimeoutAsync(ITelegramBotClient bot, long chatId, int messageId, CancellationToken ct)
     {
