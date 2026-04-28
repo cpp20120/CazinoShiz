@@ -27,6 +27,136 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
+      "description": "PostgreSQL uptime. Uses postgres-exporter postmaster start time when available, then cAdvisor container start time, then postgres-exporter process uptime as a last fallback.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "dtdhms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "(time() - max(pg_postmaster_start_time_seconds)) or (time() - max(container_start_time_seconds{job=\"cadvisor\",container_label_com_docker_compose_service=\"postgres\"})) or (time() - max(container_start_time_seconds{job=\"cadvisor\",name=~\".*postgres.*\",name!~\".*exporter.*\"})) or (time() - max(process_start_time_seconds{job=\"postgres\"}))",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "postgres uptime",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "PostgreSQL \u2014 uptime",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Redis uptime. Uses redis-exporter server uptime when available, otherwise falls back to the Redis container start time from cAdvisor.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "dtdhms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max(redis_uptime_in_seconds{job=\"redis\"}) or (time() - max(container_start_time_seconds{job=\"cadvisor\",name=~\".*redis.*\",name!~\".*exporter.*\"}))",
+          "format": "time_series",
+          "instant": true,
+          "legendFormat": "Redis uptime",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Redis \u2014 uptime",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -82,7 +212,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 0
+        "y": 4
       },
       "id": 1,
       "options": {
@@ -172,7 +302,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 0
+        "y": 4
       },
       "id": 2,
       "options": {
@@ -269,14 +399,14 @@
           },
           "mappings": [],
           "min": 0,
-          "unit": "bytes"
+          "unit": "suffix: MiB"
         }
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 12
       },
       "id": 3,
       "options": {
@@ -302,7 +432,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "redis_memory_used_bytes",
+          "expr": "redis_memory_used_bytes / 1024 / 1024",
           "legendFormat": "used",
           "range": true,
           "refId": "A",
@@ -311,7 +441,7 @@
           "instant": false
         }
       ],
-      "title": "Redis \u2014 memory used",
+      "title": "Redis \u2014 memory used (MiB)",
       "type": "timeseries"
     },
     {
@@ -365,7 +495,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 12
       },
       "id": 4,
       "options": {
@@ -453,7 +583,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 20
       },
       "id": 5,
       "options": {
@@ -542,7 +672,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 20
       },
       "id": 6,
       "options": {
@@ -659,7 +789,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 28
       },
       "id": 7,
       "options": {
@@ -730,6 +860,6 @@
   "timezone": "browser",
   "title": "CasinoShiz \u2014 PostgreSQL & Redis",
   "uid": "casinoshiz-pg-redis",
-  "version": 2,
+  "version": 8,
   "weekStart": ""
 }

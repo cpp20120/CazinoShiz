@@ -14,7 +14,7 @@
       }
     ]
   },
-  "description": "cAdvisor: do not use `image!=\"\"` — cAdvisor often omits `image` or leaves it empty, so that matcher drops every series. CPU/memory use `job=\"cadvisor\"` plus `name!=\"/\"` and `name!=\"/docker\"`.",
+  "description": "cAdvisor: do not use `image!=\"\"` — cAdvisor often omits `image` or leaves it empty, so that matcher drops every series. CPU/memory use `job=\"cadvisor\"` plus `name!=\"/\"` and `name!=\"/docker\"`. Memory panels divide Prometheus byte counters by 1024² so Grafana shows MiB.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -108,10 +108,10 @@
             "axisPlacement": "auto"
           },
           "mappings": [],
-          "unit": "bytes"
+          "unit": "suffix: MiB"
         }
       },
-      "description": "Same as docker stats MEM USAGE: cAdvisor container_memory_working_set_bytes, formatted IEC (MiB/GiB). Right-hand table = current value per container.",
+      "description": "Same as docker stats MEM USAGE: cAdvisor container_memory_working_set_bytes converted from bytes to MiB.",
       "gridPos": {
         "h": 8,
         "w": 16,
@@ -139,7 +139,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (name) (container_memory_working_set_bytes{job=\"cadvisor\",name!=\"/\",name!=\"/docker\"})",
+          "expr": "sum by (name) (container_memory_working_set_bytes{job=\"cadvisor\",name!=\"/\",name!=\"/docker\"}) / 1024 / 1024 / 1024",
           "format": "time_series",
           "instant": false,
           "legendFormat": "{{name}}",
@@ -147,7 +147,7 @@
           "refId": "A"
         }
       ],
-      "title": "Containers \u2014 memory working set over time (cAdvisor)",
+      "title": "Containers \u2014 memory working set over time (MiB, cAdvisor)",
       "type": "timeseries"
     },
     {
@@ -165,7 +165,7 @@
             "inspect": false
           },
           "mappings": [],
-          "unit": "bytes"
+          "unit": "suffix: MiB"
         },
         "overrides": [
           {
@@ -192,11 +192,11 @@
             "properties": [
               {
                 "id": "displayName",
-                "value": "MEM USAGE (working set)"
+                "value": "MEM USAGE (working set, MiB)"
               },
               {
                 "id": "unit",
-                "value": "bytes"
+                "value": "suffix: MiB"
               }
             ]
           }
@@ -223,7 +223,7 @@
         "sortBy": [
           {
             "desc": true,
-            "displayName": "MEM USAGE (working set)"
+            "displayName": "MEM USAGE (working set, MiB)"
           }
         ]
       },
@@ -236,7 +236,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum by (name) (container_memory_working_set_bytes{job=\"cadvisor\",name!=\"/\",name!=\"/docker\"})",
+          "expr": "sum by (name) (container_memory_working_set_bytes{job=\"cadvisor\",name!=\"/\",name!=\"/docker\"}) / 1024 / 1024 / 1024",
           "format": "table",
           "instant": true,
           "range": false,
@@ -468,6 +468,6 @@
   "timezone": "browser",
   "title": "CasinoShiz \u2014 Services (CPU, memory, connections)",
   "uid": "casinoshiz-services",
-  "version": 3,
+  "version": 5,
   "weekStart": ""
 }
