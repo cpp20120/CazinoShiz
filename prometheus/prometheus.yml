@@ -17,3 +17,11 @@ scrape_configs:
     static_configs:
       - targets: ["cadvisor:8080"]
     metrics_path: /metrics
+
+  - job_name: dotnet
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["dotnet-monitor:52325"]
+        labels:
+          service: cazino-bot
+    metrics_path: /metrics

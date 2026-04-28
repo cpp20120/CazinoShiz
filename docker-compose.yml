@@ -103,6 +103,23 @@ services:
       - postgres-exporter
       - redis-exporter
       - cadvisor
+      - dotnet-monitor
+
+  dotnet-monitor:
+    image: mcr.microsoft.com/dotnet/monitor:10
+    user: root
+    restart: unless-stopped
+    command:
+      - collect
+      - --no-auth
+      - --urls
+      - http://+:52323
+      - --metricUrls
+      - http://+:52325
+      - --diagnostic-port
+      - /diag/dotnet-monitor.sock
+    volumes:
+      - dotnet_monitor_diag:/diag
 
   cazino-bot:
     build:
@@ -116,9 +133,13 @@ services:
       ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=cazino;Username=cazino;Password=cazino"
       Redis__Enabled: "true"
       Redis__ConnectionString: "redis:6379"
+      DOTNET_DiagnosticPorts: "/diag/dotnet-monitor.sock,nosuspend"
     volumes:
       - bot_app_data:/app/data
+      - dotnet_monitor_diag:/diag
     depends_on:
+      dotnet-monitor:
+        condition: service_started
       clickhouse:
         condition: service_healthy
       postgres:
@@ -167,3 +188,4 @@ volumes:
   bot_app_data:
   grafana_data:
   prometheus_data:
+  dotnet_monitor_diag:

@@ -13,7 +13,7 @@ A Telegram casino/gambling mini-game bot. Russian-language UI. Games: slots (�
 | Event bus | DotNetCore.CAP 10.x — PostgreSQL outbox + Redis transport when `Redis:Enabled=true`; `InProcessEventBus` fallback for single-instance / dev |
 | Update fan-out | Redis Streams (opt-in via `Redis:Enabled`) — partitioned by `chatId % N`, consumer groups |
 | Analytics | ClickHouse 24.x via `ClickHouse.Client` 7.x (buffered, degrades gracefully) |
-| Dashboards | Grafana 11 with auto-provisioned ClickHouse datasource |
+| Dashboards | Grafana 11 with auto-provisioned ClickHouse + Prometheus datasources |
 | Graphics | SkiaSharp 3.x (horse race GIF renderer, offloaded to thread pool) |
 | Tests | xUnit, 650+ tests covering domain + services + router + framework |
 | Deploy | Docker Compose (bot + postgres + redis + clickhouse + grafana) / Helm chart |
@@ -363,7 +363,7 @@ dotnet run --project host/CasinoShiz.Host
 # Tests
 dotnet test
 
-# Full stack (Postgres + Redis + ClickHouse + Grafana)
+# Full stack (Postgres + Redis + ClickHouse + Prometheus + Grafana)
 cp .env.example .env   # fill Bot__Token, Bot__Username, Bot__Admins__0
 docker compose up --build
 ```
@@ -379,7 +379,10 @@ docker compose up --build
 | Postgres | 5432 | `postgres://cazino:cazino@localhost:5432/cazino` | Primary datastore |
 | Redis | 6379 | `redis://localhost:6379` | Streams + CAP transport |
 | ClickHouse HTTP | 8123 | `http://localhost:8123` | Analytics queries |
+| Prometheus | 9090 | `http://localhost:9090` | Exporter, cAdvisor, and .NET runtime metrics |
 | Grafana | 3001 | `http://localhost:3001` | Dashboards (admin/admin) |
+
+`dotnet-monitor` runs as an internal compose service and exposes only its Prometheus metrics endpoint to the Docker network. The bot uses `DOTNET_DiagnosticPorts=/diag/dotnet-monitor.sock,nosuspend`, so metrics are collected when the monitor is available without blocking bot startup if the monitor is absent.
 
 ### Helm (Kubernetes)
 
