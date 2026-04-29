@@ -36,6 +36,7 @@ public sealed class SettingsModel(
     public StickerGameSettingsInput StickerGames { get; set; } = new();
     [BindProperty]
     public PokerGameSettingsInput PokerGame { get; set; } = new();
+    public IReadOnlyList<RedeemDropStats> DropStats { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(CancellationToken ct)
     {
@@ -52,6 +53,7 @@ public sealed class SettingsModel(
         EffectivePreviewJson = FormatJson(BuildEffectiveExport());
         LoadStickerGameSettings();
         LoadPokerGameSettings();
+        await LoadRedeemDropStatsAsync(ct);
         return Page();
     }
 
@@ -75,6 +77,7 @@ public sealed class SettingsModel(
             EffectivePreviewJson = FormatJson(BuildEffectiveExport());
             LoadStickerGameSettings();
             LoadPokerGameSettings();
+            await LoadRedeemDropStatsAsync(ct);
             return Page();
         }
 
@@ -85,6 +88,7 @@ public sealed class SettingsModel(
             EffectivePreviewJson = FormatJson(BuildEffectiveExport());
             LoadStickerGameSettings();
             LoadPokerGameSettings();
+            await LoadRedeemDropStatsAsync(ct);
             return Page();
         }
 
@@ -97,6 +101,7 @@ public sealed class SettingsModel(
             EffectivePreviewJson = FormatJson(BuildEffectiveExport());
             LoadStickerGameSettings();
             LoadPokerGameSettings();
+            await LoadRedeemDropStatsAsync(ct);
             return Page();
         }
 
@@ -119,6 +124,7 @@ public sealed class SettingsModel(
         EffectivePreviewJson = FormatJson(BuildEffectiveExport());
         LoadStickerGameSettings();
         LoadPokerGameSettings();
+        await LoadRedeemDropStatsAsync(ct);
         CanEdit = true;
         logger.LogInformation("runtime_tuning updated by admin {UserId}", actor.UserId);
         return Page();
@@ -188,6 +194,7 @@ public sealed class SettingsModel(
         EffectivePreviewJson = FormatJson(BuildEffectiveExport());
         LoadStickerGameSettings();
         LoadPokerGameSettings();
+        await LoadRedeemDropStatsAsync(ct);
         CanEdit = true;
         return Page();
     }
@@ -232,6 +239,7 @@ public sealed class SettingsModel(
         EffectivePreviewJson = FormatJson(BuildEffectiveExport());
         LoadStickerGameSettings();
         LoadPokerGameSettings();
+        await LoadRedeemDropStatsAsync(ct);
         CanEdit = true;
         return Page();
     }
@@ -269,6 +277,7 @@ public sealed class SettingsModel(
         EffectivePreviewJson = FormatJson(BuildEffectiveExport());
         LoadStickerGameSettings();
         LoadPokerGameSettings();
+        await LoadRedeemDropStatsAsync(ct);
         return Page();
     }
 
@@ -296,6 +305,34 @@ public sealed class SettingsModel(
             """,
             new { payload = compactJson },
             cancellationToken: ct));
+    }
+
+    private async Task LoadRedeemDropStatsAsync(CancellationToken ct)
+    {
+        await using var conn = await connections.OpenAsync(ct);
+        var rows = await conn.QueryAsync<RedeemDropStatsRow>(new CommandDefinition("""
+            SELECT
+                free_spin_game_id AS GameId,
+                count(*)::int AS Issued,
+                count(*) FILTER (WHERE issued_by = 0)::int AS BotDrops,
+                count(*) FILTER (WHERE active)::int AS Active,
+                count(*) FILTER (WHERE NOT active)::int AS Redeemed,
+                max(issued_at)::bigint AS LastIssuedAt
+            FROM redeem_codes
+            GROUP BY free_spin_game_id
+            ORDER BY count(*) DESC, free_spin_game_id
+            """, cancellationToken: ct));
+
+        DropStats = rows
+            .Select(r => new RedeemDropStats(
+                r.GameId,
+                GameLabel(r.GameId),
+                r.Issued,
+                r.BotDrops,
+                r.Active,
+                r.Redeemed,
+                r.LastIssuedAt))
+            .ToList();
     }
 
     private static void SetDropChance(JsonObject games, string gameId, double dropChance)
@@ -333,6 +370,17 @@ public sealed class SettingsModel(
             BuyIn = poker.BuyIn,
         };
     }
+
+    private static string GameLabel(string gameId) => gameId switch
+    {
+        "dice" => "slots",
+        "dicecube" => "dicecube",
+        "darts" => "darts",
+        "football" => "football",
+        "basketball" => "basketball",
+        "bowling" => "bowling",
+        _ => gameId,
+    };
 
     private static string? ValidateMerged(IConfiguration configuration, JsonObject sanitized)
     {
@@ -423,4 +471,23 @@ public sealed class SettingsModel(
     {
         public int BuyIn { get; set; }
     }
+
+    private sealed class RedeemDropStatsRow
+    {
+        public string GameId { get; init; } = "";
+        public int Issued { get; init; }
+        public int BotDrops { get; init; }
+        public int Active { get; init; }
+        public int Redeemed { get; init; }
+        public long LastIssuedAt { get; init; }
+    }
+
+    public sealed record RedeemDropStats(
+        string GameId,
+        string Label,
+        int Issued,
+        int BotDrops,
+        int Active,
+        int Redeemed,
+        long LastIssuedAt);
 }

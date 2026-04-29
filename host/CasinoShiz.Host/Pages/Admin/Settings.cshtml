@@ -19,6 +19,43 @@
     <pre>@Model.EffectivePreviewJson</pre>
 </div>
 
+<div class="card">
+    <h3>Redeem drops</h3>
+    <p class="muted">Counts are grouped by free-spin game id. Bot drops are codes issued by the automatic drop flow.</p>
+    @if (Model.DropStats.Count == 0)
+    {
+        <p class="muted">No redeem codes issued yet.</p>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>Game</th>
+                    <th>Issued</th>
+                    <th>Bot drops</th>
+                    <th>Active</th>
+                    <th>Redeemed</th>
+                    <th>Last issued</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in Model.DropStats)
+                {
+                    <tr>
+                        <td><code>@row.GameId</code> @row.Label</td>
+                        <td>@row.Issued</td>
+                        <td>@row.BotDrops</td>
+                        <td>@row.Active</td>
+                        <td>@row.Redeemed</td>
+                        <td>@DateTimeOffset.FromUnixTimeMilliseconds(row.LastIssuedAt).ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
 @if (Model.CanEdit)
 {
     <form method="post" class="card">
