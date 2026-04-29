@@ -1,14 +1,20 @@
 using Dapper;
+using BotFramework.Host.Composition;
+using Microsoft.Extensions.Options;
 
 namespace BotFramework.Host.Services;
 
 internal sealed class TelegramDiceDailyRollLimiter(
     INpgsqlConnectionFactory connections,
-    IRuntimeTuningAccessor tuning) : ITelegramDiceDailyRollLimiter
+    IRuntimeTuningAccessor tuning,
+    IOptions<BotFrameworkOptions> botOptions) : ITelegramDiceDailyRollLimiter
 {
     public async Task<TelegramDiceRollGateResult> TryConsumeRollAsync(
         long userId, long balanceScopeId, string gameId, CancellationToken ct)
     {
+        if (IsPrivateAdminScope(userId, balanceScopeId))
+            return new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, 0, 0);
+
         var o = tuning.TelegramDiceDailyLimit;
         var max = o.GetMaxRollsPerUserPerDay(gameId);
         if (max <= 0)
@@ -82,6 +88,9 @@ internal sealed class TelegramDiceDailyRollLimiter(
     public async Task<TelegramDiceRollGateResult> GetRollStatusAsync(
         long userId, long balanceScopeId, string gameId, CancellationToken ct)
     {
+        if (IsPrivateAdminScope(userId, balanceScopeId))
+            return new TelegramDiceRollGateResult(TelegramDiceRollGateStatus.Allowed, 0, 0);
+
         var o = tuning.TelegramDiceDailyLimit;
         var max = o.GetMaxRollsPerUserPerDay(gameId);
         if (max <= 0)
@@ -109,6 +118,9 @@ internal sealed class TelegramDiceDailyRollLimiter(
 
     public async Task GrantExtraRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct)
     {
+        if (IsPrivateAdminScope(userId, balanceScopeId))
+            return;
+
         var o = tuning.TelegramDiceDailyLimit;
         if (o.GetMaxRollsPerUserPerDay(gameId) <= 0) return;
 
@@ -172,6 +184,9 @@ internal sealed class TelegramDiceDailyRollLimiter(
 
     public async Task TryRefundRollAsync(long userId, long balanceScopeId, string gameId, CancellationToken ct)
     {
+        if (IsPrivateAdminScope(userId, balanceScopeId))
+            return;
+
         var o = tuning.TelegramDiceDailyLimit;
         if (o.GetMaxRollsPerUserPerDay(gameId) <= 0) return;
 
@@ -225,6 +240,9 @@ internal sealed class TelegramDiceDailyRollLimiter(
         var shifted = DateTimeOffset.UtcNow.AddHours(hoursEastOfUtc);
         return DateOnly.FromDateTime(shifted.DateTime);
     }
+
+    private bool IsPrivateAdminScope(long userId, long balanceScopeId) =>
+        userId == balanceScopeId && botOptions.Value.Admins.Contains(userId);
 
     private sealed class DiceRollRow
     {

@@ -13,31 +13,25 @@
 </div>
 
 <div class="card">
-    <h3>Mini-game drop tracking</h3>
-    <p class="muted">Plays come from domain events. Drop requests are automatic redeem-code drops; issued/active/redeemed come from <code>redeem_codes</code>.</p>
+    <h3>Sticker game plays</h3>
+    <p class="muted">Counts resolved Telegram sticker games from domain events. <code>dice</code> is the 🎰 slots game.</p>
     <table>
         <thead>
             <tr>
                 <th>Game</th>
-                <th>Plays</th>
-                <th>Drop requests</th>
-                <th>Drop rate</th>
-                <th>Issued codes</th>
-                <th>Active</th>
-                <th>Redeemed</th>
+                <th>Total plays</th>
+                <th>Today</th>
+                <th>Last played</th>
             </tr>
         </thead>
         <tbody>
-            @foreach (var x in Model.MiniGameDrops)
+            @foreach (var x in Model.StickerGames)
             {
                 <tr>
                     <td><code>@x.GameId</code> @x.Label</td>
                     <td>@x.Plays</td>
-                    <td>@x.DropRequests</td>
-                    <td>@x.DropRatePercent.ToString("0.##")%</td>
-                    <td>@x.IssuedCodes</td>
-                    <td>@x.ActiveCodes</td>
-                    <td>@x.RedeemedCodes</td>
+                    <td>@x.PlaysToday</td>
+                    <td>@(x.LastPlayedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
                 </tr>
             }
         </tbody>
