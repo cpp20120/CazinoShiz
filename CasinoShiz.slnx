@@ -18,6 +18,7 @@
     <Project Path="games\Games.Redeem\Games.Redeem.csproj" />
     <Project Path="games\Games.Leaderboard\Games.Leaderboard.csproj" />
     <Project Path="games\Games.Transfer\Games.Transfer.csproj" />
+    <Project Path="games\Games.PixelBattle\Games.PixelBattle.csproj" />
     <Project Path="games\Games.Admin\Games.Admin.csproj" />
   </Folder>
   <Folder Name="/host/">

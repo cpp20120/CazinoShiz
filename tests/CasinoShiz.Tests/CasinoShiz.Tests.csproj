@@ -35,6 +35,7 @@
     <ProjectReference Include="..\..\games\Games.Redeem\Games.Redeem.csproj" />
     <ProjectReference Include="..\..\games\Games.Leaderboard\Games.Leaderboard.csproj" />
     <ProjectReference Include="..\..\games\Games.Transfer\Games.Transfer.csproj" />
+    <ProjectReference Include="..\..\games\Games.PixelBattle\Games.PixelBattle.csproj" />
     <ProjectReference Include="..\..\games\Games.Admin\Games.Admin.csproj" />
   </ItemGroup>
 

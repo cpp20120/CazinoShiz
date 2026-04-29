@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="pixelpage">
+  <title>pixelpage</title>
+  <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
+  <link rel="stylesheet" href="/pixelbattle/styles.css">
+</head>
+<body>
+  <main id="app">
+    <div id="status" class="status">Loading PixelBattle...</div>
+    <div class="canvas-wrap">
+      <canvas id="grid" class="pixel-canvas" aria-label="PixelBattle canvas"></canvas>
+    </div>
+    <div class="palette-bar">
+      <button id="palette-toggle" class="palette-toggle" type="button">\/</button>
+      <div id="palette" class="palette"></div>
+    </div>
+  </main>
+  <script type="module" src="/pixelbattle/app.js"></script>
+</body>
+</html>

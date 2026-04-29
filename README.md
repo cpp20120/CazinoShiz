@@ -2,7 +2,7 @@
 
 [![](https://tokei.rs/b1/github/cpp20120/CazinoShiz)](https://github.com/cpp20120/CazinoShiz)
 
-Telegram casino mini-game bot. Russian-language UI. Games: slots (🎰), dice cube (🎲), darts (🎯), bowling (🎳), basketball (🏀), horse racing, Texas Hold'em poker, blackjack, Secret Hitler (🗳), freespin codes, leaderboard.
+Telegram casino mini-game bot. Russian-language UI. Games: slots (🎰), dice cube (🎲), darts (🎯), bowling (🎳), basketball (🏀), horse racing, Texas Hold'em poker, blackjack, Secret Hitler (🗳), freespin codes, leaderboard and pixel battle mini app.
 
 Built with ASP.NET Core (.NET 10), Telegram.Bot, Dapper + Npgsql (Postgres), Redis, DotNetCore.CAP, and SkiaSharp. Organized as a modular `BotFramework` host with per-game modules.
 
