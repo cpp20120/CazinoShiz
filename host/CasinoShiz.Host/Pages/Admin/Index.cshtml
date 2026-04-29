@@ -13,6 +13,38 @@
 </div>
 
 <div class="card">
+    <h3>Mini-game drop tracking</h3>
+    <p class="muted">Plays come from domain events. Drop requests are automatic redeem-code drops; issued/active/redeemed come from <code>redeem_codes</code>.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Game</th>
+                <th>Plays</th>
+                <th>Drop requests</th>
+                <th>Drop rate</th>
+                <th>Issued codes</th>
+                <th>Active</th>
+                <th>Redeemed</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var x in Model.MiniGameDrops)
+            {
+                <tr>
+                    <td><code>@x.GameId</code> @x.Label</td>
+                    <td>@x.Plays</td>
+                    <td>@x.DropRequests</td>
+                    <td>@x.DropRatePercent.ToString("0.##")%</td>
+                    <td>@x.IssuedCodes</td>
+                    <td>@x.ActiveCodes</td>
+                    <td>@x.RedeemedCodes</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
     <h3>Modules loaded</h3>
     <table>
         <thead><tr><th>Id</th><th>Name</th><th>Version</th></tr></thead>
