@@ -7,9 +7,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
+using BotFramework.Host.Services;
 using BotFramework.Sdk;
 using Games.Poker.Domain;
-using Microsoft.Extensions.Options;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
@@ -23,11 +23,9 @@ namespace Games.Poker;
 public sealed partial class PokerHandler(
     IPokerService service,
     ILocalizer localizer,
-    IOptions<PokerOptions> options,
+    IRuntimeTuningAccessor tuning,
     ILogger<PokerHandler> logger) : IUpdateHandler
 {
-    private readonly PokerOptions _opts = options.Value;
-
     public async Task HandleAsync(UpdateContext ctx)
     {
         if (ctx.Update.CallbackQuery != null)
@@ -458,7 +456,8 @@ public sealed partial class PokerHandler(
     {
         return error switch
         {
-            PokerError.NotEnoughCoins => string.Format(Loc("err.not_enough_coins"), _opts.BuyIn),
+            PokerError.NotEnoughCoins => string.Format(Loc("err.not_enough_coins"),
+                tuning.GetSection<PokerOptions>(PokerOptions.SectionName).BuyIn),
             PokerError.AlreadySeated => Loc("err.already_seated"),
             PokerError.TableNotFound => Loc("err.table_not_found"),
             PokerError.TableFull => Loc("err.table_full"),

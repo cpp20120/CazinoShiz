@@ -9,19 +9,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Sdk;
+using BotFramework.Host.Services;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Telegram.Bot;
 
 namespace Games.Poker;
 
 public sealed partial class PokerTurnTimeoutJob(
     IServiceProvider services,
-    IOptions<PokerOptions> options,
+    IRuntimeTuningAccessor tuning,
     ILogger<PokerTurnTimeoutJob> logger) : IBackgroundJob
 {
-    private readonly PokerOptions _opts = options.Value;
-
     public string Name => "poker.turn_timeout";
 
     public async Task RunAsync(CancellationToken stoppingToken)
@@ -39,14 +37,15 @@ public sealed partial class PokerTurnTimeoutJob(
 
     private async Task SweepAsync(CancellationToken ct)
     {
-        PokerService.PruneGates((long)_opts.TurnTimeoutMs * 3);
+        var opts = tuning.GetSection<PokerOptions>(PokerOptions.SectionName);
+        PokerService.PruneGates((long)opts.TurnTimeoutMs * 3);
 
         using var scope = services.CreateScope();
         var bot = scope.ServiceProvider.GetRequiredService<ITelegramBotClient>();
         var service = scope.ServiceProvider.GetRequiredService<IPokerService>();
         var handler = scope.ServiceProvider.GetRequiredService<PokerHandler>();
 
-        var cutoff = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _opts.TurnTimeoutMs;
+        var cutoff = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - opts.TurnTimeoutMs;
         var stuck = await service.ListStuckCodesAsync(cutoff, ct);
 
         foreach (var code in stuck)

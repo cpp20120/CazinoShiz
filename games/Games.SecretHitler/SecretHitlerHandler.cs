@@ -31,9 +31,9 @@ public sealed partial class SecretHitlerHandler(
         var msg = ctx.Update.Message;
         if (msg?.Text == null) return;
 
-        if (msg.Chat.Type != ChatType.Private)
+        if (msg.Chat.Type is not (ChatType.Private or ChatType.Group or ChatType.Supergroup))
         {
-            await ctx.Bot.SendMessage(msg.Chat.Id, Loc("err.only_private"),
+            await ctx.Bot.SendMessage(msg.Chat.Id, Loc("err.unsupported_chat"),
                 replyParameters: new ReplyParameters { MessageId = msg.MessageId },
                 cancellationToken: ctx.Ct);
             return;
@@ -47,16 +47,17 @@ public sealed partial class SecretHitlerHandler(
     {
         var userId = msg.From!.Id;
         var chatId = msg.Chat.Id;
+        var playerChatId = msg.Chat.Type == ChatType.Private ? chatId : userId;
         var displayName = msg.From?.Username ?? msg.From?.FirstName ?? $"User ID: {userId}";
         var reply = new ReplyParameters { MessageId = msg.MessageId };
 
         switch (command)
         {
             case SecretHitlerCommand.Create:
-                await ExecuteCreate(ctx, userId, displayName, chatId);
+                await ExecuteCreate(ctx, userId, displayName, chatId, playerChatId);
                 break;
             case SecretHitlerCommand.Join j:
-                await ExecuteJoin(ctx, userId, displayName, chatId, j.Code);
+                await ExecuteJoin(ctx, userId, displayName, chatId, playerChatId, j.Code);
                 break;
             case SecretHitlerCommand.JoinMissingCode:
                 await ctx.Bot.SendMessage(chatId, Loc("err.join_missing_code"), cancellationToken: ctx.Ct);
@@ -86,9 +87,17 @@ public sealed partial class SecretHitlerHandler(
 
         var userId = cbq.From.Id;
         var chatId = cbq.Message?.Chat.Id ?? userId;
+        var playerChatId = cbq.Message?.Chat.Type == ChatType.Private ? chatId : userId;
+        var displayName = cbq.From.Username ?? cbq.From.FirstName ?? $"User ID: {userId}";
 
         switch (command)
         {
+            case SecretHitlerCommand.Join j:
+                await ExecuteJoin(ctx, userId, displayName, chatId, playerChatId, j.Code);
+                break;
+            case SecretHitlerCommand.Start:
+                await ExecuteStart(ctx, userId, chatId);
+                break;
             case SecretHitlerCommand.Nominate n:
                 await ExecuteNominate(ctx, userId, chatId, n.ChancellorPosition);
                 break;
@@ -104,17 +113,21 @@ public sealed partial class SecretHitlerHandler(
         }
     }
 
-    private async Task ExecuteCreate(UpdateContext ctx, long userId, string displayName, long chatId)
+    private async Task ExecuteCreate(
+        UpdateContext ctx, long userId, string displayName, long publicChatId, long playerChatId)
     {
-        var r = await service.CreateGameAsync(userId, displayName, chatId, ctx.Ct);
-        if (r.Error != ShError.None) { await SendError(ctx, chatId, r.Error); return; }
-        await ctx.Bot.SendMessage(chatId, string.Format(Loc("created"), r.InviteCode, r.BuyIn),
+        var r = await service.CreateGameAsync(userId, displayName, publicChatId, playerChatId, ctx.Ct);
+        if (r.Error != ShError.None) { await SendError(ctx, publicChatId, r.Error); return; }
+        await ctx.Bot.SendMessage(publicChatId, string.Format(Loc("created"), r.InviteCode, r.BuyIn),
             parseMode: ParseMode.Html, cancellationToken: ctx.Ct);
+        var (snap, _) = await service.FindMyGameAsync(userId, ctx.Ct);
+        if (snap != null) await BroadcastLobbyAsync(ctx, snap);
     }
 
-    private async Task ExecuteJoin(UpdateContext ctx, long userId, string displayName, long chatId, string code)
+    private async Task ExecuteJoin(
+        UpdateContext ctx, long userId, string displayName, long chatId, long playerChatId, string code)
     {
-        var r = await service.JoinGameAsync(userId, displayName, chatId, code, ctx.Ct);
+        var r = await service.JoinGameAsync(userId, displayName, playerChatId, code, ctx.Ct);
         if (r.Error != ShError.None) { await SendError(ctx, chatId, r.Error); return; }
         await ctx.Bot.SendMessage(chatId, string.Format(Loc("joined"), code.ToUpperInvariant(), r.Joined, r.Max),
             parseMode: ParseMode.Html, cancellationToken: ctx.Ct);
@@ -146,7 +159,8 @@ public sealed partial class SecretHitlerHandler(
         var (snap, me) = await service.FindMyGameAsync(userId, ctx.Ct);
         if (snap == null || me == null) { await SendError(ctx, chatId, ShError.NotInGame); return; }
         if (snap.Game.Status == ShStatus.Lobby) await BroadcastLobbyAsync(ctx, snap);
-        else await SendOrEditBoardAsync(ctx, snap, me);
+        else if (chatId == snap.Game.ChatId) await SendOrEditPublicBoardAsync(ctx, snap);
+        else await SendOrEditPrivateBoardAsync(ctx, snap, me);
     }
 
     private async Task ExecuteNominate(UpdateContext ctx, long userId, long chatId, int chancellorPosition)
@@ -186,10 +200,7 @@ public sealed partial class SecretHitlerHandler(
 
         var enactedKey = r.After.Enacted == ShPolicy.Liberal ? "policy.enacted_liberal" : "policy.enacted_fascist";
         var enactedMsg = Loc(enactedKey);
-        foreach (var p in r.Snapshot.Players.Where(p => p.ChatId != 0))
-        {
-            try { await ctx.Bot.SendMessage(p.ChatId, enactedMsg, parseMode: ParseMode.Html, cancellationToken: ctx.Ct); } catch { }
-        }
+        await SendPublicAnnouncementAsync(ctx, r.Snapshot, enactedMsg);
 
         await BroadcastBoardAsync(ctx, r.Snapshot);
         if (r.Snapshot.Game.Status == ShStatus.Completed)
@@ -198,14 +209,16 @@ public sealed partial class SecretHitlerHandler(
 
     private async Task BroadcastLobbyAsync(UpdateContext ctx, ShGameSnapshot snap)
     {
+        await SendOrEditPublicBoardAsync(ctx, snap);
         foreach (var p in snap.Players.Where(p => p.ChatId != 0))
-            await SendOrEditBoardAsync(ctx, snap, p);
+            await SendOrEditPrivateBoardAsync(ctx, snap, p);
     }
 
     private async Task BroadcastBoardAsync(UpdateContext ctx, ShGameSnapshot snap)
     {
+        await SendOrEditPublicBoardAsync(ctx, snap);
         foreach (var p in snap.Players.Where(p => p.ChatId != 0))
-            await SendOrEditBoardAsync(ctx, snap, p);
+            await SendOrEditPrivateBoardAsync(ctx, snap, p);
     }
 
     private async Task BroadcastVoteResolutionAsync(UpdateContext ctx, ShGameSnapshot snap, ShAfterVoteResult after)
@@ -233,19 +246,13 @@ public sealed partial class SecretHitlerHandler(
             }
         }
         if (msg == null) return;
-        foreach (var p in snap.Players.Where(p => p.ChatId != 0))
-        {
-            try { await ctx.Bot.SendMessage(p.ChatId, msg, parseMode: ParseMode.Html, cancellationToken: ctx.Ct); } catch { }
-        }
+        await SendPublicAnnouncementAsync(ctx, snap, msg);
     }
 
     private async Task BroadcastEndAsync(UpdateContext ctx, ShGameSnapshot snap)
     {
         var text = SecretHitlerStateRenderer.RenderEndSummary(snap.Game, snap.Players, localizer);
-        foreach (var p in snap.Players.Where(p => p.ChatId != 0))
-        {
-            try { await ctx.Bot.SendMessage(p.ChatId, text, parseMode: ParseMode.Html, cancellationToken: ctx.Ct); } catch { }
-        }
+        await SendPublicAnnouncementAsync(ctx, snap, text);
     }
 
     private async Task SendRoleCardsAsync(UpdateContext ctx, ShGameSnapshot snap)
@@ -258,7 +265,36 @@ public sealed partial class SecretHitlerHandler(
         }
     }
 
-    private async Task SendOrEditBoardAsync(UpdateContext ctx, ShGameSnapshot snap, SecretHitlerPlayer viewer)
+    private async Task SendOrEditPublicBoardAsync(UpdateContext ctx, ShGameSnapshot snap)
+    {
+        var text = SecretHitlerStateRenderer.RenderBoard(snap.Game, snap.Players, localizer);
+        var markup = SecretHitlerStateRenderer.BuildPublicMarkup(snap.Game, snap.Players, localizer);
+
+        if (snap.Game.StateMessageId.HasValue)
+        {
+            try
+            {
+                await ctx.Bot.EditMessageText(snap.Game.ChatId, snap.Game.StateMessageId.Value, text,
+                    parseMode: ParseMode.Html, replyMarkup: markup, cancellationToken: ctx.Ct);
+                return;
+            }
+            catch (ApiRequestException ex) when (ex.Message.Contains("message is not modified")) { return; }
+            catch { }
+        }
+
+        try
+        {
+            var sent = await ctx.Bot.SendMessage(snap.Game.ChatId, text,
+                parseMode: ParseMode.Html, replyMarkup: markup, cancellationToken: ctx.Ct);
+            await service.SetPublicStateMessageIdAsync(snap.Game.InviteCode, sent.MessageId, ctx.Ct);
+        }
+        catch (Exception ex)
+        {
+            LogShPublicBoardSendFailed(snap.Game.InviteCode, ex);
+        }
+    }
+
+    private async Task SendOrEditPrivateBoardAsync(UpdateContext ctx, ShGameSnapshot snap, SecretHitlerPlayer viewer)
     {
         var text = SecretHitlerStateRenderer.RenderBoard(snap.Game, snap.Players, localizer);
         var markup = SecretHitlerStateRenderer.BuildBoardMarkup(snap.Game, viewer, snap.Players, localizer);
@@ -284,6 +320,18 @@ public sealed partial class SecretHitlerHandler(
         catch (Exception ex)
         {
             LogShBoardSendFailed(viewer.UserId, ex);
+        }
+    }
+
+    private async Task SendPublicAnnouncementAsync(UpdateContext ctx, ShGameSnapshot snap, string text)
+    {
+        try
+        {
+            await ctx.Bot.SendMessage(snap.Game.ChatId, text, parseMode: ParseMode.Html, cancellationToken: ctx.Ct);
+        }
+        catch (Exception ex)
+        {
+            LogShPublicBoardSendFailed(snap.Game.InviteCode, ex);
         }
     }
 
@@ -318,4 +366,7 @@ public sealed partial class SecretHitlerHandler(
 
     [LoggerMessage(EventId = 2602, Level = LogLevel.Debug, Message = "sh.role.send_failed user={U}")]
     partial void LogShRoleSendFailed(long u, Exception exception);
+
+    [LoggerMessage(EventId = 2603, Level = LogLevel.Debug, Message = "sh.public_board.send_failed code={Code}")]
+    partial void LogShPublicBoardSendFailed(string code, Exception exception);
 }

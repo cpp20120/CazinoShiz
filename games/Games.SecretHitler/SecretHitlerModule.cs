@@ -79,6 +79,8 @@ public sealed class SecretHitlerModule : IModule
 
             ["btn.ja"] = "✅ Ja!",
             ["btn.nein"] = "❌ Nein!",
+            ["btn.join"] = "➕ Войти",
+            ["btn.start"] = "▶️ Старт",
             ["btn.discard"] = "🗑 {0} #{1}",
             ["btn.enact"] = "📜 {0} #{1}",
 
@@ -98,7 +100,7 @@ public sealed class SecretHitlerModule : IModule
             ["end.reason.hitler_executed"] = "Гитлер казнён.",
             ["end.roles_header"] = "Роли:",
 
-            ["err.only_private"] = "Secret Hitler доступен только в личных сообщениях с ботом.",
+            ["err.unsupported_chat"] = "Secret Hitler доступен в группе или личных сообщениях с ботом.",
             ["err.join_missing_code"] = "Укажи код: /sh join КОД",
             ["err.not_enough_coins"] = "Не хватает монет. Бай-ин: {0}.",
             ["err.already_in_game"] = "Ты уже в игре. Сначала выйди: /sh leave.",

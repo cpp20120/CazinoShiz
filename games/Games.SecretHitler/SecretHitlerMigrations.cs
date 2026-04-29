@@ -51,5 +51,9 @@ public sealed class SecretHitlerMigrations : IModuleMigrations
             CREATE INDEX ix_sh_players_user ON secret_hitler_players (user_id);
             CREATE INDEX ix_sh_players_code ON secret_hitler_players (invite_code);
             """),
+        new Migration("002_game_state_message", """
+            ALTER TABLE secret_hitler_games
+                ADD COLUMN IF NOT EXISTS state_message_id INTEGER NULL;
+            """),
     ];
 }

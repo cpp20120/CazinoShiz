@@ -132,6 +132,32 @@ public static class SecretHitlerStateRenderer
         return null;
     }
 
+    public static InlineKeyboardMarkup? BuildPublicMarkup(
+        SecretHitlerGame game, List<SecretHitlerPlayer> players, ILocalizer localizer)
+    {
+        if (game.Status == ShStatus.Lobby)
+        {
+            return new InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton.WithCallbackData(Loc(localizer, "btn.join"), $"sh:join:{game.InviteCode}"),
+                    InlineKeyboardButton.WithCallbackData(Loc(localizer, "btn.start"), "sh:start")
+                ]
+            ]);
+        }
+
+        if (game.Phase == ShPhase.Election)
+        {
+            return new InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton.WithCallbackData(Loc(localizer, "btn.ja"), "sh:vote:ja"),
+                    InlineKeyboardButton.WithCallbackData(Loc(localizer, "btn.nein"), "sh:vote:nein")
+                ]
+            ]);
+        }
+
+        return null;
+    }
+
     private static List<SecretHitlerPlayer> EligibleChancellors(
         SecretHitlerGame game, SecretHitlerPlayer president, List<SecretHitlerPlayer> players)
     {

@@ -87,6 +87,20 @@ public class SecretHitlerCommandParserTests
     }
 
     [Fact]
+    public void ParseCallback_Join_ReturnsJoin()
+    {
+        var cmd = SecretHitlerCommandParser.ParseCallback("sh:join:abc12");
+        var join = Assert.IsType<SecretHitlerCommand.Join>(cmd);
+        Assert.Equal("ABC12", join.Code);
+    }
+
+    [Fact]
+    public void ParseCallback_Start_ReturnsStart()
+    {
+        Assert.IsType<SecretHitlerCommand.Start>(SecretHitlerCommandParser.ParseCallback("sh:start"));
+    }
+
+    [Fact]
     public void ParseCallback_Nominate_ReturnsNominate()
     {
         var cmd = SecretHitlerCommandParser.ParseCallback("sh:nominate:3");

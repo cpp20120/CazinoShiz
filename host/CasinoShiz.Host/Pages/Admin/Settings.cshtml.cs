@@ -12,6 +12,7 @@ using Games.Dice;
 using Games.DiceCube;
 using Games.Football;
 using Games.Horse;
+using Games.Poker;
 using Games.Transfer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -33,6 +34,8 @@ public sealed class SettingsModel(
     public bool CanEdit { get; private set; }
     [BindProperty]
     public StickerGameSettingsInput StickerGames { get; set; } = new();
+    [BindProperty]
+    public PokerGameSettingsInput PokerGame { get; set; } = new();
 
     public async Task<IActionResult> OnGetAsync(CancellationToken ct)
     {
@@ -48,6 +51,7 @@ public sealed class SettingsModel(
         PatchJson = string.IsNullOrWhiteSpace(row) ? "{}" : FormatJson(row);
         EffectivePreviewJson = FormatJson(BuildEffectiveExport());
         LoadStickerGameSettings();
+        LoadPokerGameSettings();
         return Page();
     }
 
@@ -70,6 +74,7 @@ public sealed class SettingsModel(
             CanEdit = true;
             EffectivePreviewJson = FormatJson(BuildEffectiveExport());
             LoadStickerGameSettings();
+            LoadPokerGameSettings();
             return Page();
         }
 
@@ -79,6 +84,7 @@ public sealed class SettingsModel(
             CanEdit = true;
             EffectivePreviewJson = FormatJson(BuildEffectiveExport());
             LoadStickerGameSettings();
+            LoadPokerGameSettings();
             return Page();
         }
 
@@ -90,6 +96,7 @@ public sealed class SettingsModel(
             CanEdit = true;
             EffectivePreviewJson = FormatJson(BuildEffectiveExport());
             LoadStickerGameSettings();
+            LoadPokerGameSettings();
             return Page();
         }
 
@@ -111,6 +118,7 @@ public sealed class SettingsModel(
         PatchJson = FormatJson(compact);
         EffectivePreviewJson = FormatJson(BuildEffectiveExport());
         LoadStickerGameSettings();
+        LoadPokerGameSettings();
         CanEdit = true;
         logger.LogInformation("runtime_tuning updated by admin {UserId}", actor.UserId);
         return Page();
@@ -179,6 +187,51 @@ public sealed class SettingsModel(
         PatchJson = FormatJson(compact);
         EffectivePreviewJson = FormatJson(BuildEffectiveExport());
         LoadStickerGameSettings();
+        LoadPokerGameSettings();
+        CanEdit = true;
+        return Page();
+    }
+
+    public async Task<IActionResult> OnPostPokerAsync(CancellationToken ct)
+    {
+        var actor = HttpContext.Session.GetAdminSession();
+        if (actor is null)
+            return RedirectToPage("/Admin/Login");
+        if (actor.Role != AdminRole.SuperAdmin)
+            return StatusCode(403);
+
+        if (PokerGame.BuyIn <= 0)
+        {
+            Error = "Poker buy-in must be greater than 0.";
+            return await ReloadPageForErrorAsync(ct);
+        }
+
+        var patch = await LoadPatchObjectAsync(ct);
+        patch["Games"] ??= new JsonObject();
+        var games = (JsonObject)patch["Games"]!;
+        games["poker"] ??= new JsonObject();
+        var poker = (JsonObject)games["poker"]!;
+        poker["BuyIn"] = PokerGame.BuyIn;
+
+        var sanitized = RuntimeTuningPayloadSanitizer.Sanitize(patch);
+        var err = ValidateMerged(configuration, sanitized);
+        if (err is not null)
+        {
+            Error = err;
+            return await ReloadPageForErrorAsync(ct);
+        }
+
+        var compact = sanitized.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
+        await SavePatchAsync(compact, ct);
+        await tuning.ReloadFromDatabaseAsync(ct);
+        await audit.LogAsync(actor.UserId, actor.Name, "runtime_tuning.poker.save",
+            new { PokerGame.BuyIn }, ct);
+
+        Flash = "Poker settings saved.";
+        PatchJson = FormatJson(compact);
+        EffectivePreviewJson = FormatJson(BuildEffectiveExport());
+        LoadStickerGameSettings();
+        LoadPokerGameSettings();
         CanEdit = true;
         return Page();
     }
@@ -199,6 +252,7 @@ public sealed class SettingsModel(
             ["basketball"] = JsonSerializer.SerializeToNode(tuning.GetSection<BasketballOptions>(BasketballOptions.SectionName)),
             ["bowling"] = JsonSerializer.SerializeToNode(tuning.GetSection<BowlingOptions>(BowlingOptions.SectionName)),
             ["horse"] = JsonSerializer.SerializeToNode(tuning.GetSection<HorseOptions>(HorseOptions.SectionName)),
+            ["poker"] = JsonSerializer.SerializeToNode(tuning.GetSection<PokerOptions>(PokerOptions.SectionName)),
             ["transfer"] = JsonSerializer.SerializeToNode(tuning.GetSection<TransferOptions>(TransferOptions.SectionName)),
         };
         return new JsonObject { ["Bot"] = bot, ["Games"] = games };
@@ -213,6 +267,8 @@ public sealed class SettingsModel(
             cancellationToken: ct));
         PatchJson = string.IsNullOrWhiteSpace(row) ? "{}" : FormatJson(row);
         EffectivePreviewJson = FormatJson(BuildEffectiveExport());
+        LoadStickerGameSettings();
+        LoadPokerGameSettings();
         return Page();
     }
 
@@ -269,6 +325,15 @@ public sealed class SettingsModel(
         };
     }
 
+    private void LoadPokerGameSettings()
+    {
+        var poker = tuning.GetSection<PokerOptions>(PokerOptions.SectionName);
+        PokerGame = new PokerGameSettingsInput
+        {
+            BuyIn = poker.BuyIn,
+        };
+    }
+
     private static string? ValidateMerged(IConfiguration configuration, JsonObject sanitized)
     {
         try
@@ -297,6 +362,7 @@ public sealed class SettingsModel(
                 TryMerge<BasketballOptions>(games, "basketball", BasketballOptions.SectionName);
                 TryMerge<BowlingOptions>(games, "bowling", BowlingOptions.SectionName);
                 TryMerge<HorseOptions>(games, "horse", HorseOptions.SectionName);
+                TryMerge<PokerOptions>(games, "poker", PokerOptions.SectionName);
                 TryMerge<TransferOptions>(games, "transfer", TransferOptions.SectionName);
             }
         }
@@ -351,5 +417,10 @@ public sealed class SettingsModel(
                 yield return ("bowling", BowlingDropChance, BowlingDailyLimit);
             }
         }
+    }
+
+    public sealed class PokerGameSettingsInput
+    {
+        public int BuyIn { get; set; }
     }
 }

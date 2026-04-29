@@ -15,9 +15,9 @@
 
 using System.Collections.Concurrent;
 using BotFramework.Host;
+using BotFramework.Host.Services;
 using BotFramework.Sdk;
 using Games.Poker.Domain;
-using Microsoft.Extensions.Options;
 using static Games.Poker.PokerResultHelpers;
 
 namespace Games.Poker;
@@ -43,7 +43,7 @@ public sealed partial class PokerService(
     IEconomicsService economics,
     IAnalyticsService analytics,
     IDomainEventBus events,
-    IOptions<PokerOptions> options,
+    IRuntimeTuningAccessor tuning,
     ILogger<PokerService> logger) : IPokerService
 {
     private static readonly ConcurrentDictionary<string, Gate> _gates = new();
@@ -69,7 +69,7 @@ public sealed partial class PokerService(
         public long LastUsedTick = Environment.TickCount64;
     }
 
-    private readonly PokerOptions _opts = options.Value;
+    private PokerOptions CurrentOptions() => tuning.GetSection<PokerOptions>(PokerOptions.SectionName);
 
     public async Task<(TableSnapshot? Snapshot, PokerSeat? MySeat)> FindMyTableAsync(
         long userId, long currentChatId, CancellationToken ct)
@@ -89,12 +89,14 @@ public sealed partial class PokerService(
         await gate.WaitAsync(ct);
         try
         {
+            var opts = CurrentOptions();
+            var buyIn = opts.BuyIn;
             await economics.EnsureUserAsync(userId, chatId, displayName, ct);
             var existingTable = await tables.FindOpenByChatAsync(chatId, ct);
             if (existingTable != null) return Fail(PokerError.TableAlreadyExists);
 
             var balance = await economics.GetBalanceAsync(userId, chatId, ct);
-            if (balance < _opts.BuyIn)
+            if (balance < buyIn)
             {
                 LogPokerCreateNotEnoughCoins(userId, balance);
                 return Fail(PokerError.NotEnoughCoins);
@@ -110,8 +112,8 @@ public sealed partial class PokerService(
                 HostUserId = userId,
                 Status = PokerTableStatus.Seating,
                 Phase = PokerPhase.None,
-                SmallBlind = _opts.SmallBlind,
-                BigBlind = _opts.BigBlind,
+                SmallBlind = opts.SmallBlind,
+                BigBlind = opts.BigBlind,
                 CreatedAt = now,
                 LastActionAt = now,
             };
@@ -121,12 +123,12 @@ public sealed partial class PokerService(
                 Position = 0,
                 UserId = userId,
                 DisplayName = displayName,
-                Stack = _opts.BuyIn,
+                Stack = buyIn,
                 ChatId = chatId,
                 JoinedAt = now,
             };
 
-            if (!await economics.TryDebitAsync(userId, chatId, _opts.BuyIn, "poker.create", ct))
+            if (!await economics.TryDebitAsync(userId, chatId, buyIn, "poker.create", ct))
                 return Fail(PokerError.NotEnoughCoins);
 
             try
@@ -136,20 +138,20 @@ public sealed partial class PokerService(
             }
             catch (Exception ex)
             {
-                await RefundBuyInAfterCreateFailureAsync(userId, chatId, code, ex, ct);
+                await RefundBuyInAfterCreateFailureAsync(userId, chatId, code, buyIn, ex, ct);
                 throw;
             }
 
-            LogPokerCreated(code, userId, _opts.BuyIn);
+            LogPokerCreated(code, userId, buyIn);
             analytics.Track("poker", "create", new Dictionary<string, object?>
             {
                 ["user_id"] = userId,
                 ["invite_code"] = code,
-                ["buy_in"] = _opts.BuyIn,
+                ["buy_in"] = buyIn,
             });
-            await events.PublishAsync(new PokerTableCreated(code, userId, _opts.BuyIn, now), ct);
+            await events.PublishAsync(new PokerTableCreated(code, userId, buyIn, now), ct);
 
-            return new CreateResult(PokerError.None, code, _opts.BuyIn);
+            return new CreateResult(PokerError.None, code, buyIn);
         }
         finally { gate.Release(); }
     }
@@ -168,6 +170,8 @@ public sealed partial class PokerService(
         await gate.WaitAsync(ct);
         try
         {
+            var opts = CurrentOptions();
+            var buyIn = opts.BuyIn;
             await economics.EnsureUserAsync(userId, chatId, displayName, ct);
             var table = await tables.FindAsync(code, ct);
             if (table == null || table.Status == PokerTableStatus.Closed) return JoinFail(PokerError.TableNotFound);
@@ -179,10 +183,10 @@ public sealed partial class PokerService(
             if (existingSeat != null) return JoinFail(PokerError.AlreadySeated);
 
             var balance = await economics.GetBalanceAsync(userId, chatId, ct);
-            if (balance < _opts.BuyIn) return JoinFail(PokerError.NotEnoughCoins);
+            if (balance < buyIn) return JoinFail(PokerError.NotEnoughCoins);
 
             var list = await seats.ListByTableAsync(code, ct);
-            if (list.Count >= _opts.MaxPlayers) return JoinFail(PokerError.TableFull);
+            if (list.Count >= opts.MaxPlayers) return JoinFail(PokerError.TableFull);
 
             int position = 0;
             var used = list.Select(s => s.Position).ToHashSet();
@@ -195,11 +199,11 @@ public sealed partial class PokerService(
                 Position = position,
                 UserId = userId,
                 DisplayName = displayName,
-                Stack = _opts.BuyIn,
+                Stack = buyIn,
                 ChatId = chatId,
                 JoinedAt = now,
             };
-            if (!await economics.TryDebitAsync(userId, chatId, _opts.BuyIn, "poker.join", ct))
+            if (!await economics.TryDebitAsync(userId, chatId, buyIn, "poker.join", ct))
                 return JoinFail(PokerError.NotEnoughCoins);
             try
             {
@@ -207,7 +211,7 @@ public sealed partial class PokerService(
             }
             catch (Exception ex)
             {
-                await RefundBuyInAfterJoinFailureAsync(userId, chatId, code, ex, ct);
+                await RefundBuyInAfterJoinFailureAsync(userId, chatId, code, buyIn, ex, ct);
                 throw;
             }
 
@@ -219,11 +223,11 @@ public sealed partial class PokerService(
                 ["invite_code"] = code,
                 ["seat"] = position,
                 ["seated"] = list.Count,
-                ["buy_in"] = _opts.BuyIn,
+                ["buy_in"] = buyIn,
             });
-            await events.PublishAsync(new PokerPlayerJoined(code, userId, position, _opts.BuyIn, now), ct);
+            await events.PublishAsync(new PokerPlayerJoined(code, userId, position, buyIn, now), ct);
 
-            return new JoinResult(PokerError.None, new TableSnapshot(table, list), list.Count, _opts.MaxPlayers);
+            return new JoinResult(PokerError.None, new TableSnapshot(table, list), list.Count, opts.MaxPlayers);
         }
         finally { gate.Release(); }
     }
@@ -467,31 +471,33 @@ public sealed partial class PokerService(
         }
     }
 
-    private async Task RefundBuyInAfterCreateFailureAsync(long userId, long chatId, string code, Exception exception, CancellationToken ct)
+    private async Task RefundBuyInAfterCreateFailureAsync(
+        long userId, long chatId, string code, int buyIn, Exception exception, CancellationToken ct)
     {
         try
         {
-            await economics.CreditAsync(userId, chatId, _opts.BuyIn, "poker.create.compensate", ct);
-            LogPokerCreateCompensated(code, userId, _opts.BuyIn);
+            await economics.CreditAsync(userId, chatId, buyIn, "poker.create.compensate", ct);
+            LogPokerCreateCompensated(code, userId, buyIn);
         }
         catch (Exception creditEx)
         {
-            LogPokerCreateCompensationFailed(code, userId, _opts.BuyIn, creditEx);
+            LogPokerCreateCompensationFailed(code, userId, buyIn, creditEx);
         }
 
         LogPokerCreateFailedAfterDebit(code, userId, exception);
     }
 
-    private async Task RefundBuyInAfterJoinFailureAsync(long userId, long chatId, string code, Exception exception, CancellationToken ct)
+    private async Task RefundBuyInAfterJoinFailureAsync(
+        long userId, long chatId, string code, int buyIn, Exception exception, CancellationToken ct)
     {
         try
         {
-            await economics.CreditAsync(userId, chatId, _opts.BuyIn, "poker.join.compensate", ct);
-            LogPokerJoinCompensated(code, userId, _opts.BuyIn);
+            await economics.CreditAsync(userId, chatId, buyIn, "poker.join.compensate", ct);
+            LogPokerJoinCompensated(code, userId, buyIn);
         }
         catch (Exception creditEx)
         {
-            LogPokerJoinCompensationFailed(code, userId, _opts.BuyIn, creditEx);
+            LogPokerJoinCompensationFailed(code, userId, buyIn, creditEx);
         }
 
         LogPokerJoinFailedAfterDebit(code, userId, exception);

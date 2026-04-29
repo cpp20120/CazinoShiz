@@ -75,6 +75,7 @@ public sealed class SecretHitlerGame
 
     public int BuyIn { get; set; }
     public int Pot { get; set; }
+    public int? StateMessageId { get; set; }
 
     public long CreatedAt { get; set; }
     public long LastActionAt { get; set; }

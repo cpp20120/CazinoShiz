@@ -74,6 +74,16 @@
         </table>
         <p style="margin-top:12px"><button type="submit">Save sticker settings</button></p>
     </form>
+
+    <form method="post" asp-page-handler="Poker" class="card">
+        <h3>Poker</h3>
+        <p class="muted">Buy-in is used for new poker tables and new joins after saving.</p>
+        <label>
+            Buy-in
+            <input asp-for="PokerGame.BuyIn" type="number" min="1" step="1" />
+        </label>
+        <p style="margin-top:12px"><button type="submit">Save poker settings</button></p>
+    </form>
 }
 else
     {

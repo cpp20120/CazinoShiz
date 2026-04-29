@@ -46,6 +46,8 @@ public static class SecretHitlerCommandParser
 
         return verb switch
         {
+            "join" when tokens.Length > 2 => new SecretHitlerCommand.Join(tokens[2].ToUpperInvariant()),
+            "start" => new SecretHitlerCommand.Start(),
             "nominate" when tokens.Length > 2 && int.TryParse(tokens[2], out int pos)
                 => new SecretHitlerCommand.Nominate(pos),
             "vote" when tokens.Length > 2 => tokens[2] switch

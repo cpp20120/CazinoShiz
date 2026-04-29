@@ -12,6 +12,7 @@ using Games.DiceCube;
 using Games.Dice;
 using Games.Horse;
 using Games.Leaderboard;
+using Games.Poker;
 using Games.Redeem;
 using Games.Transfer;
 
@@ -225,6 +226,7 @@ public sealed class FakeRuntimeTuning : IRuntimeTuningAccessor
     public BasketballOptions Basketball { get; set; } = new();
     public BowlingOptions Bowling { get; set; } = new();
     public HorseOptions Horse { get; set; } = new();
+    public PokerOptions Poker { get; set; } = new();
     public TransferOptions Transfer { get; set; } = new();
 
     public T GetSection<T>(string sectionPath) where T : class, new()
@@ -238,6 +240,7 @@ public sealed class FakeRuntimeTuning : IRuntimeTuningAccessor
             BasketballOptions.SectionName => Basketball,
             BowlingOptions.SectionName => Bowling,
             HorseOptions.SectionName => Horse,
+            PokerOptions.SectionName => Poker,
             TransferOptions.SectionName => Transfer,
             _ => null,
         };

@@ -10,8 +10,10 @@ namespace Games.SecretHitler;
 public interface ISecretHitlerService
 {
     Task<(ShGameSnapshot? Snapshot, SecretHitlerPlayer? Me)> FindMyGameAsync(long userId, CancellationToken ct);
-    Task<ShCreateResult> CreateGameAsync(long userId, string displayName, long chatId, CancellationToken ct);
-    Task<ShJoinResult> JoinGameAsync(long userId, string displayName, long chatId, string code, CancellationToken ct);
+    Task<ShCreateResult> CreateGameAsync(
+        long userId, string displayName, long publicChatId, long playerChatId, CancellationToken ct);
+    Task<ShJoinResult> JoinGameAsync(
+        long userId, string displayName, long playerChatId, string code, CancellationToken ct);
     Task<ShStartResult> StartGameAsync(long userId, CancellationToken ct);
     Task<ShNominateResult> NominateAsync(long userId, int chancellorPosition, CancellationToken ct);
     Task<ShVoteResult> VoteAsync(long userId, ShVote vote, CancellationToken ct);
@@ -19,6 +21,7 @@ public interface ISecretHitlerService
     Task<ShEnactResult> ChancellorEnactAsync(long userId, int enactIndex, CancellationToken ct);
     Task<ShLeaveResult> LeaveAsync(long userId, CancellationToken ct);
     Task SetStateMessageIdAsync(long userId, int messageId, CancellationToken ct);
+    Task SetPublicStateMessageIdAsync(string inviteCode, int messageId, CancellationToken ct);
 }
 
 public sealed partial class SecretHitlerService(
@@ -66,7 +69,8 @@ public sealed partial class SecretHitlerService(
         return (new ShGameSnapshot(game, list), list.First(p => p.UserId == userId));
     }
 
-    public async Task<ShCreateResult> CreateGameAsync(long userId, string displayName, long chatId, CancellationToken ct)
+    public async Task<ShCreateResult> CreateGameAsync(
+        long userId, string displayName, long publicChatId, long playerChatId, CancellationToken ct)
     {
         var gate = GetGate($"u:{userId}");
         await gate.WaitAsync(ct);
@@ -74,10 +78,11 @@ public sealed partial class SecretHitlerService(
         {
             await using var distributedLock = await distributedLocks.AcquireAsync($"sh:u:{userId}", ct);
             var buyIn = _opts.BuyIn;
-            await economics.EnsureUserAsync(userId, chatId, displayName, ct);
-            var balance = await economics.GetBalanceAsync(userId, chatId, ct);
+            await economics.EnsureUserAsync(userId, playerChatId, displayName, ct);
+            var balance = await economics.GetBalanceAsync(userId, playerChatId, ct);
             if (balance < buyIn) return CreateFail(ShError.NotEnoughCoins);
             if (await players.AnyForUserAsync(userId, ct)) return CreateFail(ShError.AlreadyInGame);
+            if (await games.FindOpenByChatAsync(publicChatId, ct) != null) return CreateFail(ShError.GameInProgress);
 
             var code = await GenerateUniqueCodeAsync(ct);
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -86,7 +91,7 @@ public sealed partial class SecretHitlerService(
             {
                 InviteCode = code,
                 HostUserId = userId,
-                ChatId = chatId,
+                ChatId = publicChatId,
                 Status = ShStatus.Lobby,
                 Phase = ShPhase.None,
                 BuyIn = buyIn,
@@ -100,12 +105,12 @@ public sealed partial class SecretHitlerService(
                 Position = 0,
                 UserId = userId,
                 DisplayName = displayName,
-                ChatId = chatId,
+                ChatId = playerChatId,
                 IsAlive = true,
                 JoinedAt = now,
             };
 
-            if (!await economics.TryDebitAsync(userId, chatId, buyIn, "sh.create", ct))
+            if (!await economics.TryDebitAsync(userId, playerChatId, buyIn, "sh.create", ct))
                 return CreateFail(ShError.NotEnoughCoins);
 
             await games.InsertAsync(game, ct);
@@ -125,7 +130,8 @@ public sealed partial class SecretHitlerService(
         finally { gate.Release(); }
     }
 
-    public async Task<ShJoinResult> JoinGameAsync(long userId, string displayName, long chatId, string code, CancellationToken ct)
+    public async Task<ShJoinResult> JoinGameAsync(
+        long userId, string displayName, long playerChatId, string code, CancellationToken ct)
     {
         code = code.ToUpperInvariant();
         var gate = GetGate(code);
@@ -134,8 +140,8 @@ public sealed partial class SecretHitlerService(
         {
             await using var distributedLock = await distributedLocks.AcquireAsync($"sh:{code}", ct);
             var buyIn = _opts.BuyIn;
-            await economics.EnsureUserAsync(userId, chatId, displayName, ct);
-            var balance = await economics.GetBalanceAsync(userId, chatId, ct);
+            await economics.EnsureUserAsync(userId, playerChatId, displayName, ct);
+            var balance = await economics.GetBalanceAsync(userId, playerChatId, ct);
             if (balance < buyIn) return JoinFail(ShError.NotEnoughCoins);
             if (await players.AnyForUserAsync(userId, ct)) return JoinFail(ShError.AlreadyInGame);
 
@@ -158,11 +164,11 @@ public sealed partial class SecretHitlerService(
                 Position = position,
                 UserId = userId,
                 DisplayName = displayName,
-                ChatId = chatId,
+                ChatId = playerChatId,
                 IsAlive = true,
                 JoinedAt = now,
             };
-            if (!await economics.TryDebitAsync(userId, chatId, buyIn, "sh.join", ct))
+            if (!await economics.TryDebitAsync(userId, playerChatId, buyIn, "sh.join", ct))
                 return JoinFail(ShError.NotEnoughCoins);
 
             await players.InsertAsync(newPlayer, ct);
@@ -456,6 +462,18 @@ public sealed partial class SecretHitlerService(
         {
             await using var distributedLock = await distributedLocks.AcquireAsync($"sh:u:{userId}", ct);
             await players.UpsertStateMessageAsync(userId, messageId, ct);
+        }
+        finally { gate.Release(); }
+    }
+
+    public async Task SetPublicStateMessageIdAsync(string inviteCode, int messageId, CancellationToken ct)
+    {
+        var gate = GetGate(inviteCode);
+        await gate.WaitAsync(ct);
+        try
+        {
+            await using var distributedLock = await distributedLocks.AcquireAsync($"sh:{inviteCode}", ct);
+            await games.UpsertStateMessageAsync(inviteCode, messageId, ct);
         }
         finally { gate.Release(); }
     }
