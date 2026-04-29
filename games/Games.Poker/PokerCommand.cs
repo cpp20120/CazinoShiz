@@ -14,8 +14,8 @@ public abstract record PokerCommand
     public sealed record Raise(int Amount) : PokerCommand;
     public sealed record RaiseMissingAmount : PokerCommand;
 
-    public sealed record PlayerAction(string Action, int Amount) : PokerCommand;
-    public sealed record RaiseMenu : PokerCommand;
+    public sealed record PlayerAction(string Action, int Amount, long? ExpectedUserId) : PokerCommand;
+    public sealed record RaiseMenu(long? ExpectedUserId) : PokerCommand;
     public sealed record ShowCards : PokerCommand;
 }
 
@@ -51,14 +51,17 @@ public static class PokerCommandParser
 
         return verb switch
         {
-            "check" or "call" or "fold" or "allin" => new PokerCommand.PlayerAction(verb, 0),
+            "check" or "call" or "fold" or "allin" => new PokerCommand.PlayerAction(verb, 0, ParseUserId(tokens, 2)),
             "raise" when tokens.Length > 2 && int.TryParse(tokens[2], out int amt)
-                => new PokerCommand.PlayerAction("raise", amt),
-            "raise_menu" => new PokerCommand.RaiseMenu(),
+                => new PokerCommand.PlayerAction("raise", amt, ParseUserId(tokens, 3)),
+            "raise_menu" => new PokerCommand.RaiseMenu(ParseUserId(tokens, 2)),
             "join" => new PokerCommand.JoinCurrent(),
             "start" => new PokerCommand.Start(),
             "cards" => new PokerCommand.ShowCards(),
             _ => null,
         };
     }
+
+    private static long? ParseUserId(string[] tokens, int index) =>
+        tokens.Length > index && long.TryParse(tokens[index], out var userId) ? userId : null;
 }

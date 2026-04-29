@@ -101,6 +101,7 @@ public sealed class PokerModule : IModule
             ["err.need_two"] = "Нужно минимум два игрока со стеком.",
             ["err.no_table"] = "Ты сейчас не за столом.",
             ["err.not_your_turn"] = "Сейчас не твой ход.",
+            ["err.action_for_other_player"] = "Эта кнопка для игрока, чей сейчас ход.",
             ["err.cannot_check"] = "Сейчас нельзя чекать — надо колл или фолд.",
             ["err.raise_too_small"] = "Рейз слишком маленький.",
             ["err.raise_too_large"] = "Рейз больше твоего стека.",

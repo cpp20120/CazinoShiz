@@ -116,6 +116,7 @@ public class PokerCommandParserTests
         var cmd = PokerCommandParser.ParseCallback(data);
         var action = Assert.IsType<PokerCommand.PlayerAction>(cmd);
         Assert.Equal(0, action.Amount);
+        Assert.Null(action.ExpectedUserId);
     }
 
     [Fact]
@@ -125,13 +126,42 @@ public class PokerCommandParserTests
         var action = Assert.IsType<PokerCommand.PlayerAction>(cmd);
         Assert.Equal("raise", action.Action);
         Assert.Equal(250, action.Amount);
+        Assert.Null(action.ExpectedUserId);
+    }
+
+    [Fact]
+    public void ParseCallback_PlayerAction_WithExpectedUser_ReturnsPlayerAction()
+    {
+        var cmd = PokerCommandParser.ParseCallback("poker:check:12345");
+        var action = Assert.IsType<PokerCommand.PlayerAction>(cmd);
+        Assert.Equal("check", action.Action);
+        Assert.Equal(12345, action.ExpectedUserId);
+    }
+
+    [Fact]
+    public void ParseCallback_Raise_WithExpectedUser_ReturnsPlayerAction()
+    {
+        var cmd = PokerCommandParser.ParseCallback("poker:raise:250:12345");
+        var action = Assert.IsType<PokerCommand.PlayerAction>(cmd);
+        Assert.Equal("raise", action.Action);
+        Assert.Equal(250, action.Amount);
+        Assert.Equal(12345, action.ExpectedUserId);
     }
 
     [Fact]
     public void ParseCallback_RaiseMenu_ReturnsRaiseMenu()
     {
         var cmd = PokerCommandParser.ParseCallback("poker:raise_menu");
-        Assert.IsType<PokerCommand.RaiseMenu>(cmd);
+        var menu = Assert.IsType<PokerCommand.RaiseMenu>(cmd);
+        Assert.Null(menu.ExpectedUserId);
+    }
+
+    [Fact]
+    public void ParseCallback_RaiseMenu_WithExpectedUser_ReturnsRaiseMenu()
+    {
+        var cmd = PokerCommandParser.ParseCallback("poker:raise_menu:12345");
+        var menu = Assert.IsType<PokerCommand.RaiseMenu>(cmd);
+        Assert.Equal(12345, menu.ExpectedUserId);
     }
 
     [Theory]

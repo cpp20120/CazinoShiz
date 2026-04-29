@@ -144,14 +144,15 @@ public sealed partial class PokerHandler(
             case PokerCommand.PlayerAction pa:
                 try
                 {
-                    await ApplyAction(ctx, userId, chatId, pa.Action, pa.Amount);
-                    await AnswerCallbackAsync(ctx, cbq);
+                    if (!await EnsureExpectedActorAsync(ctx, cbq, pa.ExpectedUserId)) return;
+                    await ApplyActionFromCallbackAsync(ctx, cbq, userId, chatId, pa.Action, pa.Amount);
                 }
                 catch (Exception ex) { await SendCallbackFailureAsync(ctx, cbq, userId, ex); }
                 break;
-            case PokerCommand.RaiseMenu:
+            case PokerCommand.RaiseMenu rm:
                 try
                 {
+                    if (!await EnsureExpectedActorAsync(ctx, cbq, rm.ExpectedUserId)) return;
                     await ShowRaiseMenu(ctx, userId, chatId);
                     await AnswerCallbackAsync(ctx, cbq);
                 }
@@ -171,6 +172,14 @@ public sealed partial class PokerHandler(
             await ctx.Bot.AnswerCallbackQuery(cbq.Id, text, showAlert: showAlert, cancellationToken: ctx.Ct);
         }
         catch { /* best-effort */ }
+    }
+
+    private async Task<bool> EnsureExpectedActorAsync(UpdateContext ctx, CallbackQuery cbq, long? expectedUserId)
+    {
+        if (!expectedUserId.HasValue || expectedUserId.Value == cbq.From.Id) return true;
+
+        await AnswerCallbackAsync(ctx, cbq, Loc("err.action_for_other_player"), true);
+        return false;
     }
 
     private async Task SendCallbackFailureAsync(UpdateContext ctx, CallbackQuery cbq, long userId, Exception ex)
@@ -236,6 +245,25 @@ public sealed partial class PokerHandler(
         if (r.Snapshot != null) await BroadcastAsync(ctx, r.Snapshot, r.Showdown);
     }
 
+    private async Task ApplyActionFromCallbackAsync(
+        UpdateContext ctx,
+        CallbackQuery cbq,
+        long userId,
+        long chatId,
+        string verb,
+        int amount)
+    {
+        var r = await service.ApplyPlayerActionAsync(userId, chatId, verb, amount, ctx.Ct);
+        if (r.Error != PokerError.None)
+        {
+            await AnswerCallbackAsync(ctx, cbq, ErrorText(r.Error), true);
+            return;
+        }
+
+        await AnswerCallbackAsync(ctx, cbq);
+        if (r.Snapshot != null) await BroadcastAsync(ctx, r.Snapshot, r.Showdown);
+    }
+
     public async Task BroadcastAutoActionAsync(ITelegramBotClient bot, ActionResult r, CancellationToken ct)
     {
         if (r.Snapshot == null) return;
@@ -270,7 +298,7 @@ public sealed partial class PokerHandler(
 
         var buttons = optionsList.Select(v => InlineKeyboardButton.WithCallbackData(
             v == maxTotal ? string.Format(Loc("btn.allin_amount"), v) : string.Format(Loc("btn.raise_amount"), v),
-            $"poker:raise:{v}")).ToArray();
+            $"poker:raise:{v}:{seat.UserId}")).ToArray();
         var markup = new InlineKeyboardMarkup(buttons.Chunk(2).Select(row => row.ToArray()));
 
         await ctx.Bot.SendMessage(chatId,
@@ -316,21 +344,50 @@ public sealed partial class PokerHandler(
 
     private async Task SendOrEditStateUsingBotAsync(ITelegramBotClient bot, TableSnapshot snapshot, CancellationToken ct)
     {
-        string text = PokerStateRenderer.RenderTable(snapshot.Table, snapshot.Seats, null, localizer);
+        var board = PokerBoardRenderer.Render(snapshot, localizer);
+        var caption = PokerBoardRenderer.Caption(snapshot.Table, localizer);
         InlineKeyboardMarkup? markup = BuildGroupMarkup(snapshot);
 
         if (snapshot.Table.StateMessageId.HasValue)
         {
+            await using var editStream = new MemoryStream(board);
+            var media = new InputMediaPhoto(InputFile.FromStream(editStream, "poker-board.png"))
+            {
+                Caption = caption,
+                ParseMode = ParseMode.Html,
+            };
+
             try
             {
-                await bot.EditMessageText(snapshot.Table.ChatId, snapshot.Table.StateMessageId.Value, text,
-                    parseMode: ParseMode.Html, replyMarkup: markup, cancellationToken: ct);
+                await bot.EditMessageMedia(snapshot.Table.ChatId, snapshot.Table.StateMessageId.Value, media,
+                    replyMarkup: markup, cancellationToken: ct);
                 return;
             }
             catch (ApiRequestException ex) when (ex.Message.Contains("message is not modified")) { return; }
             catch { /* fall through to resend below */ }
         }
 
+        try
+        {
+            await using var sendStream = new MemoryStream(board);
+            var sent = await bot.SendPhoto(snapshot.Table.ChatId, InputFile.FromStream(sendStream, "poker-board.png"),
+                caption: caption, parseMode: ParseMode.Html, replyMarkup: markup, cancellationToken: ct);
+            await service.SetTableStateMessageIdAsync(snapshot.Table.InviteCode, sent.MessageId, ct);
+        }
+        catch (Exception ex)
+        {
+            LogPokerStateSendFailed(snapshot.Table.ChatId, ex);
+            await SendTextBoardFallbackAsync(bot, snapshot, markup, ct);
+        }
+    }
+
+    private async Task SendTextBoardFallbackAsync(
+        ITelegramBotClient bot,
+        TableSnapshot snapshot,
+        InlineKeyboardMarkup? markup,
+        CancellationToken ct)
+    {
+        var text = PokerStateRenderer.RenderTable(snapshot.Table, snapshot.Seats, null, localizer);
         try
         {
             var sent = await bot.SendMessage(snapshot.Table.ChatId, text,
@@ -375,15 +432,15 @@ public sealed partial class PokerHandler(
         int toCall = Math.Max(0, table.CurrentBet - viewer.CurrentBet);
         var row1 = new List<InlineKeyboardButton>();
         if (toCall == 0)
-            row1.Add(InlineKeyboardButton.WithCallbackData(Loc("btn.check"), "poker:check"));
+            row1.Add(InlineKeyboardButton.WithCallbackData(Loc("btn.check"), $"poker:check:{viewer.UserId}"));
         else
-            row1.Add(InlineKeyboardButton.WithCallbackData(string.Format(Loc("btn.call"), toCall), "poker:call"));
-        row1.Add(InlineKeyboardButton.WithCallbackData(Loc("btn.fold"), "poker:fold"));
+            row1.Add(InlineKeyboardButton.WithCallbackData(string.Format(Loc("btn.call"), toCall), $"poker:call:{viewer.UserId}"));
+        row1.Add(InlineKeyboardButton.WithCallbackData(Loc("btn.fold"), $"poker:fold:{viewer.UserId}"));
 
         var row2 = new List<InlineKeyboardButton>
         {
-            InlineKeyboardButton.WithCallbackData(Loc("btn.raise"), "poker:raise_menu"),
-            InlineKeyboardButton.WithCallbackData(Loc("btn.allin"), "poker:allin"),
+            InlineKeyboardButton.WithCallbackData(Loc("btn.raise"), $"poker:raise_menu:{viewer.UserId}"),
+            InlineKeyboardButton.WithCallbackData(Loc("btn.allin"), $"poker:allin:{viewer.UserId}"),
         };
         var row3 = new[]
         {
@@ -394,7 +451,12 @@ public sealed partial class PokerHandler(
 
     private async Task SendError(UpdateContext ctx, long chatId, PokerError error)
     {
-        string text = error switch
+        await ctx.Bot.SendMessage(chatId, ErrorText(error), parseMode: ParseMode.Html, cancellationToken: ctx.Ct);
+    }
+
+    private string ErrorText(PokerError error)
+    {
+        return error switch
         {
             PokerError.NotEnoughCoins => string.Format(Loc("err.not_enough_coins"), _opts.BuyIn),
             PokerError.AlreadySeated => Loc("err.already_seated"),
@@ -411,7 +473,6 @@ public sealed partial class PokerHandler(
             PokerError.TableAlreadyExists => Loc("err.table_already_exists"),
             _ => Loc("err.invalid_action"),
         };
-        await ctx.Bot.SendMessage(chatId, text, parseMode: ParseMode.Html, cancellationToken: ctx.Ct);
     }
 
     private string Loc(string key) => localizer.Get("poker", key);
