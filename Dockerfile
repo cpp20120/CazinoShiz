@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0-preview AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY CasinoShiz.slnx ./
@@ -29,7 +29,7 @@ COPY games/     games/
 COPY host/      host/
 RUN dotnet publish host/CasinoShiz.Host/CasinoShiz.Host.csproj -c Release -o /app/publish --no-self-contained
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview-alpine AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 WORKDIR /app
 COPY --from=build /app/publish .
 

@@ -6,7 +6,7 @@ A Telegram casino/gambling mini-game bot. Russian-language UI. Games: slots (�
 
 | Layer | Tech |
 |---|---|
-| Runtime | ASP.NET Core, .NET 10 (preview SDK) |
+| Runtime | ASP.NET Core, .NET 10  |
 | Telegram | `Telegram.Bot` 22.x (polling + webhook) |
 | Persistence | **PostgreSQL 16** via Dapper on the live game/balance paths (balance hot path with `SELECT ... FOR UPDATE`). EF Core packages and `EfRepository<T>` exist for optional module-owned repositories. |
 | Migrations | Dapper-based, tracked in `__module_migrations`, applied at startup by `ModuleMigrationRunner` |
@@ -25,7 +25,7 @@ Horse race “day” and scheduled auto-run use `Games:horse:TimezoneOffsetHours
 ```
 CasinoShiz/
 ├── docker-compose.yml                — bot + db/cache/analytics + monitoring stack
-├── Dockerfile                        — dotnet/sdk:10.0-preview multi-stage
+├── Dockerfile                        — dotnet/sdk:10.0 multi-stage
 ├── CasinoShiz.slnx                   — solution manifest
 ├── .env                              — local env file consumed by compose (git-ignored)
 ├── prometheus/                       — scrape config for exporters, cAdvisor, dotnet-monitor

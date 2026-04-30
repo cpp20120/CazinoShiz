@@ -73,7 +73,7 @@ Old WebApp buttons can keep stale Telegram `initData`; send a fresh `/pixelbattl
 
 | Layer | Tech |
 |---|---|
-| Runtime | ASP.NET Core, .NET 10 preview SDK |
+| Runtime | ASP.NET Core, .NET 10 SDK |
 | Telegram | `Telegram.Bot` 22.x, polling and webhook modes |
 | Persistence | PostgreSQL 16 via Dapper |
 | Event bus | In-process domain event bus, with Redis/CAP support where configured |
