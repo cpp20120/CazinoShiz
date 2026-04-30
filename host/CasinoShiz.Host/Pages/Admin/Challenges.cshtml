@@ -1,0 +1,158 @@
+@page "/admin/challenges"
+@model CasinoShiz.Host.Pages.Admin.ChallengesModel
+@{ ViewData["Title"] = "1v1 Challenges"; }
+
+<h2>1v1 Challenges</h2>
+
+<div class="cards">
+    <div class="stat"><div class="label">Total duels</div><div class="value">@Model.Totals.Total</div></div>
+    <div class="stat"><div class="label">Pending</div><div class="value">@Model.Totals.Pending</div></div>
+    <div class="stat"><div class="label">Accepted</div><div class="value">@Model.Totals.Accepted</div></div>
+    <div class="stat"><div class="label">Completed</div><div class="value">@Model.Totals.Completed</div></div>
+    <div class="stat"><div class="label">Cancelled</div><div class="value">@Model.Totals.Cancelled</div></div>
+    <div class="stat"><div class="label">Total pot tracked</div><div class="value">@Model.Totals.TotalPot</div></div>
+</div>
+
+<div class="card">
+    <form method="get" class="inline">
+        <label>Game:</label>
+        <select name="Game" onchange="this.form.submit()">
+            <option value="">(all)</option>
+            @foreach (var g in ChallengesModel.Games)
+            {
+                <option value="@g" selected="@(Model.Game == g)">@g</option>
+            }
+        </select>
+        <label>Status:</label>
+        <select name="Status" onchange="this.form.submit()">
+            <option value="">(all)</option>
+            @foreach (var s in ChallengesModel.Statuses)
+            {
+                <option value="@s" selected="@(Model.Status == s)">@s</option>
+            }
+        </select>
+        <label>Chat:</label>
+        <select name="ChatId" onchange="this.form.submit()">
+            <option value="">(all)</option>
+            @foreach (var c in Model.Chats)
+            {
+                <option value="@c.ChatId" selected="@(Model.ChatId == c.ChatId)">@c.Label</option>
+            }
+        </select>
+        <noscript><button type="submit">Filter</button></noscript>
+    </form>
+    <p class="muted" style="margin:8px 0 0 0">Pot is shown as both players' stakes: <code>amount * 2</code>. Showing up to 500 newest duels.</p>
+</div>
+
+<div class="card">
+    <h3>By game type</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Game</th>
+                <th>Total</th>
+                <th>Pending</th>
+                <th>Completed</th>
+                <th>Total pot</th>
+                <th>Last created</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var g in Model.ByGame)
+            {
+                <tr>
+                    <td><span class="pill">@g.Game</span></td>
+                    <td>@g.Total</td>
+                    <td>@g.Pending</td>
+                    <td>@g.Completed</td>
+                    <td><b>@g.TotalPot</b></td>
+                    <td class="muted">@(g.LastCreatedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                </tr>
+            }
+            @if (Model.ByGame.Count == 0)
+            {
+                <tr><td colspan="6" class="muted">No challenges for this filter.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h3>By chat</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Chat</th>
+                <th>Chat ID</th>
+                <th>Total</th>
+                <th>Pending</th>
+                <th>Completed</th>
+                <th>Total pot</th>
+                <th>Last created</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in Model.ByChat)
+            {
+                <tr>
+                    <td>@c.ChatLabel</td>
+                    <td><code>@c.ChatId</code></td>
+                    <td>@c.Total</td>
+                    <td>@c.Pending</td>
+                    <td>@c.Completed</td>
+                    <td><b>@c.TotalPot</b></td>
+                    <td class="muted">@(c.LastCreatedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                </tr>
+            }
+            @if (Model.ByChat.Count == 0)
+            {
+                <tr><td colspan="7" class="muted">No chats for this filter.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h3>Recent duels</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Created</th>
+                <th>Game</th>
+                <th>Status</th>
+                <th>Chat</th>
+                <th>Players</th>
+                <th>Amount</th>
+                <th>Pot</th>
+                <th>Completed</th>
+                <th>ID</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Model.Rows)
+            {
+                <tr>
+                    <td class="muted">@row.CreatedAt.ToLocalTime().ToString("MM-dd HH:mm:ss")</td>
+                    <td><span class="pill">@row.Game</span></td>
+                    <td><span class="pill">@row.Status</span></td>
+                    <td>
+                        @row.ChatLabel<br />
+                        <code>@row.ChatId</code>
+                    </td>
+                    <td>
+                        @row.ChallengerName <span class="muted">vs</span> @row.TargetName<br />
+                        <span class="muted"><code>@row.ChallengerId</code> vs <code>@row.TargetId</code></span>
+                    </td>
+                    <td><b>@row.Amount</b></td>
+                    <td><b>@(row.Amount * 2)</b></td>
+                    <td class="muted">@(row.CompletedAt?.ToLocalTime().ToString("MM-dd HH:mm:ss") ?? "—")</td>
+                    <td><code>@row.Id.ToString("N")[..8]</code></td>
+                </tr>
+            }
+            @if (Model.Rows.Count == 0)
+            {
+                <tr><td colspan="9" class="muted">No challenge duels for this filter.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>

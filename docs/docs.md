@@ -1,6 +1,6 @@
 # CasinoShiz
 
-A Telegram casino/gambling mini-game bot. Russian-language UI. Games: slots (🎰), dice cube (🎲), darts (🎯), bowling (🎳), basketball (🏀), horse racing, Texas Hold'em poker, blackjack, Secret Hitler (🗳), freespin code redemption, optional **peer coin transfers** (`/transfer`) in groups.
+A Telegram casino/gambling mini-game bot. Russian-language UI. Games: slots (🎰), dice cube (🎲), darts (🎯), football (⚽), bowling (🎳), basketball (🏀), horse racing, Texas Hold'em poker, blackjack, Secret Hitler (🗳), freespin code redemption, optional **peer coin transfers** (`/transfer`) in groups, **1v1 PvP challenges** (`/challenge`), and the **PixelBattle** Telegram WebApp (`/pixelbattle`).
 
 ## Stack
 
@@ -52,6 +52,8 @@ CasinoShiz/
 │   ├── Games.Horse/                  — horse racing + GIF renderer
 │   ├── Games.Poker/                  — Texas Hold'em (full DDD split)
 │   ├── Games.SecretHitler/           — hidden-role social deduction (full DDD split)
+│   ├── Games.Challenges/             — 1v1 PvP challenge system over existing games
+│   ├── Games.PixelBattle/            — Telegram WebApp pixel canvas + SSE updates
 │   ├── Games.Redeem/                 — freespin codes + emoji captcha
 │   ├── Games.Leaderboard/            — /top, /balance, /daily, /help
 │   ├── Games.Transfer/               — /transfer (peer coins in groups)
@@ -197,6 +199,75 @@ Order is **explicit recipient first**, then **reply** (so `/transfer … 10` wit
 
 - Success message shows **sender balance** and **recipient balance** after the transfer. `/help` (Leaderboard module) links to `/transfer`.
 
+### 1v1 PvP challenges (`/challenge`)
+
+Module **`Games.Challenges`**. This is a two-player challenge layer on top of existing game primitives. It owns its own challenge table and settlement flow, but all balance movement still goes through `IEconomicsService`.
+
+**User-facing command shapes**
+
+```text
+/challenge @username 500 dicecube
+```
+
+```text
+# Reply to another user's message
+/challenge 500 darts
+```
+
+The target can be resolved from a reply or from a known username in the same chat. Username lookup uses the shared `users` table scoped to the current chat (`balance_scope_id = chat_id`), so a user generally needs to have talked to the bot or played in that chat before `@username` lookup can work. Reply-based challenges do not need username lookup because Telegram gives the target user id directly.
+
+**Supported games and aliases**
+
+| Game enum | User aliases | Telegram / rendering path |
+|---|---|---|
+| `DiceCube` | `dice`, `die`, `dicecube`, `cube`, `кубик`, 🎲 | Telegram `SendDice` with 🎲 |
+| `Darts` | `darts`, `dart`, `дартс`, 🎯 | Telegram `SendDice` with 🎯 |
+| `Bowling` | `bowling`, `bowl`, `боулинг`, 🎳 | Telegram `SendDice` with 🎳 |
+| `Basketball` | `basket`, `basketball`, `баскетбол`, 🏀 | Telegram `SendDice` with 🏀 |
+| `Football` | `football`, `soccer`, `футбол`, ⚽ | Telegram `SendDice` with ⚽ |
+| `Slots` | `slots`, `slot`, `casino`, `слоты`, 🎰 | Telegram `SendDice` with 🎰 |
+| `Horse` | `horse`, `horses`, `race`, `лошади`, `скачки`, 🐎 | 2-horse SkiaSharp GIF |
+| `Blackjack` | `blackjack`, `bj`, `21`, `блекджек`, 🃏 | auto-resolved crypto-shuffled blackjack hands |
+
+**Lifecycle**
+
+1. `CreateAsync` validates bet bounds (`Games:challenges:MinBet` / `MaxBet`), rejects self-challenges, checks the challenger balance, rejects duplicates between the same two users in the same chat, inserts a `Pending` row, and sends an inline keyboard.
+2. Only the target user can accept or decline. Declines mark `Declined`; accepts atomically transition `Pending -> Accepted`.
+3. On accept, both players are ensured in the chat wallet and debited with ledger reason `challenge.stake`. If the second debit fails, the first stake is refunded and the row becomes `Failed`.
+4. The handler resolves the game. Telegram dice-style games send two Telegram dice messages and compare the returned values after a short animation delay. Horse and blackjack use specialized paths described below.
+5. `CompleteAcceptedAsync` settles: equal scores refund both stakes with `challenge.tie_refund`; otherwise it pays the winner `pot - fee` with `challenge.payout`.
+6. Any exception after accept calls `FailAcceptedAsync`, refunding both stakes and marking the challenge `Failed`.
+
+**Fee math**
+
+Challenge fee is configured as basis points:
+
+```text
+fee = clamp(HouseFeeBasisPoints, 0, 10000) * (amount * 2) / 10000
+payout = (amount * 2) - fee
+```
+
+This is integer math, so tiny pots can produce a zero fee. For example, a 10-vs-10 challenge has pot `20`; at 2% the fee is `0.4`, truncated to `0`.
+
+**Horse challenges**
+
+Horse challenges do not use Telegram dice. The handler picks the winner with `SpeedGenerator.GenPlaces(2)`, renders a 2-horse GIF using `HorseRaceRenderer.DrawHorses`, uploads it as `challenge-horse.gif`, then waits for the GIF duration before sending the settlement message. The result scores are artificial comparison scores (`2` for winner, `1` for loser) so the shared settlement method can still choose the winner.
+
+**Blackjack challenges**
+
+Blackjack challenges are intentionally **instant auto-play duels**, not a turn-based blackjack table. They reuse `Games.Blackjack.Domain.Deck` and `BlackjackHandValue`:
+
+- Build one crypto-shuffled 52-card deck.
+- Draw two cards for challenger, auto-hit until total is at least 17.
+- Draw two cards for target from the same deck, auto-hit until at least 17.
+- Score is `0` for bust, `22` for natural blackjack, otherwise the hand total.
+- Equal scores are a push and both stakes are returned.
+- Cards are rendered as friendly symbols (`Q♥ K♠`, `10♦`, etc.) in the result message.
+
+**Analytics**
+
+The challenge service tracks `challenges.created`, `challenges.accepted`, `challenges.declined`, `challenges.tie`, `challenges.completed`, and `challenges.failed_refunded` with tags for challenge id, chat id, challenger, target, amount, game, scores, winner, payout, and fee where applicable.
+
 ## Migrations
 
 Per-module, Dapper-based, tracked in `__module_migrations` under a `module_id` key. Applied at startup by `ModuleMigrationRunner` (registered before `BotHostedService` so schema is ready before polling starts).
@@ -219,6 +290,13 @@ Framework migrations (`_framework` module), see `FrameworkMigrations.cs`:
 | `010_runtime_tuning` | `runtime_tuning` — JSON patch merged over file/env for whitelisted `Bot` + `Games` keys; edited from `/admin/settings` |
 | `011_delivery_and_coordination` | `processed_updates`, `game_command_idempotency`, `mini_game_sessions`, `mini_game_roll_gates` |
 | `012_telegram_dice_daily_per_game` | `telegram_dice_daily_rolls` with `(telegram_user_id, balance_scope_id, game_id)` PK for per-game daily caps |
+
+New feature module migrations:
+
+| Module | ID | Contents |
+|---|---|---|
+| `challenges` | `001_initial` | `challenge_duels` table plus indexes by `(chat_id, status, created_at)` and `(target_id, status, expires_at)`. Stores challenge participants, chat, stake, game, status, creation/expiry, response time, and completion time. |
+| `pixelbattle` | `001_initial` | `pixelbattle_version_seq` and `pixelbattle_tiles` table. Each tile row stores `index`, `color`, monotonically increasing `version`, `updated_by`, and `updated_at`. |
 
 ## Poker (DDD split)
 
@@ -269,6 +347,59 @@ Lighter than poker/SH — no domain layer, per-race not per-turn.
 
 Race only runs with ≥ `MinBetsToRun` bets (default 4). Race date is `MM-dd-yyyy` in UTC+7.
 
+### Horse GIF place labels
+
+The shared `HorseRaceRenderer` now renders final placement information directly in the GIF for both normal horse races and 1v1 challenge horse races:
+
+- Each horse gets a place when its progress first reaches 100%.
+- The renderer draws a high-contrast badge near the horse (`1st`, `2nd`, `3rd`, etc.) and also repeats the place label in the right-side status column.
+- `FinishHoldFrames` keeps the final state visible for a longer tail after the race is over, so Telegram replay/loop behavior clearly shows the placings.
+- Ordinal suffix calculation is explicit: `(place % 100) is 11/12/13` uses `th`; otherwise `place % 10` picks `st`, `nd`, `rd`, or `th`.
+
+Challenge horse races use the same renderer but with only two horses. The challenge handler delays the winner announcement by `frameCount × 60 ms + 1 s`, matching the GIF frame delay plus a small buffer. This prevents the text result from spoiling the race before the animation finishes.
+
+## PixelBattle WebApp
+
+Module **`Games.PixelBattle`** plus static files under `host/CasinoShiz.Host/wwwroot/pixelbattle`. `/pixelbattle` and `/pixelbattle/` redirect to `/pixelbattle/index.html`, so the normal ASP.NET static-file middleware serves the HTML/CSS/JS assets.
+
+**Telegram entry point**
+
+`/pixelbattle` sends a Telegram WebApp button. `Games:pixelbattle:WebAppUrl` must be a public HTTPS URL, usually:
+
+```text
+https://your-public-host/pixelbattle/index.html
+```
+
+Telegram WebApps do not work from a private LAN URL for other users. For local development, expose the bot with a tunnel such as Cloudflare Tunnel or ngrok. Old message buttons may keep old tunnel URLs and stale Telegram init data; send a fresh `/pixelbattle` command when testing after URL changes or after auth expiry.
+
+**Auth**
+
+API writes require Telegram WebApp `initData` in the `X-Telegram-Init-Data` header. `TelegramWebAppInitDataValidator` verifies the hash using the bot token and enforces `Games:pixelbattle:MaxInitDataAgeSeconds` (default 24 h in current config). Invalid or expired init data returns `401`. Valid init data still must belong to a known user in the current bot database; unknown users get `403`.
+
+**Grid model**
+
+- The grid is `200 × 160` pixels, so 32,000 logical tiles.
+- Colors are restricted to the configured palette in `PixelBattleConstants`.
+- `pixelbattle_tiles.index` is the primary key.
+- Every update stores a color, updater Telegram user id, updated timestamp, and a version from `pixelbattle_version_seq`.
+- `PixelBattleGrid` returns parallel `Tiles` and `Versionstamps` arrays.
+- `PixelBattleUpdate` is `{ index, color, versionstamp }`.
+
+**Frontend rendering**
+
+The frontend originally used one DOM element per tile; it now uses a single `<canvas>`. The JS keeps `tiles` and `versionstamps` arrays in memory, draws each tile with `drawPixel`, and maps click coordinates back to a tile index. Canvas is much cheaper than 32,000 DOM nodes and keeps panning/painting responsive in the Telegram WebView.
+
+**Live updates**
+
+The `/pixelbattle/api/listen` endpoint is Server-Sent Events:
+
+1. It writes `retry: 1000`.
+2. It immediately streams a full-grid update.
+3. It subscribes to the in-process `PixelBattleBroadcaster` and writes small update arrays as users paint.
+4. It periodically sends a full grid again based on `Games:pixelbattle:FullUpdateIntervalMs`, so clients self-heal if a small update is missed.
+
+The update endpoint (`POST /pixelbattle/api/update`) validates init data, body shape, tile index, color, and known user status, persists the tile, broadcasts the update, and returns the new versionstamp.
+
 ## Admin web UI
 
 Razor pages under `/admin/*` served on the same port as the webhook (3000).
@@ -316,9 +447,34 @@ Every write action from the admin UI is recorded in `admin_audit`:
 - `/admin/horse` — race control panel: today's bets, koefs, "Run race" button (SuperAdmin only)
 - `/admin/horse/image` — horse race image/GIF preview endpoint
 - `/admin/bets` — pending bets
+- `/admin/challenges` — 1v1 PvP challenge tracking
 - `/admin/history` — race history
 - `/admin/events` — event log
 - `/admin/settings` — live runtime JSON patch editor (SuperAdmin only)
+
+### 1v1 challenge tracking (`/admin/challenges`)
+
+The `1v1` admin page is host-owned Razor UI, backed by direct Dapper queries over `challenge_duels` and `known_chats`. It is read-only and available to both SuperAdmin and ReadOnly users through the normal admin gate.
+
+Filters:
+
+- **Game**: `Dice`, `DiceCube`, `Darts`, `Bowling`, `Basketball`, `Football`, `Slots`, `Horse`, `Blackjack`.
+- **Status**: `Pending`, `Accepted`, `Completed`, `Declined`, `Failed`.
+- **Chat**: distinct chats present in `challenge_duels`, labeled from `known_chats` when available.
+
+Summary cards:
+
+- Total duels for the current filter.
+- Pending, accepted, completed, and cancelled counts.
+- Total pot tracked, computed as `sum(amount * 2)`.
+
+Tables:
+
+- **By game type**: count, pending count, completed count, total pot, last created timestamp.
+- **By chat**: chat label/id, count, pending/completed counts, total pot, last created timestamp.
+- **Recent duels**: newest 500 rows with creation time, game, status, chat, both players, per-player stake, pot, completion time, and short challenge id.
+
+This page is intended for operational questions such as "which chat uses PvP most?", "which game type is popular?", "are there stuck accepted challenges?", and "how much pot volume is flowing through 1v1".
 
 ## Configuration
 
@@ -349,8 +505,28 @@ Every write action from the admin UI is recorded in `admin_audit`:
 | `dicecube:Mult4` / `Mult5` / `Mult6` | Pay multipliers for faces 4–6 on `/dice` + 🎲 |
 | `dicecube:MaxBet`, `MinSecondsBetweenBets` | Stake cap and per-chat cooldown |
 | `horse:*` | See below |
+| `challenges:*` | See below |
+| `pixelbattle:*` | See below |
+| `transfer:*` | `FeePercent`, `MinFeeCoins`, `MinNetCoins`, `MaxNetCoins` for `/transfer` |
 
 **`Games:horse`** — `HorseCount`, `MinBetsToRun`, `AnnounceDelayMs`, `TimezoneOffsetHours`, `Admins` (Telegram user IDs allowed to `/horserun`), `AutoRunEnabled`, `AutoRunLocalHour`, `AutoRunLocalMinute`. When `AutoRunEnabled` is true, `HorseScheduledRaceJob` runs **one global** race per calendar day after the configured local time, if there are enough bets (`MinBetsToRun`). It settles payouts like `/horserun global` and posts the result GIF only to chats that placed bets.
+
+**`Games:challenges`**
+
+| Key | Default | Notes |
+|---|---:|---|
+| `MinBet` | `1` | Rejects smaller challenge stakes. |
+| `MaxBet` | `5000` | Rejects larger challenge stakes. |
+| `HouseFeeBasisPoints` | `200` | Basis points on the combined pot; `200` = 2%. Integer division truncates fractional coins. |
+| `PendingTtlMinutes` | `10` | Pending challenge expiry, clamped to 1–60 minutes by `ChallengeOptions.PendingTtl`. |
+
+**`Games:pixelbattle`**
+
+| Key | Default | Notes |
+|---|---:|---|
+| `WebAppUrl` | empty | Public HTTPS Telegram WebApp URL. Must point to `/pixelbattle/index.html` in practice. |
+| `FullUpdateIntervalMs` | implementation default | Interval for periodic full-grid SSE snapshots. |
+| `MaxInitDataAgeSeconds` | implementation default | Maximum age of Telegram WebApp init data. Expired init data returns `401`. |
 
 Other games (darts, bowling, football, …) use multipliers in their **service** classes unless bound to options.
 
@@ -527,6 +703,10 @@ Append-only audit of balance changes: `delta`, `balance_after`, `reason` (e.g. `
 
 Event-sourcing stack for future aggregate use. See `FrameworkMigrations.cs` for full DDL.
 
+#### `known_chats`
+
+Stores chats seen by the update pipeline. Admin pages use it to label chat ids with chat type, title, or username. The 1v1 admin page joins `challenge_duels.chat_id` to this table for readable chat labels.
+
 ---
 
 ### Game tables
@@ -567,6 +747,41 @@ See `games/Games.SecretHitler/` migrations. Deck serialized as `L`/`F` strings. 
 
 Day-scoped on `race_date` (`MM-dd-yyyy` in `Games:horse:TimezoneOffsetHours`). Bets include `balance_scope_id` (Telegram chat). Results are keyed on `(race_date, balance_scope_id)`; scope `0` is the **global** merged race (all chats). Other scopes are per-group races. `file_id` stores the Telegram animation reference.
 
+#### `challenge_duels`
+
+Owned by `Games.Challenges`. One row per 1v1 PvP challenge.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID | Primary key, embedded in callback data as compact `N` format. |
+| `chat_id` | BIGINT | Chat/wallet scope where the challenge was created and settled. |
+| `challenger_id` / `target_id` | BIGINT | Telegram user ids. |
+| `challenger_name` / `target_name` | TEXT | Display names captured at challenge creation. |
+| `amount` | INTEGER | Per-player stake; pot is `amount * 2`. |
+| `game` | TEXT | Serialized `ChallengeGame` enum name. |
+| `status` | TEXT | `Pending`, `Accepted`, `Declined`, `Completed`, or `Failed`. |
+| `created_at` | TIMESTAMPTZ | Creation time. |
+| `expires_at` | TIMESTAMPTZ | Pending challenges cannot be accepted after this time. |
+| `responded_at` | TIMESTAMPTZ NULL | First accept/decline/failure transition time. |
+| `completed_at` | TIMESTAMPTZ NULL | Set when the row reaches `Completed`, `Failed`, or `Declined`. |
+
+Indexes:
+
+- `(chat_id, status, created_at DESC)` for admin/chat tracking.
+- `(target_id, status, expires_at)` for target-side pending lookup.
+
+#### `pixelbattle_tiles`
+
+Owned by `Games.PixelBattle`. Sparse table for painted tiles; missing rows render as the default color.
+
+| Column | Type | Notes |
+|---|---|---|
+| `index` | INTEGER | Primary key; flattened index in a 200 × 160 grid. |
+| `color` | TEXT | Hex color from the allowed palette. |
+| `version` | BIGINT | Monotonic version from `pixelbattle_version_seq`. |
+| `updated_by` | BIGINT | Telegram user id from validated WebApp init data. |
+| `updated_at` | TIMESTAMPTZ | Last paint timestamp. |
+
 #### `redeem_codes`
 
 | Column | Type | Notes |
@@ -596,6 +811,10 @@ All UI in Russian. Command names are ASCII.
 | `/poker …` | Texas Hold'em — create / join / start / fold / call / raise / check / leave |
 | `/blackjack <bet>` | Start a hand; inline keyboard drives hit / stand / double |
 | `/sh …` | Secret Hitler (5–10 players) — create / join / start / nominate / vote / leave |
+| `/challenge @user <amount> <game>` | Create a 1v1 PvP stake challenge; supported games: dice/dicecube, darts, bowling, basketball, football, slots, horse, blackjack |
+| `/challenge <amount> <game>` | Same as above, when replying to the target user's message |
+| `/pixelbattle` | Open the PixelBattle Telegram WebApp button |
+| `/transfer <target> <amount>` | Send coins to another user in the same group wallet; amount is recipient net amount |
 | `/redeem <uuid>` | Redeem one extra roll for the code's game (private chat only, emoji captcha) |
 | `/balance` | Current coin balance (this chat’s wallet) |
 | `/daily` | Once per day (after offset): small % of balance, capped — see `Bot:DailyBonus` |
@@ -615,11 +834,48 @@ All UI in Russian. Command names are ASCII.
 | `/run kick_poker <id>` | Remove from table and refund stack |
 | `/rename <old> <new\|*>` | Display-name override; `*` clears |
 
+## Recent Feature Notes
+
+These notes summarize the latest large feature additions and the places they touch.
+
+### PixelBattle changes
+
+- New module: `games/Games.PixelBattle`.
+- Host wiring: `Program.cs` registers `PixelBattleModule` and calls `app.MapPixelBattle()`.
+- Static assets: `host/CasinoShiz.Host/wwwroot/pixelbattle/index.html`, `app.js`, `styles.css`.
+- Rendering: the grid is now canvas-based instead of 32,000 DOM nodes.
+- Backend: `/pixelbattle/api/grid`, `/pixelbattle/api/update`, `/pixelbattle/api/listen`.
+- Live updates: in-process broadcaster plus SSE, with periodic full snapshots.
+- Config required for Telegram users: `Games:pixelbattle:WebAppUrl`.
+
+### Challenge system changes
+
+- New module: `games/Games.Challenges`.
+- Host wiring: `ChallengeModule` is registered in `Program.cs`, referenced by the host project and solution, and copied by Docker build metadata.
+- Database: `challenge_duels`.
+- User entry: `/challenge`.
+- Callback data shape: `ch:a:<challengeIdN>` for accept, `ch:d:<challengeIdN>` for decline.
+- Settlement reasons in the economics ledger: `challenge.stake`, `challenge.payout`, `challenge.tie_refund`, `challenge.refund`.
+- Admin tracking: `/admin/challenges`, nav label `1v1`.
+
+### Horse renderer changes
+
+- Shared renderer now shows final placements directly in the GIF.
+- Final frames are held longer so Telegram animation replay clearly shows the places.
+- Challenge horse races use the same GIF path and delay winner announcement until the animation should have finished.
+
+### Blackjack challenge changes
+
+- Normal `/blackjack` remains the existing single-player turn-based game.
+- Challenge blackjack is a separate instant duel inside `Games.Challenges`.
+- It reuses `Games.Blackjack.Domain.Deck` and `BlackjackHandValue`, but does not create `blackjack_hands` rows.
+- The output uses friendly suit symbols instead of raw card codes.
+
 ## Conventions
 
 - User strings: Russian, live in each module's `Locales.cs` — never inline
 - Plural forms: `RussianPlural.Plural(n, ["монета","монеты","монет"])`
-- PRNG: `Mulberry32` seeded for reproducible outcomes (captcha, horse speeds, poker shuffle)
+- Randomness: Telegram dice outcomes come from Telegram; blackjack/poker decks use `RandomNumberGenerator`; horse winner/place generation uses the horse generator path and renders deterministic speed series for the chosen places
 - No `Task.Delay` for scheduling — use `IBackgroundJob` / `IHostedService` sweepers
 - Services return result records; handlers map to messages. Only throw for programmer errors
 - **Balance changes go through `IEconomicsService` — always.** Never raw SQL on `users.coins`

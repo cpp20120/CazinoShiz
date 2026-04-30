@@ -18,6 +18,7 @@
     <ProjectReference Include="..\..\games\Games.Football\Games.Football.csproj" />
     <ProjectReference Include="..\..\games\Games.Basketball\Games.Basketball.csproj" />
     <ProjectReference Include="..\..\games\Games.Bowling\Games.Bowling.csproj" />
+    <ProjectReference Include="..\..\games\Games.Challenges\Games.Challenges.csproj" />
     <ProjectReference Include="..\..\games\Games.Blackjack\Games.Blackjack.csproj" />
     <ProjectReference Include="..\..\games\Games.Horse\Games.Horse.csproj" />
     <ProjectReference Include="..\..\games\Games.Poker\Games.Poker.csproj" />

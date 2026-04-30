@@ -11,6 +11,7 @@
     <Project Path="games\Games.Football\Games.Football.csproj" />
     <Project Path="games\Games.Basketball\Games.Basketball.csproj" />
     <Project Path="games\Games.Bowling\Games.Bowling.csproj" />
+    <Project Path="games\Games.Challenges\Games.Challenges.csproj" />
     <Project Path="games\Games.Blackjack\Games.Blackjack.csproj" />
     <Project Path="games\Games.Horse\Games.Horse.csproj" />
     <Project Path="games\Games.Poker\Games.Poker.csproj" />

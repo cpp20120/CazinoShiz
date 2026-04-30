@@ -32,6 +32,7 @@
     <ProjectReference Include="..\..\games\Games.Football\Games.Football.csproj" />
     <ProjectReference Include="..\..\games\Games.Basketball\Games.Basketball.csproj" />
     <ProjectReference Include="..\..\games\Games.Bowling\Games.Bowling.csproj" />
+    <ProjectReference Include="..\..\games\Games.Challenges\Games.Challenges.csproj" />
     <ProjectReference Include="..\..\games\Games.Redeem\Games.Redeem.csproj" />
     <ProjectReference Include="..\..\games\Games.Leaderboard\Games.Leaderboard.csproj" />
     <ProjectReference Include="..\..\games\Games.Transfer\Games.Transfer.csproj" />

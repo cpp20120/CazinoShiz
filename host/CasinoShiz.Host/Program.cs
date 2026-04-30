@@ -19,6 +19,7 @@ using Games.Admin;
 using Games.Basketball;
 using Games.Blackjack;
 using Games.Bowling;
+using Games.Challenges;
 using Games.Darts;
 using Games.Dice;
 using Games.Football;
@@ -46,6 +47,7 @@ builder.AddBotFramework()
     .AddModule<FootballModule>()
     .AddModule<BasketballModule>()
     .AddModule<BowlingModule>()
+    .AddModule<ChallengeModule>()
     .AddModule<BlackjackModule>()
     .AddModule<HorseModule>()
     .AddModule<PokerModule>()

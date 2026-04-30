@@ -12,6 +12,7 @@ public static class HorseRaceRenderer
     private const int StartY = 30;
     private const int Radius = 10;
     private const int MenuWidth = 140;
+    private const int FinishHoldFrames = 90;
     private static readonly float Modifier = (Width - 2 * StartX - MenuWidth) / (float)IterCount;
 
     private static readonly string[] Colors =
@@ -34,7 +35,7 @@ public static class HorseRaceRenderer
         var horsesCount = series.Length;
         var height = 2 * StartY + (horsesCount - 1) * YPadding;
 
-        var maxFrames = series.Max(s => s.Length) + 10;
+        var maxFrames = series.Max(s => s.Length) + FinishHoldFrames;
 
         var horses = new HorseState[horsesCount];
         for (var i = 0; i < horsesCount; i++)
@@ -52,6 +53,8 @@ public static class HorseRaceRenderer
         using var pctFont = new SKFont(monoTypeface, 16);
         using var boldFont = new SKFont(monoTypeface, 16);
         boldFont.Embolden = true;
+        using var placeFont = new SKFont(monoTypeface, 14);
+        placeFont.Embolden = true;
 
         for (var frameId = 0; frameId < maxFrames; frameId++)
         {
@@ -63,6 +66,12 @@ public static class HorseRaceRenderer
             {
                 var horse = horses[horseId];
                 var y = horse.Y;
+                var velocity = frameId < series[horseId].Length ? series[horseId][frameId] : 0;
+                if (velocity > 0)
+                    horse.Add(velocity, Modifier);
+
+                if (horse.Distance >= 100 && horse.Place == 0)
+                    horse.Place = currentPlace++;
 
                 canvas.DrawLine(StartX, y, Width - MenuWidth - StartX, y, trackPaint);
 
@@ -88,20 +97,14 @@ public static class HorseRaceRenderer
                 pctPaint.IsAntialias = true;
                 canvas.DrawText($"{distToRender}%", Width - MenuWidth - StartX + 30, y + 5, SKTextAlign.Left, pctFont, pctPaint);
 
-                var velocity = frameId < series[horseId].Length ? series[horseId][frameId] : 0;
-                if (velocity > 0)
-                    horse.Add(velocity, Modifier);
-
-                if (horse.Distance >= 100 && horse.Place == 0)
-                    horse.Place = currentPlace++;
-
                 if (horse.Place > 0)
                 {
+                    var label = FormatPlace(horse.Place);
                     var shade = (byte)Math.Min((horse.Place - 1) * 15, 170);
-                    using var placePaint = new SKPaint();
-                    placePaint.Color = new SKColor(shade, shade, shade);
-                    placePaint.IsAntialias = true;
-                    canvas.DrawText(horse.Place.ToString(), Width - StartX - 12, y + 5, SKTextAlign.Left, boldFont, placePaint);
+
+                    var labelX = Math.Min(horse.X + Radius + 8, Width - StartX - 76);
+                    DrawPlaceBadge(canvas, label, labelX, y, placeFont, new SKColor(shade, shade, shade));
+                    DrawPlaceText(canvas, label, Width - StartX - 42, y + 5, boldFont, new SKColor(shade, shade, shade));
                 }
             }
 
@@ -111,6 +114,68 @@ public static class HorseRaceRenderer
         }
 
         return (buffers, height, Width);
+    }
+
+    private static void DrawPlaceBadge(
+        SKCanvas canvas,
+        string label,
+        float x,
+        float y,
+        SKFont font,
+        SKColor textColor)
+    {
+        var textWidth = font.MeasureText(label);
+        var rect = SKRect.Create(x - 6, y - 28, textWidth + 12, 24);
+
+        using var fillPaint = new SKPaint();
+        fillPaint.Color = new SKColor(255, 255, 255, 230);
+        fillPaint.IsAntialias = true;
+        canvas.DrawRoundRect(rect, 6, 6, fillPaint);
+
+        using var borderPaint = new SKPaint();
+        borderPaint.Color = textColor;
+        borderPaint.IsAntialias = true;
+        borderPaint.Style = SKPaintStyle.Stroke;
+        borderPaint.StrokeWidth = 2;
+        canvas.DrawRoundRect(rect, 6, 6, borderPaint);
+
+        DrawPlaceText(canvas, label, x, y - 10, font, textColor);
+    }
+
+    private static void DrawPlaceText(
+        SKCanvas canvas,
+        string label,
+        float x,
+        float y,
+        SKFont font,
+        SKColor textColor)
+    {
+        using var outlinePaint = new SKPaint();
+        outlinePaint.Color = SKColors.White;
+        outlinePaint.IsAntialias = true;
+        outlinePaint.Style = SKPaintStyle.Stroke;
+        outlinePaint.StrokeWidth = 3;
+        canvas.DrawText(label, x, y, SKTextAlign.Left, font, outlinePaint);
+
+        using var textPaint = new SKPaint();
+        textPaint.Color = textColor;
+        textPaint.IsAntialias = true;
+        canvas.DrawText(label, x, y, SKTextAlign.Left, font, textPaint);
+    }
+
+    private static string FormatPlace(int place)
+    {
+        var suffix = (place % 100) is 11 or 12 or 13
+            ? "th"
+            : (place % 10) switch
+            {
+                1 => "st",
+                2 => "nd",
+                3 => "rd",
+                _ => "th",
+            };
+
+        return $"{place}{suffix}";
     }
 
     private sealed class HorseState(float x, float y, SKColor color)

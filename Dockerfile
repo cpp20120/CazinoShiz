@@ -11,6 +11,7 @@ COPY games/Games.Darts/Games.Darts.csproj                       games/Games.Dart
 COPY games/Games.Basketball/Games.Basketball.csproj             games/Games.Basketball/
 COPY games/Games.Football/Games.Football.csproj                 games/Games.Football/
 COPY games/Games.Bowling/Games.Bowling.csproj                   games/Games.Bowling/
+COPY games/Games.Challenges/Games.Challenges.csproj             games/Games.Challenges/
 COPY games/Games.Blackjack/Games.Blackjack.csproj               games/Games.Blackjack/
 COPY games/Games.Horse/Games.Horse.csproj                       games/Games.Horse/
 COPY games/Games.Poker/Games.Poker.csproj                       games/Games.Poker/
