@@ -103,7 +103,7 @@
       "targets": [
         {
           "format": 0,
-          "rawSql": "SELECT toStartOfInterval(created_at, INTERVAL 1 MINUTE) AS time, module, count() AS count FROM analytics.events_v2 WHERE $__timeFilter(created_at) GROUP BY time, module ORDER BY time",
+          "rawSql": "SELECT toStartOfInterval(created_at, INTERVAL 1 MINUTE) AS time, module, count() AS count FROM cazinoshiz.events_v2 WHERE $__timeFilter(created_at) GROUP BY time, module ORDER BY time",
           "refId": "A"
         }
       ],
@@ -162,7 +162,7 @@
       "targets": [
         {
           "format": 1,
-          "rawSql": "SELECT count() FROM analytics.events_v2 WHERE created_at >= now() - INTERVAL 24 HOUR",
+          "rawSql": "SELECT count() FROM cazinoshiz.events_v2 WHERE created_at >= now() - INTERVAL 24 HOUR",
           "refId": "A"
         }
       ],
@@ -221,7 +221,7 @@
       "targets": [
         {
           "format": 1,
-          "rawSql": "SELECT uniqExact(user_id) FROM analytics.events_v2 WHERE created_at >= now() - INTERVAL 24 HOUR AND user_id > 0",
+          "rawSql": "SELECT uniqExact(user_id) FROM cazinoshiz.events_v2 WHERE created_at >= now() - INTERVAL 24 HOUR AND user_id > 0",
           "refId": "A"
         }
       ],
@@ -280,7 +280,7 @@
       "targets": [
         {
           "format": 1,
-          "rawSql": "SELECT count() FROM analytics.events_v2 WHERE event_type = '_framework.error' AND created_at >= now() - INTERVAL 24 HOUR",
+          "rawSql": "SELECT count() FROM cazinoshiz.events_v2 WHERE event_type = '_framework.error' AND created_at >= now() - INTERVAL 24 HOUR",
           "refId": "A"
         }
       ],
@@ -339,7 +339,7 @@
       "targets": [
         {
           "format": 1,
-          "rawSql": "SELECT count() FROM analytics.events_v2 WHERE event_type IN ('darts.throw_completed','football.throw_completed','basketball.throw_completed','bowling.roll_completed','dicecube.roll_completed','dice.roll_completed') AND created_at >= now() - INTERVAL 24 HOUR",
+          "rawSql": "SELECT count() FROM cazinoshiz.events_v2 WHERE event_type IN ('darts.throw_completed','football.throw_completed','basketball.throw_completed','bowling.roll_completed','dicecube.roll_completed','dice.roll_completed') AND created_at >= now() - INTERVAL 24 HOUR",
           "refId": "A"
         }
       ],
@@ -400,7 +400,7 @@
       "targets": [
         {
           "format": 1,
-          "rawSql": "SELECT user_id, module, sum(toInt64OrZero(params['Payout']) + toInt64OrZero(params['Prize'])) AS coins_won, count() AS rounds FROM analytics.events_v2 WHERE event_type IN ('darts.throw_completed','football.throw_completed','basketball.throw_completed','bowling.roll_completed','dicecube.roll_completed','dice.roll_completed','horse.race_finished') AND created_at >= now() - INTERVAL 24 HOUR GROUP BY user_id, module HAVING coins_won > 0 ORDER BY coins_won DESC LIMIT 20",
+          "rawSql": "SELECT user_id, module, sum(toInt64OrZero(params['Payout']) + toInt64OrZero(params['Prize'])) AS coins_won, count() AS rounds FROM cazinoshiz.events_v2 WHERE event_type IN ('darts.throw_completed','football.throw_completed','basketball.throw_completed','bowling.roll_completed','dicecube.roll_completed','dice.roll_completed','horse.race_finished') AND created_at >= now() - INTERVAL 24 HOUR GROUP BY user_id, module HAVING coins_won > 0 ORDER BY coins_won DESC LIMIT 20",
           "refId": "A"
         }
       ],
@@ -461,7 +461,7 @@
       "targets": [
         {
           "format": 1,
-          "rawSql": "SELECT created_at, params['exception_type'] AS exception, params['message'] AS message, user_id FROM analytics.events_v2 WHERE event_type = '_framework.error' ORDER BY created_at DESC LIMIT 50",
+          "rawSql": "SELECT created_at, params['exception_type'] AS exception, params['message'] AS message, user_id FROM cazinoshiz.events_v2 WHERE event_type = '_framework.error' ORDER BY created_at DESC LIMIT 50",
           "refId": "A"
         }
       ],
@@ -522,7 +522,7 @@
       "targets": [
         {
           "format": 1,
-          "rawSql": "SELECT event_type, count() AS rows, uniqExact(user_id) AS users FROM analytics.events_v2 WHERE created_at >= now() - INTERVAL 24 HOUR GROUP BY event_type ORDER BY rows DESC",
+          "rawSql": "SELECT event_type, count() AS rows, uniqExact(user_id) AS users FROM cazinoshiz.events_v2 WHERE created_at >= now() - INTERVAL 24 HOUR GROUP BY event_type ORDER BY rows DESC",
           "refId": "A"
         }
       ],
@@ -611,7 +611,7 @@
           },
           "pluginVersion": "4.15.0",
           "queryType": "table",
-          "rawSql": "SELECT count() FROM analytics.events_v2                                                                                                                                                                                                   \n  WHERE event_type = '_framework.error' AND $__timeFilter(created_at)   ",
+          "rawSql": "SELECT count() FROM cazinoshiz.events_v2                                                                                                                                                                                                   \n  WHERE event_type = '_framework.error' AND $__timeFilter(created_at)   ",
           "refId": "Count"
         },
         {
@@ -634,7 +634,7 @@
           },
           "pluginVersion": "4.15.0",
           "queryType": "table",
-          "rawSql": "SELECT uniqExact(user_id) FROM analytics.events_v2 WHERE $__timeFilter(created_at) AND user_id > 0",
+          "rawSql": "SELECT uniqExact(user_id) FROM cazinoshiz.events_v2 WHERE $__timeFilter(created_at) AND user_id > 0",
           "refId": "Uniq Users"
         },
         {
@@ -657,7 +657,7 @@
           },
           "pluginVersion": "4.15.0",
           "queryType": "table",
-          "rawSql": "SELECT count() FROM analytics.events_v2 WHERE event_type = '_framework.error' AND $__timeFilter(created_at)",
+          "rawSql": "SELECT count() FROM cazinoshiz.events_v2 WHERE event_type = '_framework.error' AND $__timeFilter(created_at)",
           "refId": "Error count"
         },
         {
@@ -680,7 +680,7 @@
           },
           "pluginVersion": "4.15.0",
           "queryType": "table",
-          "rawSql": "SELECT \n  sum(toInt64OrZero(params['Bet']) + toInt64OrZero(params['Amount'])) AS wagered,\n  sum(toInt64OrZero(params['Payout']) + toInt64OrZero(params['Prize'])) AS paid_out,\n  wagered - paid_out AS house_edge\nFROM analytics.events_v2\nWHERE (event_type LIKE '%.throw_completed' OR event_type LIKE '%.roll_completed')\n  AND $__timeFilter(created_at)",
+          "rawSql": "SELECT \n  sum(toInt64OrZero(params['Bet']) + toInt64OrZero(params['Amount'])) AS wagered,\n  sum(toInt64OrZero(params['Payout']) + toInt64OrZero(params['Prize'])) AS paid_out,\n  wagered - paid_out AS house_edge\nFROM cazinoshiz.events_v2\nWHERE (event_type LIKE '%.throw_completed' OR event_type LIKE '%.roll_completed')\n  AND $__timeFilter(created_at)",
           "refId": "Financial Summary"
         },
         {
@@ -703,7 +703,7 @@
           },
           "pluginVersion": "4.15.0",
           "queryType": "table",
-          "rawSql": "SELECT \n  toStartOfInterval(created_at, INTERVAL 1 MINUTE) AS time,\n  module,\n  count()\nFROM analytics.events_v2\nWHERE $__timeFilter(created_at)\nGROUP BY time, module\nORDER BY time",
+          "rawSql": "SELECT \n  toStartOfInterval(created_at, INTERVAL 1 MINUTE) AS time,\n  module,\n  count()\nFROM cazinoshiz.events_v2\nWHERE $__timeFilter(created_at)\nGROUP BY time, module\nORDER BY time",
           "refId": "Events per Minute by Module"
         }
       ],

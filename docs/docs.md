@@ -651,7 +651,7 @@ https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://bot.example.com/<TOKE
 
 Validation: if `ClickHouse:Enabled=true` but `ClickHouse:Host` is empty, startup throws immediately.
 
-Raw query: `curl 'http://localhost:8123/?query=SELECT+*+FROM+analytics.events_v2+LIMIT+10'`
+Raw query: `curl 'http://localhost:8123/?query=SELECT+*+FROM+cazinoshiz.events_v2+LIMIT+10'`
 
 ## Testing
 

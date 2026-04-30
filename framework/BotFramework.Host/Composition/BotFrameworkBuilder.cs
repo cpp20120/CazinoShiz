@@ -229,6 +229,7 @@ public static class BotFrameworkBuilderExtensions
         services.AddSingleton<ClickHouseAnalyticsService>();
         services.AddSingleton<IAnalyticsService>(sp => sp.GetRequiredService<ClickHouseAnalyticsService>());
         services.AddHostedService(sp => sp.GetRequiredService<ClickHouseAnalyticsService>());
+        services.AddSingleton<IAnalyticsQueryService, ClickHouseAnalyticsQueryService>();
 
         // Event sourcing stack. Registered as singletons because they hold no
         // per-request state and all I/O runs on short-lived pooled connections.

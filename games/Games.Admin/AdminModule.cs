@@ -14,7 +14,8 @@ public sealed class AdminModule : IModule
             .BindOptions<AdminOptions>(AdminOptions.SectionName)
             .AddScoped<IAdminStore, AdminStore>()
             .AddScoped<IAdminService, AdminService>()
-            .AddHandler<AdminHandler>();
+            .AddHandler<AdminHandler>()
+            .AddHandler<AnalyticsHandler>();
     }
 
     public IModuleMigrations GetMigrations() => new AdminMigrations();
@@ -49,6 +50,19 @@ public sealed class AdminModule : IModule
             ["rename.set"] = "Renamed {0} to {1}",
             ["rename.cleared"] = "Renaming for {0} cleared",
             ["rename.nochange"] = "Renaming for {0} not set",
+
+            ["analytics.private_only"] = "🚫 <b>/analytics</b> работает только в личке с ботом.",
+            ["analytics.not_admin"] = "🚫 <b>/analytics</b> доступна только администратору бота.",
+            ["analytics.disabled"] = "📊 <b>Analytics</b>: ClickHouse не настроен.\n<i>{0}</i>",
+            ["analytics.unreachable"] = "📊 <b>Analytics</b>: ClickHouse недоступен.\n<i>{0}</i>",
+            ["analytics.query_failed"] = "📊 <b>Analytics</b>: запрос упал.\n<code>{0}</code>",
+            ["analytics.header"] = "📊 <b>Analytics</b>\nproject: <code>{0}</code> · table: <code>{1}</code>\nrows total: <b>{2}</b>\ngenerated: <code>{3}</code>",
+            ["analytics.window.header"] = "⏱ <b>{0}</b>",
+            ["analytics.window.totals"] = "events: <b>{0}</b> · users: <b>{1}</b>",
+            ["analytics.window.top_events"] = "<i>top events:</i>",
+            ["analytics.window.top_modules"] = "<i>top modules:</i>",
+            ["analytics.window.top_users"] = "<i>top users:</i>",
+            ["analytics.timeline.header"] = "📅 <b>last {0} days</b>",
         }),
     ];
 }

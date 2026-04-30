@@ -5,6 +5,7 @@ objg
 *.db
 *.db-shm
 *.db-wal
+db
 .env
 data/
 *.user

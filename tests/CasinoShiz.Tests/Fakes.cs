@@ -532,6 +532,48 @@ sealed class InMemoryLeaderboardStore : ILeaderboardStore
         if (u == default) return Task.FromResult<(int, long)?>(null);
         return Task.FromResult<(int, long)?>((u.Coins, u.UpdatedAtMs));
     }
+
+    public Task<(IReadOnlyList<GlobalLeaderboardUser> Users, int TotalUsers)> ListGlobalAggregateAsync(
+        long sinceUnixMs, int limit, CancellationToken ct)
+    {
+        var aggregate = _users
+            .Where(u => u.UpdatedAtMs >= sinceUnixMs)
+            .GroupBy(u => u.UserId)
+            .Select(g =>
+            {
+                var latest = g.OrderByDescending(x => x.UpdatedAtMs).First();
+                var total = g.Sum(x => x.Coins);
+                return new GlobalLeaderboardUser(g.Key, latest.Name, total, g.Count());
+            })
+            .OrderByDescending(g => g.TotalCoins)
+            .ThenBy(g => g.TelegramUserId)
+            .ToList();
+        var totalUsers = aggregate.Count;
+        var slice = limit > 0 && aggregate.Count > limit ? aggregate.Take(limit).ToList() : aggregate;
+        return Task.FromResult<(IReadOnlyList<GlobalLeaderboardUser>, int)>((slice, totalUsers));
+    }
+
+    public Task<IReadOnlyList<(long ChatId, string? Title, string ChatType, LeaderboardUser User)>>
+        ListGlobalSplitAsync(long sinceUnixMs, int perChatLimit, CancellationToken ct)
+    {
+        var rows = _users
+            .Where(u => u.UpdatedAtMs >= sinceUnixMs)
+            .GroupBy(u => u.ScopeId)
+            .SelectMany(g =>
+            {
+                var ordered = g.OrderByDescending(x => x.Coins).ThenBy(x => x.UserId).ToList();
+                var sliced = perChatLimit > 0 ? ordered.Take(perChatLimit) : ordered;
+                return sliced.Select(u => (
+                    ChatId: g.Key,
+                    Title: (string?)null,
+                    ChatType: "unknown",
+                    User: new LeaderboardUser(u.UserId, u.ScopeId, u.Name, u.Coins, u.UpdatedAtMs)));
+            })
+            .OrderBy(x => x.ChatId)
+            .ThenByDescending(x => x.User.Coins)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<(long, string?, string, LeaderboardUser)>>(rows);
+    }
 }
 
 // ── Admin ─────────────────────────────────────────────────────────────────────

@@ -26,7 +26,7 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
     environment:
-      CLICKHOUSE_DB: analytics
+      CLICKHOUSE_DB: cazinoshiz
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: ""
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
