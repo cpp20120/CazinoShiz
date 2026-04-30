@@ -50,12 +50,36 @@ public sealed class LeaderboardHandler(
         var footballDef = ReadPositiveInt(configuration, "Games:football:DefaultBet", 10);
         var basketDef = ReadPositiveInt(configuration, "Games:basketball:DefaultBet", 10);
         var bowlingDef = ReadPositiveInt(configuration, "Games:bowling:DefaultBet", 10);
-        var text = string.Format(Loc("help"), diceDef, dartsDef, footballDef, basketDef, bowlingDef);
+        var pickDef = ReadPositiveInt(configuration, "Games:pick:DefaultBet", 10);
+        var ticketPrice = ReadPositiveInt(configuration, "Games:pick:Daily:TicketPrice", 50);
+        var drawHour = ReadHourOfDay(configuration, "Games:pick:Daily:DrawHourLocal", 18);
+        var offsetHours = ReadInt(configuration, "Bot:TelegramDiceDailyLimit:TimezoneOffsetHours", 7);
+
+        var text = string.Format(
+            Loc("help"),
+            diceDef, dartsDef, footballDef, basketDef, bowlingDef,
+            pickDef, ticketPrice, drawHour, FormatUtcOffset(offsetHours));
+
         return ctx.Bot.SendMessage(msg.Chat.Id, text,
             parseMode: ParseMode.Html,
             replyParameters: new ReplyParameters { MessageId = msg.MessageId },
             cancellationToken: ctx.Ct);
     }
+
+    private static int ReadInt(IConfiguration cfg, string key, int fallback)
+    {
+        var s = cfg[key];
+        return int.TryParse(s, out var v) ? v : fallback;
+    }
+
+    private static int ReadHourOfDay(IConfiguration cfg, string key, int fallback)
+    {
+        var s = cfg[key];
+        if (!int.TryParse(s, out var v)) return fallback;
+        return v is >= 0 and <= 23 ? v : fallback;
+    }
+
+    private static string FormatUtcOffset(int hours) => hours >= 0 ? $"+{hours}" : hours.ToString();
 
     private static int ReadPositiveInt(IConfiguration cfg, string key, int fallback)
     {

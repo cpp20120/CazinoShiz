@@ -13,7 +13,16 @@ public static class RuntimeTuningPayloadSanitizer
 
     public static readonly HashSet<string> AllowedGameKeys = new(StringComparer.Ordinal)
     {
-        "dice", "dicecube", "darts", "football", "basketball", "bowling", "horse", "poker", "transfer",
+        // Telegram-dice family
+        "dice", "dicecube", "darts", "football", "basketball", "bowling",
+        // Bigger games
+        "horse", "poker", "blackjack", "sh",
+        // Casino-style
+        "pick",
+        // PvP / utilities
+        "challenges", "transfer",
+        // Front-end / admin / cross-cutting
+        "pixelbattle", "redeem", "leaderboard", "admin",
     };
 
     public static JsonObject Sanitize(JsonObject raw)

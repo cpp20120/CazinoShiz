@@ -26,6 +26,7 @@ using Games.Football;
 using Games.DiceCube;
 using Games.Horse;
 using Games.Leaderboard;
+using Games.Pick;
 using Games.PixelBattle;
 using Games.Poker;
 using Games.Redeem;
@@ -56,6 +57,7 @@ builder.AddBotFramework()
     .AddModule<LeaderboardModule>()
     .AddModule<TransferModule>()
     .AddModule<PixelBattleModule>()
+    .AddModule<PickModule>()
     .AddModule<AdminModule>();
 
 builder.Services.Configure<ForwardedHeadersOptions>(options =>

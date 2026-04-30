@@ -12,6 +12,7 @@ public sealed class RedeemModule : IModule
     {
         services
             .BindOptions<RedeemOptions>(RedeemOptions.SectionName)
+            .AddSingleton<RedeemCaptchaTimeouts>()
             .AddScoped<IRedeemService, RedeemService>()
             .AddScoped<IRedeemStore, RedeemStore>()
             .AddDomainEventSubscription<RedeemDropSubscriber>("telegram_dice.redeem_code_drop_requested")

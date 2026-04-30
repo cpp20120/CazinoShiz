@@ -20,6 +20,7 @@ public sealed partial class RedeemHandler(
     IOptions<RedeemOptions> options,
     IOptions<BotFrameworkOptions> botOptions,
     IHostApplicationLifetime lifetime,
+    RedeemCaptchaTimeouts timeouts,
     ILogger<RedeemHandler> logger) : IUpdateHandler
 {
     private readonly RedeemOptions _opts = options.Value;
@@ -103,7 +104,8 @@ public sealed partial class RedeemHandler(
             replyMarkup: markup,
             cancellationToken: ctx.Ct);
 
-        _ = ScheduleTimeoutAsync(ctx.Bot, chatId, captchaMsg.MessageId, lifetime.ApplicationStopping);
+        var cts = timeouts.Schedule(result.CodeGuid, lifetime.ApplicationStopping);
+        _ = ScheduleTimeoutAsync(ctx.Bot, chatId, captchaMsg.MessageId, result.CodeGuid, cts);
     }
 
     private async Task HandleCallbackAsync(UpdateContext ctx, CallbackQuery cbq)
@@ -118,6 +120,11 @@ public sealed partial class RedeemHandler(
         if (parts.Length != 3 || parts[0] != "rd") return;
         if (!Guid.TryParse(parts[1], out var codeGuid)) return;
         if (!int.TryParse(parts[2], out var chosenId)) return;
+
+        // Cancel the pending timeout the moment the user picks an answer —
+        // otherwise the fire-and-forget Task.Delay still lands and tells the
+        // user they "took too long" even on a successful redeem.
+        timeouts.TryCancel(codeGuid);
 
         var expected = CaptchaService.CreateCaptcha(codeGuid.ToString(), _opts.CaptchaItems);
         var passed = chosenId == expected.TargetId;
@@ -159,16 +166,33 @@ public sealed partial class RedeemHandler(
     private bool IsCodegenAdmin(long userId) =>
         _opts.Admins.Contains(userId) || _botOpts.Admins.Contains(userId);
 
-    private async Task ScheduleTimeoutAsync(ITelegramBotClient bot, long chatId, int messageId, CancellationToken ct)
+    private async Task ScheduleTimeoutAsync(
+        ITelegramBotClient bot, long chatId, int messageId, Guid codeGuid, CancellationTokenSource cts)
     {
         try
         {
-            await Task.Delay(_opts.CaptchaTimeoutMs, ct);
+            await Task.Delay(_opts.CaptchaTimeoutMs, cts.Token);
+            // Atomically claim the slot. If a callback is racing us and removed
+            // the entry first, Forget returns false and we silently bow out so
+            // the user doesn't see a stray "took too long" after answering.
+            if (!timeouts.Forget(codeGuid, cts)) return;
             try { await bot.DeleteMessage(chatId, messageId); } catch { }
             try { await bot.SendMessage(chatId, Loc("captcha.timeout")); } catch { }
         }
-        catch (OperationCanceledException) { }
-        catch (Exception ex) { LogTimeoutFailed(ex); }
+        catch (OperationCanceledException)
+        {
+            // Cancelled either by the callback handler (user answered) or by
+            // app shutdown. Either way: nothing to send, nothing to clean.
+        }
+        catch (Exception ex)
+        {
+            LogTimeoutFailed(ex);
+            timeouts.Forget(codeGuid, cts);
+        }
+        finally
+        {
+            cts.Dispose();
+        }
     }
 
     private static InlineKeyboardMarkup BuildCaptchaMarkup(Guid codeGuid, CaptchaResult captcha)

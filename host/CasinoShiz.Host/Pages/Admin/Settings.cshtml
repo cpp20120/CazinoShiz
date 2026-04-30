@@ -121,6 +121,65 @@
         </label>
         <p style="margin-top:12px"><button type="submit">Save poker settings</button></p>
     </form>
+
+    <form method="post" asp-page-handler="Blackjack" class="card">
+        <h3>Blackjack</h3>
+        <p class="muted">Min/max stake. Hand timeout is per-hand inactivity (ms).</p>
+        <label>Min bet <input asp-for="BlackjackGame.MinBet" type="number" min="1" step="1" /></label>
+        <label>Max bet <input asp-for="BlackjackGame.MaxBet" type="number" min="1" step="1" /></label>
+        <label>Hand timeout (ms) <input asp-for="BlackjackGame.HandTimeoutMs" type="number" min="5000" step="1000" /></label>
+        <p style="margin-top:12px"><button type="submit">Save blackjack settings</button></p>
+    </form>
+
+    <form method="post" asp-page-handler="SecretHitler" class="card">
+        <h3>Secret Hitler</h3>
+        <p class="muted">Buy-in is charged on each new game.</p>
+        <label>Buy-in <input asp-for="SecretHitlerGame.BuyIn" type="number" min="1" step="1" /></label>
+        <p style="margin-top:12px"><button type="submit">Save Secret Hitler settings</button></p>
+    </form>
+
+    <form method="post" asp-page-handler="Challenge" class="card">
+        <h3>Challenge / PvP</h3>
+        <p class="muted">House fee is in basis points: <code>200</code> = 2%, <code>500</code> = 5%. Pending TTL is how long an outstanding challenge stays open.</p>
+        <label>Min bet <input asp-for="ChallengeGame.MinBet" type="number" min="1" step="1" /></label>
+        <label>Max bet <input asp-for="ChallengeGame.MaxBet" type="number" min="1" step="1" /></label>
+        <label>House fee (bps) <input asp-for="ChallengeGame.HouseFeeBasisPoints" type="number" min="0" max="9999" step="1" /></label>
+        <label>Pending TTL (min) <input asp-for="ChallengeGame.PendingTtlMinutes" type="number" min="1" max="60" step="1" /></label>
+        <p style="margin-top:12px"><button type="submit">Save challenge settings</button></p>
+    </form>
+
+    <form method="post" asp-page-handler="Pick" class="card">
+        <h3>Pick / lotteries</h3>
+        <p class="muted">Tunables for <code>/pick</code>, <code>/picklottery</code>+<code>/pickjoin</code> and <code>/dailylottery</code>. House edge / fees are decimals: <code>0.05</code> = 5%. Daily draw hour is local time (UTC + offset shown in your effective preview).</p>
+
+        <h4 style="margin-top:8px">Core /pick</h4>
+        <label>Default bet <input asp-for="PickGame.DefaultBet" type="number" min="1" step="1" /></label>
+        <label>Max bet <input asp-for="PickGame.MaxBet" type="number" min="1" step="1" /></label>
+        <label>House edge <input asp-for="PickGame.HouseEdge" type="number" min="0" max="0.99" step="0.01" /></label>
+        <label>Streak bonus / win <input asp-for="PickGame.StreakBonusPerWin" type="number" min="0" step="0.05" /></label>
+        <label>Streak cap <input asp-for="PickGame.StreakCap" type="number" min="0" step="1" /></label>
+        <label>Chain max depth <input asp-for="PickGame.ChainMaxDepth" type="number" min="0" step="1" /></label>
+        <label>Chain TTL (s) <input asp-for="PickGame.ChainTtlSeconds" type="number" min="5" step="1" /></label>
+        <label>Reveal animation <input asp-for="PickGame.RevealAnimation" type="checkbox" /></label>
+
+        <h4 style="margin-top:12px">5-min lottery</h4>
+        <label>Duration (s) <input asp-for="PickGame.LotteryDurationSeconds" type="number" min="30" step="10" /></label>
+        <label>Min entrants <input asp-for="PickGame.LotteryMinEntrants" type="number" min="2" step="1" /></label>
+        <label>House fee <input asp-for="PickGame.LotteryHouseFeePercent" type="number" min="0" max="0.99" step="0.01" /></label>
+        <label>Min stake <input asp-for="PickGame.LotteryMinStake" type="number" min="1" step="1" /></label>
+        <label>Max stake (0 = no cap) <input asp-for="PickGame.LotteryMaxStake" type="number" min="0" step="1" /></label>
+
+        <h4 style="margin-top:12px">Daily lottery</h4>
+        <label>Ticket price <input asp-for="PickGame.DailyTicketPrice" type="number" min="1" step="1" /></label>
+        <label>Max tickets / user / day (0 = ∞) <input asp-for="PickGame.DailyMaxTicketsPerUserPerDay" type="number" min="0" step="1" /></label>
+        <label>Max tickets / buy <input asp-for="PickGame.DailyMaxTicketsPerBuyCommand" type="number" min="1" step="1" /></label>
+        <label>House fee <input asp-for="PickGame.DailyHouseFeePercent" type="number" min="0" max="0.99" step="0.01" /></label>
+        <label>History limit <input asp-for="PickGame.DailyHistoryLimit" type="number" min="1" step="1" /></label>
+        <label>Draw hour (local 0..23) <input asp-for="PickGame.DailyDrawHourLocal" type="number" min="0" max="23" step="1" /></label>
+        <label>Timezone offset override (h, 0 = inherit) <input asp-for="PickGame.DailyTimezoneOffsetHoursOverride" type="number" step="1" /></label>
+
+        <p style="margin-top:12px"><button type="submit">Save pick / lottery settings</button></p>
+    </form>
 }
 else
     {

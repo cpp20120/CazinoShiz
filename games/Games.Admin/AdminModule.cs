@@ -14,8 +14,10 @@ public sealed class AdminModule : IModule
             .BindOptions<AdminOptions>(AdminOptions.SectionName)
             .AddScoped<IAdminStore, AdminStore>()
             .AddScoped<IAdminService, AdminService>()
+            .AddScoped<IChatsStore, ChatsStore>()
             .AddHandler<AdminHandler>()
-            .AddHandler<AnalyticsHandler>();
+            .AddHandler<AnalyticsHandler>()
+            .AddHandler<ChatsHandler>();
     }
 
     public IModuleMigrations GetMigrations() => new AdminMigrations();
@@ -63,6 +65,23 @@ public sealed class AdminModule : IModule
             ["analytics.window.top_modules"] = "<i>top modules:</i>",
             ["analytics.window.top_users"] = "<i>top users:</i>",
             ["analytics.timeline.header"] = "📅 <b>last {0} days</b>",
+
+            ["chats.private_only"] = "🚫 <b>/chats</b> работает только в личке с ботом.",
+            ["chats.not_admin"] = "🚫 <b>/chats</b> доступна только администратору бота.",
+            ["chats.empty"] = "Бот ещё ни в одном чате не засветился.",
+            ["chats.header.all"] = "💬 <b>Чаты бота</b> · всего <b>{0}</b>",
+            ["chats.header.group"] = "💬 <b>Чаты бота</b> · группы/супергруппы · <b>{0}</b>",
+            ["chats.header.private"] = "💬 <b>Чаты бота</b> · личные · <b>{0}</b>",
+            ["chats.header.channel"] = "💬 <b>Чаты бота</b> · каналы · <b>{0}</b>",
+            ["chats.section_header"] = "<b>{0}</b> · {1}",
+            ["chats.private_label"] = "ЛС {0}",
+            ["chats.unknown_label"] = "Чат {0}",
+            ["chats.truncated"] = "<i>показано {0} из {1}. Используй <code>/chats full</code> для полного списка.</i>",
+            ["chats.ago.now"] = "только что",
+            ["chats.ago.minutes"] = "{0} мин назад",
+            ["chats.ago.hours"] = "{0} ч назад",
+            ["chats.ago.days"] = "{0} д назад",
+            ["chats.ago.months"] = "{0} мес назад",
         }),
     ];
 }
