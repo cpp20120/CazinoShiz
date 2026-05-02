@@ -20,7 +20,7 @@ namespace Games.Pick;
 public sealed record PickDailyLotteryRow(
     Guid Id,
     long ChatId,
-    DateTime DayLocal,
+    DateOnly DayLocal,
     int TicketPrice,
     string Status,
     DateTime OpenedAt,
@@ -81,15 +81,17 @@ public sealed class PickDailyLotteryStore(INpgsqlConnectionFactory connections) 
                        (id, chat_id, day_local, ticket_price, status, deadline_at)
                 VALUES (@id, @chatId, @dayLocal, @ticketPrice, 'open', @deadlineUtc)
                 ON CONFLICT (chat_id, day_local) DO NOTHING
-                RETURNING id, chat_id, day_local, ticket_price, status,
-                          opened_at, deadline_at, settled_at,
-                          winner_id, winner_name, ticket_count, pot_total, payout, fee
+                RETURNING id AS Id, chat_id AS ChatId, day_local AS DayLocal, ticket_price AS TicketPrice, status AS Status,
+                          opened_at AS OpenedAt, deadline_at AS DeadlineAt, settled_at AS SettledAt,
+                          winner_id AS WinnerId, winner_name AS WinnerName, ticket_count AS TicketCount,
+                          pot_total AS PotTotal, payout AS Payout, fee AS Fee
             )
             SELECT * FROM inserted
             UNION ALL
-            SELECT id, chat_id, day_local, ticket_price, status,
-                   opened_at, deadline_at, settled_at,
-                   winner_id, winner_name, ticket_count, pot_total, payout, fee
+            SELECT id AS Id, chat_id AS ChatId, day_local AS DayLocal, ticket_price AS TicketPrice, status AS Status,
+                   opened_at AS OpenedAt, deadline_at AS DeadlineAt, settled_at AS SettledAt,
+                   winner_id AS WinnerId, winner_name AS WinnerName, ticket_count AS TicketCount,
+                   pot_total AS PotTotal, payout AS Payout, fee AS Fee
             FROM pick_daily_lottery
             WHERE chat_id = @chatId AND day_local = @dayLocal
               AND NOT EXISTS (SELECT 1 FROM inserted)
@@ -115,9 +117,10 @@ public sealed class PickDailyLotteryStore(INpgsqlConnectionFactory connections) 
         long chatId, DateOnly dayLocal, CancellationToken ct)
     {
         const string sql = """
-            SELECT id, chat_id, day_local, ticket_price, status,
-                   opened_at, deadline_at, settled_at,
-                   winner_id, winner_name, ticket_count, pot_total, payout, fee
+            SELECT id AS Id, chat_id AS ChatId, day_local AS DayLocal, ticket_price AS TicketPrice, status AS Status,
+                   opened_at AS OpenedAt, deadline_at AS DeadlineAt, settled_at AS SettledAt,
+                   winner_id AS WinnerId, winner_name AS WinnerName, ticket_count AS TicketCount,
+                   pot_total AS PotTotal, payout AS Payout, fee AS Fee
             FROM pick_daily_lottery
             WHERE chat_id = @chatId AND day_local = @dayLocal AND status = 'open'
             """;
@@ -198,9 +201,10 @@ public sealed class PickDailyLotteryStore(INpgsqlConnectionFactory connections) 
     public async Task<IReadOnlyList<PickDailyLotteryRow>> ListExpiredOpenAsync(int limit, CancellationToken ct)
     {
         const string sql = """
-            SELECT id, chat_id, day_local, ticket_price, status,
-                   opened_at, deadline_at, settled_at,
-                   winner_id, winner_name, ticket_count, pot_total, payout, fee
+            SELECT id AS Id, chat_id AS ChatId, day_local AS DayLocal, ticket_price AS TicketPrice, status AS Status,
+                   opened_at AS OpenedAt, deadline_at AS DeadlineAt, settled_at AS SettledAt,
+                   winner_id AS WinnerId, winner_name AS WinnerName, ticket_count AS TicketCount,
+                   pot_total AS PotTotal, payout AS Payout, fee AS Fee
             FROM pick_daily_lottery
             WHERE status = 'open' AND deadline_at <= now()
             ORDER BY deadline_at
@@ -268,9 +272,10 @@ public sealed class PickDailyLotteryStore(INpgsqlConnectionFactory connections) 
         long chatId, int limit, CancellationToken ct)
     {
         const string sql = """
-            SELECT id, chat_id, day_local, ticket_price, status,
-                   opened_at, deadline_at, settled_at,
-                   winner_id, winner_name, ticket_count, pot_total, payout, fee
+            SELECT id AS Id, chat_id AS ChatId, day_local AS DayLocal, ticket_price AS TicketPrice, status AS Status,
+                   opened_at AS OpenedAt, deadline_at AS DeadlineAt, settled_at AS SettledAt,
+                   winner_id AS WinnerId, winner_name AS WinnerName, ticket_count AS TicketCount,
+                   pot_total AS PotTotal, payout AS Payout, fee AS Fee
             FROM pick_daily_lottery
             WHERE chat_id = @chatId AND status IN ('settled', 'cancelled')
             ORDER BY day_local DESC
