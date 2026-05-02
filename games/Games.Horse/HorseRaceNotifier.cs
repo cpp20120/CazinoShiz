@@ -67,7 +67,7 @@ public sealed partial class HorseRaceNotifier(
     {
         var targetChatIds = outcome.BetScopeIds;
         var transactions = outcome.Transactions;
-        var delayMs = _opts.AnnounceDelayMs;
+        var delayMs = _opts.HorseCount == 2 ? _opts.AnnounceDelay1v1Ms : _opts.AnnounceDelayMs;
         var announceCt = lifetime.ApplicationStopping;
 
         _ = Task.Run(async () =>
