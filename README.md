@@ -4,20 +4,22 @@
 
 Telegram casino and party-game bot with Russian-language UI, wallet balances, admin tools, analytics, and a modular game system. It runs as an ASP.NET Core host with independent game modules. 
 
+DISCLAMER: THIS BOT IS HAS NO ANY REAL MONEY AND ABILITY TO USE THEM.
 
-DISCLAMER: 
-THIS BOT IS HAS NO ANY REAL MONEY AND ABILITY TO USE THEM.
-- cannot be purchased
-- cannot be sold
-- cannot be exchanged
-- have zero real-world value
+This project is a simulation-only system.
 
-Redeem codes are generated internally for gameplay rewards only.
-They cannot be bought or distributed for value.
+- It does not support real money, cryptocurrencies, or any form of monetary value.
+- Virtual coins/credits:
+  - cannot be purchased
+  - cannot be sold
+  - cannot be exchanged
+  - cannot be transferred for any real-world goods, services, or value
+- There is no mechanism to deposit or withdraw real money.
+- Redeem codes are generated internally for gameplay purposes only and have no monetary value.
 
-Any attempt to use this system for real-money gambling is prohibited.
+This software must not be used for real-money gambling or any commercial gambling activity.
 
-Primary goal of project to practise at building DDD/ES/CQRS systems.
+The primary purpose of this project is educational, focusing on architecture patterns such as DDD, Event Sourcing, and CQRS.
 
 ## Features
 
