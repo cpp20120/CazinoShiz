@@ -1191,6 +1191,7 @@ Compose also runs `postgres-exporter`, `redis-exporter`, `cadvisor`, and `dotnet
 Provisioned Grafana dashboards:
 
 - `overview.json` — ClickHouse event overview
+- `analytics-clickhouse.json` — product analytics from `events_v2`: overview stats, TOD/weekday, DAU, per-chat, stacked hourly users/events by game, pie mix, user intensity, per-user × game matrix, drill-down user (defaults to busiest in range), extended signals (distinct types/modules, chat-tagged rows, errors by `exception_type`, repeat-day users, event breadth, params keys, tail), **Economics & bot dynamics**, **Growth, quality & depth**, **Weekly leaderboards** (top 15 modules, users, tagged chats per ISO week UTC), **Retention, funnels & stake distribution** (cohort w0–w8, funnel conversion %, stake quantiles, histogram), plus **Chart views** (bottom row: bar / time series companions for most heavy **table** panels — event types, modules, users, errors, params keys, funnel steps, payouts, repeat users, house edge, step conversion %, weekly module stack, weekly actives & tagged-chat volume, cohort w1–w4 curves, daily median stake, multi-game bursts, daily rollup, top wagerers).
 - `infra-pg-redis.json` — PostgreSQL and Redis exporter metrics
 - `infra-services.json` — cAdvisor container CPU/memory + connection panels
 - `dotnet-runtime.json` — `dotnet-monitor` runtime metrics for the bot

@@ -21,6 +21,7 @@ Telegram casino and party-game bot with Russian-language UI, wallet balances, ad
 | `/sh` | Secret Hitler party game. |
 | `/challenge` | 1v1 PvP betting challenges between two Telegram users. |
 | `/pixelbattle` | Telegram WebApp mini app for shared pixel painting. |
+| `/picklottery` | Per chat pool lottery                               |
 | `/transfer` | Coin transfers between users, including transfer fees. |
 | `/redeem` | Freespin/redeem code activation. |
 | `/top`, `/balance`, `/daily`, `/help` | Leaderboard, wallet balance, daily bonus, and help. |
