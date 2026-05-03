@@ -2,7 +2,22 @@
 
 [![](https://tokei.rs/b1/github/cpp20120/CazinoShiz)](https://github.com/cpp20120/CazinoShiz)
 
-Telegram casino and party-game bot with Russian-language UI, wallet balances, admin tools, analytics, and a modular game system. It runs as an ASP.NET Core host with independent game modules.
+Telegram casino and party-game bot with Russian-language UI, wallet balances, admin tools, analytics, and a modular game system. It runs as an ASP.NET Core host with independent game modules. 
+
+
+DISCLAMER: 
+THIS BOT IS HAS NO ANY REAL MONEY AND ABILITY TO USE THEM.
+- cannot be purchased
+- cannot be sold
+- cannot be exchanged
+- have zero real-world value
+
+Redeem codes are generated internally for gameplay rewards only.
+They cannot be bought or distributed for value.
+
+Any attempt to use this system for real-money gambling is prohibited.
+
+Primary goal of project to practise at building DDD/ES/CQRS systems.
 
 ## Features
 
