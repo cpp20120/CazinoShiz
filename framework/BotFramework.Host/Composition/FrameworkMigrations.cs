@@ -261,5 +261,13 @@ internal sealed class FrameworkMigrations : IModuleMigrations
             CREATE INDEX IF NOT EXISTS ix_event_dispatch_failures_event
                 ON event_dispatch_failures (event_type, last_seen_at DESC);
             """),
+
+        new Migration("014_economics_operation_id", """
+            ALTER TABLE economics_ledger
+                ADD COLUMN IF NOT EXISTS operation_id TEXT;
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_economics_ledger_operation_id
+                ON economics_ledger (operation_id)
+                WHERE operation_id IS NOT NULL;
+            """),
     ];
 }
