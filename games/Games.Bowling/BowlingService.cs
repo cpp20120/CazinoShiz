@@ -13,7 +13,7 @@ namespace Games.Bowling;
 
 public interface IBowlingService
 {
-    Task<BowlingBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct);
+    Task<BowlingBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, int sourceMessageId, CancellationToken ct);
     Task<BowlingRollResult> RollAsync(long userId, string displayName, long chatId, int face, CancellationToken ct);
 
     /// <summary>Refund and clear pending bet when bot cannot complete SendMessage/SendDice after debit.</summary>
@@ -37,7 +37,10 @@ public sealed class BowlingService(
         [1] = 0, [2] = 0, [3] = 0, [4] = 1, [5] = 2, [6] = 2,
     };
 
-    public async Task<BowlingBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)
+    public Task<BowlingBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct) =>
+        PlaceBetAsync(userId, displayName, chatId, amount, sourceMessageId: 0, ct);
+
+    public async Task<BowlingBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, int sourceMessageId, CancellationToken ct)
     {
         var maxBet = tuning.GetSection<BowlingOptions>(BowlingOptions.SectionName).MaxBet;
         if (amount <= 0 || amount > maxBet) return BowlingBetResult.Fail(BowlingBetError.InvalidAmount);
@@ -72,16 +75,19 @@ public sealed class BowlingService(
             return new BowlingBetResult(
                 BowlingBetError.DailyRollLimit, 0, balance, 0, null, gate.UsedToday, gate.Limit);
 
-        if (!await economics.TryDebitAsync(userId, chatId, amount, "bowling.bet", ct))
+        var betOperationId = $"bowling:bet:{chatId}:{sourceMessageId}:{userId}";
+        var debit = await economics.TryDebitOnceAsync(userId, chatId, amount, "bowling.bet", betOperationId, ct);
+        if (debit.Rejected)
         {
             await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Bowling, ct);
             return BowlingBetResult.Fail(BowlingBetError.NotEnoughCoins, balance);
         }
 
-        if (!await bets.InsertAsync(new BowlingBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
+        var createdAt = DateTimeOffset.UtcNow;
+        if (!await bets.InsertAsync(new BowlingBet(userId, chatId, amount, createdAt), ct))
         {
             await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Bowling, ct);
-            await economics.CreditAsync(userId, chatId, amount, "bowling.bet.refund", ct);
+            await economics.CreditOnceAsync(userId, chatId, amount, "bowling.bet.refund", $"{betOperationId}:insert-refund", ct);
             return BowlingBetResult.Fail(BowlingBetError.AlreadyPending, balance);
         }
 
@@ -93,7 +99,7 @@ public sealed class BowlingService(
             ["user_id"] = userId, ["chat_id"] = chatId, ["amount"] = amount,
         });
 
-        return new BowlingBetResult(BowlingBetError.None, amount, balance - amount, 0, null, 0, 0);
+        return new BowlingBetResult(BowlingBetError.None, amount, debit.NewBalance, 0, null, 0, 0);
     }
 
     public async Task<BowlingRollResult> RollAsync(long userId, string displayName, long chatId, int face, CancellationToken ct)
@@ -106,7 +112,7 @@ public sealed class BowlingService(
         var payout = bet.Amount * multiplier;
 
         if (payout > 0)
-            await economics.CreditAsync(userId, chatId, payout, "bowling.payout", ct);
+            await economics.CreditOnceAsync(userId, chatId, payout, "bowling.payout", BuildBetOperationId(bet, "payout"), ct);
 
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Bowling);
@@ -144,7 +150,7 @@ public sealed class BowlingService(
         var bet = await bets.FindAsync(userId, chatId, ct);
         if (bet == null) return;
 
-        await economics.CreditAsync(userId, chatId, bet.Amount, "bowling.send_dice_failed", ct);
+        await economics.CreditOnceAsync(userId, chatId, bet.Amount, "bowling.send_dice_failed", BuildBetOperationId(bet, "send-dice-failed"), ct);
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Bowling);
         await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Bowling, ct);
@@ -157,4 +163,7 @@ public sealed class BowlingService(
             ["amount"] = bet.Amount,
         });
     }
+
+    private static string BuildBetOperationId(BowlingBet bet, string action) =>
+        $"bowling:{action}:{bet.UserId}:{bet.ChatId}:{bet.CreatedAt.ToUnixTimeMilliseconds()}";
 }
