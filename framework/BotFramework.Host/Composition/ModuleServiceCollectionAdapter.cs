@@ -19,6 +19,7 @@
 
 using BotFramework.Sdk;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 
 namespace BotFramework.Host.Composition;
@@ -72,7 +73,7 @@ public sealed class ModuleServiceCollectionAdapter(
             var factoryServiceType = typeof(IAggregateFactory<>).MakeGenericType(aggregateType);
             var factoryImplementationType = typeof(DefaultAggregateFactory<>).MakeGenericType(aggregateType);
 
-            services.AddScoped(factoryServiceType, factoryImplementationType);
+            services.TryAddScoped(factoryServiceType, factoryImplementationType);
             services.AddScoped(repositoryServiceType, repositoryImplementationType);
         }
 
