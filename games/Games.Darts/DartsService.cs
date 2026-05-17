@@ -24,7 +24,7 @@ public interface IDartsService
     /// a user-thrown sticker (no bot dice, no queue). Used when the user sends the emoji directly.
     /// </summary>
     Task<DartsThrowResult> QuickThrowAsync(
-        long userId, string displayName, long chatId, int face, int amount, CancellationToken ct);
+        long userId, string displayName, long chatId, int diceMessageId, int face, int amount, CancellationToken ct);
 
     /// <summary>Refund and remove queued round if we could not send the bet-accepted reply after debit.</summary>
     Task AbortQueuedRoundIfBetReplyFailedAsync(long roundId, long userId, long chatId, CancellationToken ct);
@@ -81,7 +81,9 @@ public sealed class DartsService(
             return new DartsBetResult(
                 DartsBetError.DailyRollLimit, 0, balance, 0, null, 0, 0, gate.UsedToday, gate.Limit);
 
-        if (!await economics.TryDebitAsync(userId, chatId, amount, "darts.bet", ct))
+        var betOperationId = $"darts:bet:{chatId}:{replyToMessageId}:{userId}";
+        var debit = await economics.TryDebitOnceAsync(userId, chatId, amount, "darts.bet", betOperationId, ct);
+        if (debit.Rejected)
         {
             await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Darts, ct);
             return DartsBetResult.Fail(DartsBetError.NotEnoughCoins, balance);
@@ -105,7 +107,7 @@ public sealed class DartsService(
         catch
         {
             await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Darts, ct);
-            await economics.CreditAsync(userId, chatId, amount, "darts.bet.refund", ct);
+            await economics.CreditOnceAsync(userId, chatId, amount, "darts.bet.refund", $"{betOperationId}:insert-refund", ct);
             throw;
         }
 
@@ -121,7 +123,7 @@ public sealed class DartsService(
         });
 
         return new DartsBetResult(
-            DartsBetError.None, amount, balance - amount, 0, null, roundId, queuedAhead, 0, 0);
+            DartsBetError.None, amount, debit.NewBalance, 0, null, roundId, queuedAhead, 0, 0);
     }
 
     public async Task<DartsThrowResult> ThrowAsync(
@@ -140,7 +142,7 @@ public sealed class DartsService(
         var payout = bet.Amount * multiplier;
 
         if (payout > 0)
-            await economics.CreditAsync(userId, chatId, payout, "darts.payout", ct);
+            await economics.CreditOnceAsync(userId, chatId, payout, "darts.payout", $"darts:payout:{roundId}", ct);
 
         await rounds.DeleteAsync(roundId, ct);
 
@@ -187,7 +189,7 @@ public sealed class DartsService(
             return;
 
         await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Darts, ct);
-        await economics.CreditAsync(userId, chatId, row.Amount, "darts.bet_reply_failed.refund", ct);
+        await economics.CreditOnceAsync(userId, chatId, row.Amount, "darts.bet_reply_failed.refund", $"darts:bet-reply-failed-refund:{roundId}", ct);
         await rounds.DeleteAsync(roundId, ct);
 
         var remaining = await rounds.CountActiveByUserChatAsync(userId, chatId, ct);
@@ -204,7 +206,7 @@ public sealed class DartsService(
     /// the face value from the user's own thrown sticker.  No queue, no bot dice involved.
     /// </summary>
     public async Task<DartsThrowResult> QuickThrowAsync(
-        long userId, string displayName, long chatId, int face, int amount, CancellationToken ct)
+        long userId, string displayName, long chatId, int diceMessageId, int face, int amount, CancellationToken ct)
     {
         var maxBet = tuning.GetSection<DartsOptions>(DartsOptions.SectionName).MaxBet;
         if (amount <= 0 || amount > maxBet)
@@ -236,7 +238,9 @@ public sealed class DartsService(
                 DailyRollUsed: gate.UsedToday,
                 DailyRollLimit: gate.Limit);
 
-        if (!await economics.TryDebitAsync(userId, chatId, amount, "darts.quickplay.bet", ct))
+        var operationPrefix = $"darts:quick:{chatId}:{diceMessageId}:{userId}";
+        var debit = await economics.TryDebitOnceAsync(userId, chatId, amount, "darts.quickplay.bet", $"{operationPrefix}:bet", ct);
+        if (debit.Rejected)
         {
             await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Darts, ct);
             return new DartsThrowResult(DartsThrowOutcome.BetNotEnoughCoins, Balance: balance);
@@ -247,7 +251,7 @@ public sealed class DartsService(
         var payout = amount * multiplier;
 
         if (payout > 0)
-            await economics.CreditAsync(userId, chatId, payout, "darts.quickplay.payout", ct);
+            await economics.CreditOnceAsync(userId, chatId, payout, "darts.quickplay.payout", $"{operationPrefix}:payout", ct);
 
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Darts);
         await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Darts, ct);
