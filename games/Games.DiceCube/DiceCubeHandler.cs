@@ -112,7 +112,7 @@ public sealed partial class DiceCubeHandler(
             return;
         }
 
-        var r = await service.PlaceBetAsync(userId, displayName, chatId, amount, ctx.Ct);
+        var r = await service.PlaceBetAsync(userId, displayName, chatId, amount, reply.MessageId, ctx.Ct);
         var text = r.Error switch
         {
             CubeBetError.None => string.Format(
@@ -198,7 +198,7 @@ public sealed partial class DiceCubeHandler(
 
                 // User threw 🎲 without a prior /dice command → quick-play with default bet.
                 var defaultBet = tuning.GetSection<DiceCubeOptions>(DiceCubeOptions.SectionName).DefaultBet;
-                var betR = await service.PlaceBetAsync(userId, displayName, chatId, defaultBet, ctx.Ct);
+                var betR = await service.PlaceBetAsync(userId, displayName, chatId, defaultBet, msg.MessageId, ctx.Ct);
                 if (betR.Error != CubeBetError.None)
                 {
                     var errText = betR.Error switch
