@@ -33,6 +33,15 @@ public interface IEventSourcedAggregate : IAggregateRoot
     void LoadFromHistory(IEnumerable<IDomainEvent> history);
 }
 
+/// Creates aggregate instances during repository load. Modules may register a
+/// custom factory when an aggregate needs construction policy beyond a public
+/// parameterless or string-id constructor.
+public interface IAggregateFactory<out TAggregate>
+    where TAggregate : IAggregateRoot
+{
+    TAggregate Create(string id);
+}
+
 public interface IDomainEvent
 {
     /// Fully-qualified event name, e.g. "sh.chancellor_nominated". Stable across

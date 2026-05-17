@@ -1,25 +1,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// EventDispatcher — the glue between the event store and the read-model
-// projections.
+// EventDispatcher — fans persisted aggregate events into read-model projections,
+// cross-module subscribers and framework analytics.
 //
-// When EventStoreRepository.SaveAsync calls IEventStore.AppendAsync, the Host
-// implementation of the store wraps the append in a transaction and, after
-// the INSERTs, asks this dispatcher to fan the same events out to every
-// projection that subscribes. The projection's update runs in the SAME
-// transaction — so projection state and event state commit or roll back
-// together.
+// IEventStore only stores events. EventSourcedRepository<T> owns the aggregate
+// lifecycle and invokes this dispatcher after a successful append. That means
+// every event-sourced aggregate registered with
+// RegisterAggregate<T>(PersistenceStrategy.EventSourced) automatically flows
+// through projections, EventLogSubscriber, ClickHouseEventMirror, module
+// subscriptions and analytics.
 //
-// Why not a separate async worker draining a queue:
-//   • simpler: no at-least-once dedupe, no projection-lag monitoring dashboards
-//   • consistent: admin pages never show "this game exists but the event that
-//     created it hasn't been projected yet" lag
-//   • bounded cost: projections here do minimal work (one upsert per event);
-//     if a projection grows expensive, *that* specific projection graduates
-//     to async with a cursor, not the whole system
-//
-// Also: analytics emission (IAnalyticsService.Track) hangs off the same
-// dispatch hook. Every domain event becomes an analytics event for free —
-// the module doesn't write Track() boilerplate in handlers.
+// Current delivery semantics are post-commit: if dispatch fails, the original
+// event append stays committed and the failure is logged by the repository.
+// Projection rebuild/replay is the recovery mechanism. A future same-transaction
+// unit-of-work can pass a provider-specific transaction object through
+// ProjectionContext.Transaction without changing module contracts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Sdk;
@@ -37,11 +31,12 @@ public sealed class EventDispatcher(
         string streamId,
         long streamVersion,
         IDomainEvent ev,
-        object transaction,
+        object? transaction,
         CancellationToken ct)
     {
         // 1. Projections first — they maintain read models other subscribers
-        //    may want to query. Same transaction as the event-store append.
+        //    may want to query. Transaction is null in the current post-commit
+        //    mode and may be provider-specific in a future unit-of-work mode.
         if (_byEventType.TryGetValue(ev.EventType, out var subscribers))
         {
             var ctx = new ProjectionContext(streamId, streamVersion, ev.OccurredAt, transaction);
@@ -51,7 +46,6 @@ public sealed class EventDispatcher(
 
         // 2. Cross-module subscribers — anyone who registered an IDomainEvent
         //    subscriber for this event type (or a wildcard pattern matching it).
-        //    Also same transaction; slow subscribers trigger their own jobs.
         await bus.PublishAsync(ev, ct);
 
         // 3. Analytics. Every domain event becomes an analytics event; module
