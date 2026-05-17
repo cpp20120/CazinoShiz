@@ -157,6 +157,12 @@ public readonly record struct DailyBonusClaimResult(
     int BonusCoins = 0,
     int NewBalance = 0);
 
+public readonly record struct DailyBonusCatchUpStats(
+    int Wallets,
+    int Days,
+    int CreditedCoins,
+    int SkippedDays);
+
 public enum TelegramDiceRollGateStatus
 {
     Allowed,
@@ -204,6 +210,8 @@ public interface IDailyBonusService
 {
     Task<DailyBonusClaimResult> TryClaimAsync(
         long userId, long balanceScopeId, string displayName, CancellationToken ct);
+
+    Task<DailyBonusCatchUpStats> CatchUpMissedDaysAsync(CancellationToken ct);
 }
 
 public enum LedgerRevertStatus
