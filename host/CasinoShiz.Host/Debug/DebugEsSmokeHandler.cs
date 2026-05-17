@@ -1,4 +1,5 @@
 using System.Net;
+using BotFramework.Host;
 using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 using Microsoft.Extensions.Configuration;
@@ -12,6 +13,7 @@ namespace CasinoShiz.Host.Debug;
 [Command("/__debug_es")]
 public sealed class DebugEsSmokeHandler(
     IRepository<DebugEsSmokeAggregate> repository,
+    IEventReplayService replayService,
     IConfiguration configuration,
     IOptions<BotFrameworkOptions> botOptions) : IUpdateHandler
 {
@@ -39,6 +41,18 @@ public sealed class DebugEsSmokeHandler(
             }
         }
 
+        if (IsReplayCommand(msg))
+        {
+            var replay = await replayService.RebuildProjectionAsync(nameof(DebugEsSmokeProjection), ctx.Ct);
+            await ctx.Bot.SendMessage(
+                msg.Chat.Id,
+                $"✅ <b>Debug ES projection rebuilt</b>\nprojection: <code>{Enc(replay.ProjectionName)}</code>\nseen: <code>{replay.EventsSeen}</code>\napplied: <code>{replay.EventsApplied}</code>",
+                parseMode: ParseMode.Html,
+                replyParameters: new ReplyParameters { MessageId = msg.MessageId },
+                cancellationToken: ctx.Ct);
+            return;
+        }
+
         var streamId = GetStreamId(msg);
         var aggregate = await repository.FindAsync(streamId, ctx.Ct)
             ?? new DebugEsSmokeAggregate(streamId);
@@ -54,7 +68,7 @@ public sealed class DebugEsSmokeHandler(
             $"stream: <code>{Enc(streamId)}</code>",
             $"version: <code>{beforeVersion} → {aggregate.Version}</code>",
             $"count: <code>{beforeCount} → {aggregate.Count}</code>",
-            "tables: <code>module_events</code> and <code>event_log</code> should both increment");
+            "tables: <code>module_events</code>, <code>event_log</code> and <code>debug_es_smoke_projection</code> should increment/update");
 
         await ctx.Bot.SendMessage(
             msg.Chat.Id,
@@ -62,6 +76,12 @@ public sealed class DebugEsSmokeHandler(
             parseMode: ParseMode.Html,
             replyParameters: new ReplyParameters { MessageId = msg.MessageId },
             cancellationToken: ctx.Ct);
+    }
+
+    private static bool IsReplayCommand(Message msg)
+    {
+        var parts = msg.Text?.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts is { Length: > 1 } && string.Equals(parts[1], "replay", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetStreamId(Message msg)
