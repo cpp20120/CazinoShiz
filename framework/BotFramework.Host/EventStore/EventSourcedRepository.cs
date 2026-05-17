@@ -52,6 +52,7 @@ public sealed partial class EventSourcedRepository<TAggregate>(
     IEventSerializer serializer,
     IAggregateFactory<TAggregate> aggregateFactory,
     EventDispatcher dispatcher,
+    IEventDispatchFailureStore failures,
     ILogger<EventSourcedRepository<TAggregate>> logger) : IRepository<TAggregate>
     where TAggregate : class, IEventSourcedAggregate
 {
@@ -103,6 +104,14 @@ public sealed partial class EventSourcedRepository<TAggregate>(
             catch (Exception ex)
             {
                 LogDispatchFailed(ex, aggregate.Id, streamVersion, ev.EventType);
+                await failures.RecordAsync(new EventDispatchFailure(
+                    aggregate.Id,
+                    streamVersion,
+                    ev.EventType,
+                    Stage: "dispatch",
+                    HandlerName: nameof(EventDispatcher),
+                    Error: ex.ToString(),
+                    ErrorType: ex.GetType().FullName), ct);
             }
         }
 
