@@ -20,12 +20,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace BotFramework.Host;
 
-public interface IAggregateFactory<TAggregate>
-    where TAggregate : IAggregateRoot
-{
-    TAggregate Create(string id);
-}
-
 public sealed class DefaultAggregateFactory<TAggregate>(IServiceProvider services) : IAggregateFactory<TAggregate>
     where TAggregate : class, IAggregateRoot
 {
