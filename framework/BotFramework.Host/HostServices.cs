@@ -34,30 +34,40 @@ public interface IEconomicsService
     /// negative. Throws if the user doesn't exist — callers ensure first.
     Task<bool> TryDebitAsync(long userId, long balanceScopeId, int amount, string reason, CancellationToken ct);
 
-    /// Idempotent debit. The same operationId is applied at most once. A replay
-    /// returns Applied=false and the current balance instead of debiting again.
-    Task<EconomicsMutationResult> TryDebitOnceAsync(
+    /// Idempotent debit. Implementations may override with durable operation-id
+    /// semantics; the default preserves compatibility for old test fakes.
+    async Task<EconomicsMutationResult> TryDebitOnceAsync(
         long userId,
         long balanceScopeId,
         int amount,
         string reason,
         string operationId,
-        CancellationToken ct);
+        CancellationToken ct)
+    {
+        var applied = await TryDebitAsync(userId, balanceScopeId, amount, reason, ct);
+        var balance = await GetBalanceAsync(userId, balanceScopeId, ct);
+        return new EconomicsMutationResult(applied, !applied, balance);
+    }
 
     /// Convenience: TryDebit + throw InsufficientFundsException on false.
     Task DebitAsync(long userId, long balanceScopeId, int amount, string reason, CancellationToken ct);
 
     Task CreditAsync(long userId, long balanceScopeId, int amount, string reason, CancellationToken ct);
 
-    /// Idempotent credit. The same operationId is applied at most once. A replay
-    /// returns Applied=false and the current balance instead of crediting again.
-    Task<EconomicsMutationResult> CreditOnceAsync(
+    /// Idempotent credit. Implementations may override with durable operation-id
+    /// semantics; the default preserves compatibility for old test fakes.
+    async Task<EconomicsMutationResult> CreditOnceAsync(
         long userId,
         long balanceScopeId,
         int amount,
         string reason,
         string operationId,
-        CancellationToken ct);
+        CancellationToken ct)
+    {
+        await CreditAsync(userId, balanceScopeId, amount, reason, ct);
+        var balance = await GetBalanceAsync(userId, balanceScopeId, ct);
+        return new EconomicsMutationResult(true, false, balance);
+    }
 
     /// Admin-only: add or subtract any amount, bypassing the non-negative guard.
     Task AdjustUncheckedAsync(long userId, long balanceScopeId, int delta, CancellationToken ct);
