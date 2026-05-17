@@ -14,4 +14,10 @@ public sealed class DailyBonusOptions
 
     /// <summary>Hours east of UTC for the calendar day boundary (7 = same day as /horse, UTC+7).</summary>
     public int TimezoneOffsetHours { get; set; } = 7;
+
+    /// <summary>On startup, backfill missed past local days for wallets that have claimed before.</summary>
+    public bool CatchUpEnabled { get; set; } = true;
+
+    /// <summary>Safety cap for startup catch-up, so an old/null date cannot create an unbounded payout loop.</summary>
+    public int MaxCatchUpDays { get; set; } = 14;
 }
