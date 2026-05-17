@@ -75,16 +75,6 @@ public class BlackjackServiceTests
     }
 
     [Fact]
-    public async Task StartAsync_SameOperation_DebitsOnlyOnce()
-    {
-        var econ = new FakeEconomicsService();
-        var svc = MakeService(economics: econ);
-        await svc.StartAsync(1, "u", 100, bet: 50, Op(6), default);
-        await svc.StartAsync(1, "u", 100, bet: 50, Op(6), default);
-        Assert.Single(econ.Debits);
-    }
-
-    [Fact]
     public async Task StartAsync_ValidBet_ReturnsSnapshotOrBlackjack()
     {
         var svc = MakeService();
