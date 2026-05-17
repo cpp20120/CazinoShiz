@@ -27,7 +27,9 @@ public interface IPokerService
     Task<(TableSnapshot? Snapshot, PokerSeat? MySeat)> FindMyTableAsync(
         long userId, long currentChatId, CancellationToken ct);
     Task<CreateResult> CreateTableAsync(long userId, string displayName, long chatId, CancellationToken ct);
+    Task<CreateResult> CreateTableAsync(long userId, string displayName, long chatId, int sourceMessageId, CancellationToken ct);
     Task<JoinResult> JoinTableAsync(long userId, string displayName, long chatId, string code, CancellationToken ct);
+    Task<JoinResult> JoinTableAsync(long userId, string displayName, long chatId, string code, int sourceMessageId, CancellationToken ct);
     Task<StartResult> StartHandAsync(long userId, long currentChatId, CancellationToken ct);
     Task<ActionResult> ApplyPlayerActionAsync(
         long userId, long currentChatId, string verb, int amount, CancellationToken ct);
@@ -82,7 +84,10 @@ public sealed partial class PokerService(
         return (new TableSnapshot(table, list), list.First(s => s.UserId == userId));
     }
 
-    public async Task<CreateResult> CreateTableAsync(long userId, string displayName, long chatId, CancellationToken ct)
+    public Task<CreateResult> CreateTableAsync(long userId, string displayName, long chatId, CancellationToken ct) =>
+        CreateTableAsync(userId, displayName, chatId, sourceMessageId: 0, ct);
+
+    public async Task<CreateResult> CreateTableAsync(long userId, string displayName, long chatId, int sourceMessageId, CancellationToken ct)
     {
         var lockKey = $"chat:{chatId}";
         var gate = GetGate(lockKey);
@@ -128,7 +133,9 @@ public sealed partial class PokerService(
                 JoinedAt = now,
             };
 
-            if (!await economics.TryDebitAsync(userId, chatId, buyIn, "poker.create", ct))
+            var operationId = $"poker:create:{chatId}:{sourceMessageId}:{userId}";
+            var debit = await economics.TryDebitOnceAsync(userId, chatId, buyIn, "poker.create", operationId, ct);
+            if (debit.Rejected)
                 return Fail(PokerError.NotEnoughCoins);
 
             try
@@ -138,7 +145,7 @@ public sealed partial class PokerService(
             }
             catch (Exception ex)
             {
-                await RefundBuyInAfterCreateFailureAsync(userId, chatId, code, buyIn, ex, ct);
+                await RefundBuyInAfterCreateFailureAsync(userId, chatId, code, buyIn, operationId, ex, ct);
                 throw;
             }
 
@@ -156,7 +163,10 @@ public sealed partial class PokerService(
         finally { gate.Release(); }
     }
 
-    public async Task<JoinResult> JoinTableAsync(long userId, string displayName, long chatId, string code, CancellationToken ct)
+    public Task<JoinResult> JoinTableAsync(long userId, string displayName, long chatId, string code, CancellationToken ct) =>
+        JoinTableAsync(userId, displayName, chatId, code, sourceMessageId: 0, ct);
+
+    public async Task<JoinResult> JoinTableAsync(long userId, string displayName, long chatId, string code, int sourceMessageId, CancellationToken ct)
     {
         code = code.ToUpperInvariant();
         if (string.IsNullOrWhiteSpace(code))
@@ -203,7 +213,9 @@ public sealed partial class PokerService(
                 ChatId = chatId,
                 JoinedAt = now,
             };
-            if (!await economics.TryDebitAsync(userId, chatId, buyIn, "poker.join", ct))
+            var operationId = $"poker:join:{chatId}:{sourceMessageId}:{userId}:{code}";
+            var debit = await economics.TryDebitOnceAsync(userId, chatId, buyIn, "poker.join", operationId, ct);
+            if (debit.Rejected)
                 return JoinFail(PokerError.NotEnoughCoins);
             try
             {
@@ -211,7 +223,7 @@ public sealed partial class PokerService(
             }
             catch (Exception ex)
             {
-                await RefundBuyInAfterJoinFailureAsync(userId, chatId, code, buyIn, ex, ct);
+                await RefundBuyInAfterJoinFailureAsync(userId, chatId, code, buyIn, operationId, ex, ct);
                 throw;
             }
 
@@ -463,7 +475,8 @@ public sealed partial class PokerService(
     {
         try
         {
-            await economics.CreditAsync(seat.UserId, seat.ChatId, seat.Stack, reason, ct);
+            var operationId = $"poker:refund:{seat.InviteCode}:{seat.UserId}:{seat.ChatId}:{reason}:{seat.JoinedAt}";
+            await economics.CreditOnceAsync(seat.UserId, seat.ChatId, seat.Stack, reason, operationId, ct);
         }
         catch (Exception ex)
         {
@@ -472,11 +485,11 @@ public sealed partial class PokerService(
     }
 
     private async Task RefundBuyInAfterCreateFailureAsync(
-        long userId, long chatId, string code, int buyIn, Exception exception, CancellationToken ct)
+        long userId, long chatId, string code, int buyIn, string debitOperationId, Exception exception, CancellationToken ct)
     {
         try
         {
-            await economics.CreditAsync(userId, chatId, buyIn, "poker.create.compensate", ct);
+            await economics.CreditOnceAsync(userId, chatId, buyIn, "poker.create.compensate", $"{debitOperationId}:compensate", ct);
             LogPokerCreateCompensated(code, userId, buyIn);
         }
         catch (Exception creditEx)
@@ -488,11 +501,11 @@ public sealed partial class PokerService(
     }
 
     private async Task RefundBuyInAfterJoinFailureAsync(
-        long userId, long chatId, string code, int buyIn, Exception exception, CancellationToken ct)
+        long userId, long chatId, string code, int buyIn, string debitOperationId, Exception exception, CancellationToken ct)
     {
         try
         {
-            await economics.CreditAsync(userId, chatId, buyIn, "poker.join.compensate", ct);
+            await economics.CreditOnceAsync(userId, chatId, buyIn, "poker.join.compensate", $"{debitOperationId}:compensate", ct);
             LogPokerJoinCompensated(code, userId, buyIn);
         }
         catch (Exception creditEx)
@@ -519,7 +532,10 @@ public sealed partial class PokerService(
             {
                 var showdown = transition.Showdown!.ToList();
                 foreach (var entry in showdown.Where(e => e.Won > 0))
-                    await economics.CreditAsync(entry.Seat.UserId, entry.Seat.ChatId, entry.Won, "poker.win", ct);
+                {
+                    var operationId = $"poker:win:{table.InviteCode}:{table.CreatedAt}:{table.LastActionAt}:{entry.Seat.UserId}:{entry.Won}";
+                    await economics.CreditOnceAsync(entry.Seat.UserId, entry.Seat.ChatId, entry.Won, "poker.win", operationId, ct);
+                }
 
                 string reason = transition.Kind switch
                 {
