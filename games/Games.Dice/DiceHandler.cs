@@ -39,7 +39,7 @@ public sealed partial class DiceHandler(
         var displayName = msg.From?.Username ?? msg.From?.FirstName ?? $"User ID: {userId}";
 
         var result = await service.PlayAsync(
-            userId, displayName, dice.Value, chatId,
+            userId, displayName, dice.Value, chatId, msg.MessageId,
             isForwarded: msg.ForwardOrigin != null,
             ctx.Ct);
 
