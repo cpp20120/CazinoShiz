@@ -234,7 +234,7 @@ public sealed partial class DartsHandler(
         }
         catch (Exception ex) { LogReplyFailed(userId, ex); return; }
 
-        var r = await service.QuickThrowAsync(userId, displayName, chatId, face, defaultBet, ctx.Ct);
+        var r = await service.QuickThrowAsync(userId, displayName, chatId, msg.MessageId, face, defaultBet, ctx.Ct);
 
         string text;
         switch (r.Outcome)
