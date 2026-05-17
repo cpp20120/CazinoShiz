@@ -68,6 +68,7 @@ public sealed class HorseBetStore(INpgsqlConnectionFactory connections) : IHorse
         await conn.ExecuteAsync(new CommandDefinition("""
             INSERT INTO horse_bets (id, race_date, user_id, balance_scope_id, horse_id, amount)
             VALUES (@Id, @RaceDate, @UserId, @BalanceScopeId, @HorseId, @Amount)
+            ON CONFLICT (id) DO NOTHING
             """,
             bet,
             cancellationToken: ct));
