@@ -231,10 +231,11 @@ public static class BotFrameworkBuilderExtensions
         services.AddHostedService(sp => sp.GetRequiredService<ClickHouseAnalyticsService>());
         services.AddSingleton<IAnalyticsQueryService, ClickHouseAnalyticsQueryService>();
 
-        // Event sourcing stack. Registered as singletons because they hold no
-        // per-request state and all I/O runs on short-lived pooled connections.
+        // Event sourcing stack. Stores/serializers are singleton infrastructure;
+        // EventDispatcher is scoped because projections may be scoped services.
         services.AddSingleton<IEventSerializer, JsonEventSerializer>();
         services.AddSingleton<IEventStore, PostgresEventStore>();
+        services.AddScoped<EventDispatcher>();
         services.AddSingleton(typeof(ISnapshotStore<>), typeof(PostgresSnapshotStore<>));
         services.AddSingleton<IEventLog, PostgresEventLog>();
         services.AddSingleton<EventLogSubscriber>();
