@@ -237,6 +237,7 @@ public static class BotFrameworkBuilderExtensions
         services.AddSingleton<IEventStore, PostgresEventStore>();
         services.AddScoped<EventDispatcher>();
         services.AddScoped<IEventReplayService, EventReplayService>();
+        services.AddSingleton<IEventDispatchFailureStore, PostgresEventDispatchFailureStore>();
         services.AddSingleton(typeof(ISnapshotStore<>), typeof(PostgresSnapshotStore<>));
         services.AddSingleton<IEventLog, PostgresEventLog>();
         services.AddSingleton<EventLogSubscriber>();
