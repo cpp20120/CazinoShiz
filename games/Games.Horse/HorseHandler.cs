@@ -3,7 +3,7 @@
 // /horserun (in a group): this chat's pool only. /horserun global: all chats merged (same as web admin).
 // /horserun from private chat: global. /horserun is silently rejected for non-admins.
 //
-// Winner announcement happens 20s after the GIF drops. The update's ct is
+// Winner announcement is delayed after the GIF (see HorseOptions.AnnounceDelayMs / AnnounceDelay1v1Ms). The update's ct is
 // tied to the per-update scope (polling iteration or webhook request) — it
 // can be cancelled before the delay elapses. We use the host lifetime
 // ApplicationStopping token so the announce survives the scope but still

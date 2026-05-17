@@ -1,5 +1,11 @@
 # CasinoShiz
 
+🚨 IMPORTANT / ВАЖНО 🚨
+THIS BOT DOES NOT AND WILL NEVER SUPPORT REAL MONEY.
+Этот бот НЕ поддерживает и НЕ БУДЕТ поддерживать реальные деньги.
+Any fork or modification that adds real-money functionality violates the spirit of this project and may violate laws in your jurisdiction. The author is not responsible for such misuse.
+(Любой форк или модификация, добавляющая реальные деньги, нарушает дух проекта и может нарушать законы. Автор не несет ответственности за такое использование.)
+
 A Telegram casino / mini-game bot. Russian-language UI, ASP.NET Core 10. Implements:
 
 | Family | Commands | Chips |
@@ -89,21 +95,26 @@ CasinoShiz/
 
 ### Request flow
 
-```
-Telegram ─► BotHostedService (polling  OR  webhook POST /{token})
-         │     [if Redis:Enabled] → UpdateStreamPublisher → Redis Stream
-         │     [else]             → inline dispatch
-         └─► UpdatePipeline.InvokeAsync
-              ├─ ExceptionMiddleware    — catch + log
-              ├─ LoggingMiddleware      — structured scope: update_id/user_id/chat_id, duration
-              ├─ RateLimitMiddleware    — per-user/per-chat token bucket
-              └─ UpdateRouter.DispatchAsync
-                   attribute-scanned routes, first-match dispatch
-                   └─► IUpdateHandler.HandleAsync
-                        └─► feature service (DiceService, PokerService, PickService, …)
-                             ├─► INpgsqlConnectionFactory (Dapper) for domain writes
-                             ├─► IEconomicsService (Dapper + FOR UPDATE) for balance
-                             └─► IAnalyticsService → ClickHouse batch
+```mermaid
+flowchart TD
+    A[Telegram] -->|Polling / Webhook| B(BotHostedService)
+    B --> C{Redis:Enabled?}
+    C -- Yes --> D[UpdateStreamPublisher]
+    D -->|Redis Stream| E[UpdateStreamWorkerService]
+    E --> F[UpdatePipeline]
+    C -- No --> F
+    
+    F --> G[ExceptionMiddleware]
+    G --> H[LoggingMiddleware]
+    H --> I[RateLimitMiddleware]
+    I --> J[UpdateRouter]
+    
+    J -->|Attribute Match| K[IUpdateHandler.HandleAsync]
+    K --> L[Feature Service e.g. DiceService]
+    L --> M[(PostgreSQL / Dapper)]
+    L --> N[IEconomicsService]
+    L --> O[IAnalyticsService]
+    O --> P[(ClickHouse)]
 ```
 
 When `Redis:Enabled=true`, the polling loop and webhook both publish updates to Redis Streams instead of dispatching inline. `UpdateStreamWorkerService` reads from N partitioned streams (keyed by `chatId % N`) in consumer groups and invokes the same `UpdatePipeline`.
@@ -111,6 +122,21 @@ When `Redis:Enabled=true`, the polling loop and webhook both publish updates to 
 ### Event bus
 
 `IDomainEventBus.PublishAsync(IDomainEvent)` — cross-module domain events.
+
+```mermaid
+flowchart LR
+    A[Publisher Service] -->|PublishAsync| B(IDomainEventBus)
+    B --> C{Redis:Enabled?}
+    
+    C -- No --> D[InProcessEventBus]
+    D --> E[Subscribers]
+    
+    C -- Yes --> F[CapEventBus]
+    F --> G[(PostgreSQL Outbox)]
+    G -->|CAP Relay| H((Redis Streams Topic))
+    H -->|CAP Consumer| I[CapEventConsumer]
+    I --> E
+```
 
 - **Redis enabled**: DotNetCore.CAP with PostgreSQL outbox + Redis Streams transport. At-least-once delivery across pods. `CapEventBus` resolves a scoped `ICapPublisher` per publish call via `IServiceScopeFactory`. `CapEventConsumer` receives all events on the `"domain.event"` topic and dispatches to pattern-matched subscribers.
 - **Redis disabled**: `InProcessEventBus` — in-memory, sync dispatch, single-process only. Fine for dev / single-pod.
@@ -463,6 +489,19 @@ Time-bounded multi-user lottery in one chat. The opener stakes a fixed amount; o
 | `/pickjoin` | Join the open pool |
 
 **Settlement** (`PickLotteryService.SettlePoolAsync`, called by sweeper):
+
+```mermaid
+stateDiagram-v2
+    [*] --> Open: /picklottery <stake>
+    Open --> Open: /pickjoin (adds entrant)
+    
+    Open --> Settled: SweeperJob (deadline reached, ≥2 entrants)
+    Open --> Cancelled: SweeperJob (deadline reached, <2 entrants)
+    Open --> Cancelled: /picklottery cancel (opener only)
+    
+    Settled --> [*]: Winner gets pot minus fee
+    Cancelled --> [*]: All stakes refunded
+```
 
 ```
 fee     = floor(pot × HouseFeePercent)
@@ -1093,7 +1132,7 @@ Intended for operational questions: "which chat uses PvP most?", "which game typ
 | `leaderboard:*` | `DefaultLimit`, `DaysOfInactivityToHide` |
 | `admin:Admins` | Per-module admin list (unioned with `Bot:Admins`) |
 
-`Games:horse` — `HorseCount`, `MinBetsToRun`, `AnnounceDelayMs`, `TimezoneOffsetHours`, `Admins` (Telegram user IDs allowed to `/horserun` in addition to `Bot:Admins`), `AutoRunEnabled`, `AutoRunLocalHour`, `AutoRunLocalMinute`. When `AutoRunEnabled` is true, `HorseScheduledRaceJob` runs **one global** race per calendar day after the configured local time, if there are enough bets (`MinBetsToRun`). It settles like `/horserun global` and posts the result GIF only to chats that placed bets.
+`Games:horse` — `HorseCount`, `MinBetsToRun`, `AnnounceDelayMs`, `AnnounceDelay1v1Ms` (used when `HorseCount` is 2, longer delay so the winner message does not appear before the GIF finishes), `TimezoneOffsetHours`, `Admins` (Telegram user IDs allowed to `/horserun` in addition to `Bot:Admins`), `AutoRunEnabled`, `AutoRunLocalHour`, `AutoRunLocalMinute`. When `AutoRunEnabled` is true, `HorseScheduledRaceJob` runs **one global** race per calendar day after the configured local time, if there are enough bets (`MinBetsToRun`). It settles like `/horserun global` and posts the result GIF only to chats that placed bets.
 
 `Games:challenges`:
 
@@ -1158,6 +1197,7 @@ Compose also runs `postgres-exporter`, `redis-exporter`, `cadvisor`, and `dotnet
 Provisioned Grafana dashboards:
 
 - `overview.json` — ClickHouse event overview
+- `analytics-clickhouse.json` — product analytics from `events_v2`: overview stats, TOD/weekday, DAU, per-chat, stacked hourly users/events by game, pie mix, user intensity, per-user × game matrix, drill-down user (defaults to busiest in range), extended signals (distinct types/modules, chat-tagged rows, errors by `exception_type`, repeat-day users, event breadth, params keys, tail), **Economics & bot dynamics**, **Growth, quality & depth**, **Weekly leaderboards** (top 15 modules, users, tagged chats per ISO week UTC), **Retention, funnels & stake distribution** (cohort w0–w8, funnel conversion %, stake quantiles, histogram), plus **Chart views** (bottom row: bar / time series companions for most heavy **table** panels — event types, modules, users, errors, params keys, funnel steps, payouts, repeat users, house edge, step conversion %, weekly module stack, weekly actives & tagged-chat volume, cohort w1–w4 curves, daily median stake, multi-game bursts, daily rollup, top wagerers).
 - `infra-pg-redis.json` — PostgreSQL and Redis exporter metrics
 - `infra-services.json` — cAdvisor container CPU/memory + connection panels
 - `dotnet-runtime.json` — `dotnet-monitor` runtime metrics for the bot

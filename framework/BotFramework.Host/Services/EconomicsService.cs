@@ -10,7 +10,6 @@
 using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 using Dapper;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 
 namespace BotFramework.Host.Services;
@@ -18,17 +17,12 @@ namespace BotFramework.Host.Services;
 public sealed partial class EconomicsService(
     INpgsqlConnectionFactory connections,
     IOptions<BotFrameworkOptions> options,
-    IMemoryCache cache,
     ILogger<EconomicsService> logger) : IEconomicsService
 {
     private readonly int _startingCoins = options.Value.StartingCoins;
-    private static readonly TimeSpan UserExistsTtl = TimeSpan.FromHours(24);
 
     public async Task EnsureUserAsync(long userId, long balanceScopeId, string displayName, CancellationToken ct)
     {
-        var cacheKey = $"user_exists:{userId}:{balanceScopeId}";
-        if (cache.TryGetValue(cacheKey, out _)) return;
-
         if (displayName.Length > 64) displayName = displayName[..64];
 
         const string sql = """
@@ -46,8 +40,6 @@ public sealed partial class EconomicsService(
             displayName,
             startingCoins = _startingCoins,
         }, cancellationToken: ct));
-
-        cache.Set(cacheKey, true, UserExistsTtl);
     }
 
     public async Task<int> GetBalanceAsync(long userId, long balanceScopeId, CancellationToken ct)

@@ -85,13 +85,15 @@ public sealed class PickLotteryStore(INpgsqlConnectionFactory connections) : IPi
         Guid id, long chatId, long openerId, string openerName,
         int stake, DateTime deadlineUtc, CancellationToken ct)
     {
+        // Partial unique index ux_pick_lottery_open_per_chat(chat_id) WHERE status = 'open'.
+        // The ON CONFLICT target must name that predicate so Postgres can infer the arbiter index.
         const string insertLotterySql = """
             INSERT INTO pick_lottery (id, chat_id, opener_id, opener_name, stake, status, deadline_at)
             VALUES (@id, @chatId, @openerId, @openerName, @stake, 'open', @deadlineUtc)
-            ON CONFLICT DO NOTHING
-            RETURNING id, chat_id, opener_id, opener_name, stake, status,
-                      opened_at, deadline_at, settled_at,
-                      winner_id, winner_name, pot_total, payout, fee
+            ON CONFLICT (chat_id) WHERE (status = 'open') DO NOTHING
+            RETURNING id AS Id, chat_id AS ChatId, opener_id AS OpenerId, opener_name AS OpenerName, stake AS Stake, status AS Status,
+                      opened_at AS OpenedAt, deadline_at AS DeadlineAt, settled_at AS SettledAt,
+                      winner_id AS WinnerId, winner_name AS WinnerName, pot_total AS PotTotal, payout AS Payout, fee AS Fee
             """;
         const string insertOpenerEntrySql = """
             INSERT INTO pick_lottery_entries (lottery_id, user_id, display_name, stake_paid)
@@ -132,9 +134,9 @@ public sealed class PickLotteryStore(INpgsqlConnectionFactory connections) : IPi
     public async Task<PickLotteryRow?> FindOpenByChatAsync(long chatId, CancellationToken ct)
     {
         const string sql = """
-            SELECT id, chat_id, opener_id, opener_name, stake, status,
-                   opened_at, deadline_at, settled_at,
-                   winner_id, winner_name, pot_total, payout, fee
+            SELECT id AS Id, chat_id AS ChatId, opener_id AS OpenerId, opener_name AS OpenerName, stake AS Stake, status AS Status,
+                   opened_at AS OpenedAt, deadline_at AS DeadlineAt, settled_at AS SettledAt,
+                   winner_id AS WinnerId, winner_name AS WinnerName, pot_total AS PotTotal, payout AS Payout, fee AS Fee
             FROM pick_lottery
             WHERE chat_id = @chatId AND status = 'open'
             LIMIT 1
@@ -147,9 +149,9 @@ public sealed class PickLotteryStore(INpgsqlConnectionFactory connections) : IPi
     public async Task<PickLotteryRow?> FindByIdAsync(Guid id, CancellationToken ct)
     {
         const string sql = """
-            SELECT id, chat_id, opener_id, opener_name, stake, status,
-                   opened_at, deadline_at, settled_at,
-                   winner_id, winner_name, pot_total, payout, fee
+            SELECT id AS Id, chat_id AS ChatId, opener_id AS OpenerId, opener_name AS OpenerName, stake AS Stake, status AS Status,
+                   opened_at AS OpenedAt, deadline_at AS DeadlineAt, settled_at AS SettledAt,
+                   winner_id AS WinnerId, winner_name AS WinnerName, pot_total AS PotTotal, payout AS Payout, fee AS Fee
             FROM pick_lottery
             WHERE id = @id
             """;
@@ -162,9 +164,9 @@ public sealed class PickLotteryStore(INpgsqlConnectionFactory connections) : IPi
         long chatId, long userId, string displayName, CancellationToken ct)
     {
         const string lockSql = """
-            SELECT id, chat_id, opener_id, opener_name, stake, status,
-                   opened_at, deadline_at, settled_at,
-                   winner_id, winner_name, pot_total, payout, fee
+            SELECT id AS Id, chat_id AS ChatId, opener_id AS OpenerId, opener_name AS OpenerName, stake AS Stake, status AS Status,
+                   opened_at AS OpenedAt, deadline_at AS DeadlineAt, settled_at AS SettledAt,
+                   winner_id AS WinnerId, winner_name AS WinnerName, pot_total AS PotTotal, payout AS Payout, fee AS Fee
             FROM pick_lottery
             WHERE chat_id = @chatId AND status = 'open'
             FOR UPDATE
@@ -222,9 +224,9 @@ public sealed class PickLotteryStore(INpgsqlConnectionFactory connections) : IPi
     public async Task<IReadOnlyList<PickLotteryRow>> ListExpiredOpenAsync(int limit, CancellationToken ct)
     {
         const string sql = """
-            SELECT id, chat_id, opener_id, opener_name, stake, status,
-                   opened_at, deadline_at, settled_at,
-                   winner_id, winner_name, pot_total, payout, fee
+            SELECT id AS Id, chat_id AS ChatId, opener_id AS OpenerId, opener_name AS OpenerName, stake AS Stake, status AS Status,
+                   opened_at AS OpenedAt, deadline_at AS DeadlineAt, settled_at AS SettledAt,
+                   winner_id AS WinnerId, winner_name AS WinnerName, pot_total AS PotTotal, payout AS Payout, fee AS Fee
             FROM pick_lottery
             WHERE status = 'open' AND deadline_at <= now()
             ORDER BY deadline_at

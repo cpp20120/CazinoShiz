@@ -6,7 +6,15 @@ public sealed class HorseOptions
 
     public int HorseCount { get; init; } = 4;
     public int MinBetsToRun { get; init; } = 4;
+
+    /// <summary>Millis after the result GIF before posting winner payouts (groups with more lanes).</summary>
     public int AnnounceDelayMs { get; init; } = 20_000;
+
+    /// <summary>
+    /// Same as <see cref="AnnounceDelayMs"/> but when <see cref="HorseCount"/> is 2. The race GIF often runs
+    /// longer than the default delay; this keeps the win message from overtaking playback.
+    /// </summary>
+    public int AnnounceDelay1v1Ms { get; init; } = 33_000;
 
     /// <summary>Hours east of UTC for race calendar day and for interpreting <see cref="AutoRunLocalHour"/> / <see cref="AutoRunLocalMinute"/>.</summary>
     public int TimezoneOffsetHours { get; init; } = 7;

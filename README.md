@@ -2,7 +2,24 @@
 
 [![](https://tokei.rs/b1/github/cpp20120/CazinoShiz)](https://github.com/cpp20120/CazinoShiz)
 
-Telegram casino and party-game bot with Russian-language UI, wallet balances, admin tools, analytics, and a modular game system. It runs as an ASP.NET Core host with independent game modules.
+Telegram party-games bot with virtual credits and party-game bot with Russian-language UI, wallet balances, admin tools, analytics, and a modular game system. It runs as an ASP.NET Core host with independent game modules. 
+
+DISCLAMER: THIS BOT IS HAS NO ANY REAL MONEY AND ABILITY TO USE THEM.
+
+This project is a simulation-only system.
+
+- It does not support real money, cryptocurrencies, or any form of monetary value.
+- Virtual coins/credits:
+  - cannot be purchased
+  - cannot be sold
+  - cannot be exchanged
+  - cannot be transferred for any real-world goods, services, or value
+- There is no mechanism to deposit or withdraw real money.
+- Redeem codes are generated internally for gameplay purposes only and have no monetary value.
+
+This software must not be used for real-money gambling or any commercial gambling activity.
+
+The primary purpose of this project is educational, focusing on architecture patterns such as DDD, Event Sourcing, and CQRS.
 
 ## Features
 
@@ -21,6 +38,7 @@ Telegram casino and party-game bot with Russian-language UI, wallet balances, ad
 | `/sh` | Secret Hitler party game. |
 | `/challenge` | 1v1 PvP betting challenges between two Telegram users. |
 | `/pixelbattle` | Telegram WebApp mini app for shared pixel painting. |
+| `/picklottery` | Per chat pool lottery                               |
 | `/transfer` | Coin transfers between users, including transfer fees. |
 | `/redeem` | Freespin/redeem code activation. |
 | `/top`, `/balance`, `/daily`, `/help` | Leaderboard, wallet balance, daily bonus, and help. |
