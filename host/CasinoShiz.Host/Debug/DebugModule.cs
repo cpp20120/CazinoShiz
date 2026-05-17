@@ -14,9 +14,7 @@ public sealed class DebugModule : IModule
             .RegisterAggregate<DebugEsSmokeAggregate>(PersistenceStrategy.EventSourced)
             .AddProjection<DebugEsSmokeProjection>()
             .AddHandler<DebugHandler>()
-            .AddHandler<DebugEsSmokeHandler>()
-            .AddHandler<DebugProjectionHandler>()
-            .AddHandler<DebugProjectionRebuildHandler>();
+            .AddHandler<DebugEsSmokeHandler>();
 
     public IModuleMigrations? GetMigrations() => new DebugMigrations();
 
