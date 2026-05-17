@@ -81,7 +81,9 @@ public sealed class DartsService(
             return new DartsBetResult(
                 DartsBetError.DailyRollLimit, 0, balance, 0, null, 0, 0, gate.UsedToday, gate.Limit);
 
-        if (!await economics.TryDebitAsync(userId, chatId, amount, "darts.bet", ct))
+        var betOperationId = $"darts:bet:{chatId}:{replyToMessageId}:{userId}";
+        var debit = await economics.TryDebitOnceAsync(userId, chatId, amount, "darts.bet", betOperationId, ct);
+        if (debit.Rejected)
         {
             await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Darts, ct);
             return DartsBetResult.Fail(DartsBetError.NotEnoughCoins, balance);
@@ -105,7 +107,7 @@ public sealed class DartsService(
         catch
         {
             await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Darts, ct);
-            await economics.CreditAsync(userId, chatId, amount, "darts.bet.refund", ct);
+            await economics.CreditOnceAsync(userId, chatId, amount, "darts.bet.refund", $"{betOperationId}:insert-refund", ct);
             throw;
         }
 
@@ -121,7 +123,7 @@ public sealed class DartsService(
         });
 
         return new DartsBetResult(
-            DartsBetError.None, amount, balance - amount, 0, null, roundId, queuedAhead, 0, 0);
+            DartsBetError.None, amount, debit.NewBalance, 0, null, roundId, queuedAhead, 0, 0);
     }
 
     public async Task<DartsThrowResult> ThrowAsync(
@@ -140,7 +142,7 @@ public sealed class DartsService(
         var payout = bet.Amount * multiplier;
 
         if (payout > 0)
-            await economics.CreditAsync(userId, chatId, payout, "darts.payout", ct);
+            await economics.CreditOnceAsync(userId, chatId, payout, "darts.payout", $"darts:payout:{roundId}", ct);
 
         await rounds.DeleteAsync(roundId, ct);
 
@@ -187,7 +189,7 @@ public sealed class DartsService(
             return;
 
         await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Darts, ct);
-        await economics.CreditAsync(userId, chatId, row.Amount, "darts.bet_reply_failed.refund", ct);
+        await economics.CreditOnceAsync(userId, chatId, row.Amount, "darts.bet_reply_failed.refund", $"darts:bet-reply-failed-refund:{roundId}", ct);
         await rounds.DeleteAsync(roundId, ct);
 
         var remaining = await rounds.CountActiveByUserChatAsync(userId, chatId, ct);
