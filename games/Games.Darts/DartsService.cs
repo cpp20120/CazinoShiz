@@ -24,7 +24,7 @@ public interface IDartsService
     /// a user-thrown sticker (no bot dice, no queue). Used when the user sends the emoji directly.
     /// </summary>
     Task<DartsThrowResult> QuickThrowAsync(
-        long userId, string displayName, long chatId, int diceMessageId, int face, int amount, CancellationToken ct);
+        long userId, string displayName, long chatId, int face, int amount, CancellationToken ct);
 
     /// <summary>Refund and remove queued round if we could not send the bet-accepted reply after debit.</summary>
     Task AbortQueuedRoundIfBetReplyFailedAsync(long roundId, long userId, long chatId, CancellationToken ct);
@@ -206,7 +206,7 @@ public sealed class DartsService(
     /// the face value from the user's own thrown sticker.  No queue, no bot dice involved.
     /// </summary>
     public async Task<DartsThrowResult> QuickThrowAsync(
-        long userId, string displayName, long chatId, int diceMessageId, int face, int amount, CancellationToken ct)
+        long userId, string displayName, long chatId, int face, int amount, CancellationToken ct)
     {
         var maxBet = tuning.GetSection<DartsOptions>(DartsOptions.SectionName).MaxBet;
         if (amount <= 0 || amount > maxBet)
@@ -238,9 +238,7 @@ public sealed class DartsService(
                 DailyRollUsed: gate.UsedToday,
                 DailyRollLimit: gate.Limit);
 
-        var operationPrefix = $"darts:quick:{chatId}:{diceMessageId}:{userId}";
-        var debit = await economics.TryDebitOnceAsync(userId, chatId, amount, "darts.quickplay.bet", $"{operationPrefix}:bet", ct);
-        if (debit.Rejected)
+        if (!await economics.TryDebitAsync(userId, chatId, amount, "darts.quickplay.bet", ct))
         {
             await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Darts, ct);
             return new DartsThrowResult(DartsThrowOutcome.BetNotEnoughCoins, Balance: balance);
@@ -251,7 +249,7 @@ public sealed class DartsService(
         var payout = amount * multiplier;
 
         if (payout > 0)
-            await economics.CreditOnceAsync(userId, chatId, payout, "darts.quickplay.payout", $"{operationPrefix}:payout", ct);
+            await economics.CreditAsync(userId, chatId, payout, "darts.quickplay.payout", ct);
 
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Darts);
         await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Darts, ct);
