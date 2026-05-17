@@ -66,6 +66,25 @@ public sealed partial class EconomicsService(
         return false;
     }
 
+    public async Task<EconomicsMutationResult> TryDebitOnceAsync(
+        long userId,
+        long balanceScopeId,
+        int amount,
+        string reason,
+        string operationId,
+        CancellationToken ct)
+    {
+        if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));
+        if (amount == 0) return new EconomicsMutationResult(false, false, await GetBalanceAsync(userId, balanceScopeId, ct));
+
+        var result = await ApplyOnceAsync(userId, balanceScopeId, delta: -amount, allowNegative: false, reason, operationId, ct);
+        if (result.Applied)
+            LogDebit(userId, balanceScopeId, amount, result.NewBalance, reason);
+        else if (result.Rejected)
+            LogDebitRejected(userId, balanceScopeId, amount, result.NewBalance, reason);
+        return result;
+    }
+
     public async Task DebitAsync(
         long userId, long balanceScopeId, int amount, string reason, CancellationToken ct)
     {
@@ -84,6 +103,23 @@ public sealed partial class EconomicsService(
 
         var result = await ApplyAsync(userId, balanceScopeId, delta: amount, allowNegative: true, reason, ct);
         LogCredit(userId, balanceScopeId, amount, result.NewBalance, reason);
+    }
+
+    public async Task<EconomicsMutationResult> CreditOnceAsync(
+        long userId,
+        long balanceScopeId,
+        int amount,
+        string reason,
+        string operationId,
+        CancellationToken ct)
+    {
+        if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));
+        if (amount == 0) return new EconomicsMutationResult(false, false, await GetBalanceAsync(userId, balanceScopeId, ct));
+
+        var result = await ApplyOnceAsync(userId, balanceScopeId, delta: amount, allowNegative: true, reason, operationId, ct);
+        if (result.Applied)
+            LogCredit(userId, balanceScopeId, amount, result.NewBalance, reason);
+        return result;
     }
 
     public async Task AdjustUncheckedAsync(
@@ -120,8 +156,6 @@ public sealed partial class EconomicsService(
         if (already)
             return new LedgerRevertResult(LedgerRevertStatus.AlreadyReverted, 0);
 
-        // Compensation = undo that line: append (-delta) with a reason that is unique per target id.
-        // Use long: -int.MinValue overflows int (would throw in checked / corrupt in unchecked).
         var undoLong = -(long)row.Delta;
         if (undoLong is > int.MaxValue or < int.MinValue)
             return new LedgerRevertResult(LedgerRevertStatus.CorrectionOutOfRange, 0);
@@ -315,6 +349,85 @@ public sealed partial class EconomicsService(
 
         await tx.CommitAsync(ct);
         return (true, newCoins);
+    }
+
+    private async Task<EconomicsMutationResult> ApplyOnceAsync(
+        long userId,
+        long balanceScopeId,
+        int delta,
+        bool allowNegative,
+        string reason,
+        string operationId,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(operationId))
+            throw new ArgumentException("Operation id is required for idempotent economics mutations.", nameof(operationId));
+        if (operationId.Length > 256)
+            throw new ArgumentOutOfRangeException(nameof(operationId), "Operation id must be <= 256 characters.");
+
+        const string existingSql = """
+            SELECT balance_after
+            FROM economics_ledger
+            WHERE operation_id = @operationId
+            """;
+        const string selectSql = """
+            SELECT coins, version FROM users
+            WHERE telegram_user_id = @userId AND balance_scope_id = @balanceScopeId
+            FOR UPDATE
+            """;
+        const string updateSql = """
+            UPDATE users
+            SET coins = @newCoins, version = @newVersion, updated_at = now()
+            WHERE telegram_user_id = @userId AND balance_scope_id = @balanceScopeId
+            """;
+        const string insertLedger = """
+            INSERT INTO economics_ledger (telegram_user_id, balance_scope_id, delta, balance_after, reason, operation_id)
+            VALUES (@userId, @balanceScopeId, @delta, @newCoins, @reason, @operationId)
+            """;
+
+        await using var conn = await connections.OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var existing = await conn.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
+            existingSql,
+            new { operationId },
+            transaction: tx,
+            cancellationToken: ct));
+        if (existing.HasValue)
+        {
+            await tx.CommitAsync(ct);
+            return new EconomicsMutationResult(Applied: false, Rejected: false, existing.Value);
+        }
+
+        var row = await conn.QuerySingleOrDefaultAsync<(int coins, long version)>(
+            new CommandDefinition(
+                selectSql, new { userId, balanceScopeId }, transaction: tx, cancellationToken: ct));
+
+        if (row.Equals(default((int, long))))
+        {
+            await tx.RollbackAsync(ct);
+            throw new InvalidOperationException(
+                $"User {userId} scope {balanceScopeId} not found. Call EnsureUserAsync before any balance mutation.");
+        }
+
+        var newCoins = row.coins + delta;
+        if (!allowNegative && newCoins < 0)
+        {
+            await tx.RollbackAsync(ct);
+            return new EconomicsMutationResult(Applied: false, Rejected: true, row.coins);
+        }
+
+        var newVersion = row.version + 1;
+        await conn.ExecuteAsync(new CommandDefinition(
+            updateSql, new { userId, balanceScopeId, newCoins, newVersion }, transaction: tx, cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            insertLedger,
+            new { userId, balanceScopeId, delta, newCoins, reason, operationId },
+            transaction: tx,
+            cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return new EconomicsMutationResult(Applied: true, Rejected: false, newCoins);
     }
 
     [LoggerMessage(LogLevel.Information, "economics.credit user={UserId} scope={BalanceScopeId} amount={Amount} balance={Balance} reason={Reason}")]
