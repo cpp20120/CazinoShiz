@@ -1,3 +1,4 @@
+using BotFramework.Host;
 using BotFramework.Sdk;
 using Dapper;
 
