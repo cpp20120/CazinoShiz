@@ -53,7 +53,8 @@ public sealed partial class BlackjackHandler(
             return;
         }
 
-        var result = await service.StartAsync(userId, displayName, chatId, bet, ctx.Ct);
+        var operationId = $"blackjack:start:{chatId}:{msg.MessageId}:{userId}";
+        var result = await service.StartAsync(userId, displayName, chatId, bet, operationId, ctx.Ct);
         if (result.Error != BlackjackError.None)
         {
             await ctx.Bot.SendMessage(chatId, ErrorText(result.Error),
