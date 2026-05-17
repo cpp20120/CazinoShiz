@@ -25,9 +25,10 @@ public sealed record ProjectionReplayResult(
 public sealed class EventReplayService(
     INpgsqlConnectionFactory connections,
     IEventSerializer serializer,
-    IEnumerable<IRebuildableProjection> rebuildableProjections) : IEventReplayService
+    IEnumerable<IProjection> projections) : IEventReplayService
 {
-    private readonly IReadOnlyList<IRebuildableProjection> _projections = rebuildableProjections.ToList();
+    private readonly IReadOnlyList<IRebuildableProjection> _projections =
+        projections.OfType<IRebuildableProjection>().ToList();
 
     public IReadOnlyList<ProjectionDescriptor> ListRebuildableProjections() =>
         _projections
