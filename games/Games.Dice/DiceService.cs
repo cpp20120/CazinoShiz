@@ -6,13 +6,9 @@
 // Telegram's encoded dice value, pick a sticker triple, compute prize from the
 // published payout table — ships verbatim.
 //
-// Stateless by design: no aggregate, no repository. Each call is debit →
-// resolve → credit → audit → analytics → publish, all in the same request
-// scope. EconomicsService makes each mutation atomic on its own row; we
-// deliberately accept that a failure between debit and credit leaves the
-// bettor short by the stake. Matches the live bot's behavior today (same
-// non-transactional boundary) and is cheap to revisit by introducing a
-// transactional wrapper on IEconomicsService later.
+// Stateless by design: no aggregate, no repository. Each Telegram 🎰 message is
+// one durable economics operation, keyed by chat/message/user so retries do not
+// debit or credit twice.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
@@ -28,6 +24,7 @@ public interface IDiceService
         string displayName,
         int diceValue,
         long chatId,
+        int sourceMessageId,
         bool isForwarded,
         CancellationToken ct);
 }
@@ -48,6 +45,7 @@ public sealed class DiceService(
         string displayName,
         int diceValue,
         long chatId,
+        int sourceMessageId,
         bool isForwarded,
         CancellationToken ct)
     {
@@ -74,8 +72,10 @@ public sealed class DiceService(
         var diceOpts = tuning.GetSection<DiceOptions>(DiceOptions.SectionName);
         var gas = TaxService.GetGasTax(diceOpts.Cost);
         var loss = diceOpts.Cost + gas;
+        var operationPrefix = $"dice:roll:{chatId}:{sourceMessageId}:{userId}";
 
-        if (!await economics.TryDebitAsync(userId, chatId, loss, reason: "dice.stake", ct))
+        var debit = await economics.TryDebitOnceAsync(userId, chatId, loss, reason: "dice.stake", $"{operationPrefix}:stake", ct);
+        if (debit.Rejected)
         {
             await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Dice, ct);
             analytics.Track("dice", "not_enough_coins", new Dictionary<string, object?>
@@ -93,7 +93,7 @@ public sealed class DiceService(
         var prize = GetPrize(maxFrequent, maxFrequency, rolls);
 
         if (prize > 0)
-            await economics.CreditAsync(userId, chatId, prize, reason: "dice.prize", ct);
+            await economics.CreditOnceAsync(userId, chatId, prize, reason: "dice.prize", $"{operationPrefix}:prize", ct);
 
         var balance = await economics.GetBalanceAsync(userId, chatId, ct);
 
