@@ -18,13 +18,15 @@ public class BlackjackServiceTests
             new NullEventBus(),
             Options.Create(new BlackjackOptions { MinBet = minBet, MaxBet = maxBet }));
 
+    private static string Op(int id) => $"blackjack-test:{id}";
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
     public async Task StartAsync_BetBelowMin_ReturnsInvalidBet(int bet)
     {
         var svc = MakeService(minBet: 1);
-        var result = await svc.StartAsync(1, "u", 100, bet, default);
+        var result = await svc.StartAsync(1, "u", 100, bet, Op(bet), default);
         Assert.Equal(BlackjackError.InvalidBet, result.Error);
         Assert.Null(result.Snapshot);
     }
@@ -33,7 +35,7 @@ public class BlackjackServiceTests
     public async Task StartAsync_BetAboveMax_ReturnsInvalidBet()
     {
         var svc = MakeService(maxBet: 100);
-        var result = await svc.StartAsync(1, "u", 100, bet: 200, default);
+        var result = await svc.StartAsync(1, "u", 100, bet: 200, Op(1), default);
         Assert.Equal(BlackjackError.InvalidBet, result.Error);
     }
 
@@ -42,7 +44,7 @@ public class BlackjackServiceTests
     {
         var econ = new FakeEconomicsService { StartingBalance = 5 };
         var svc = MakeService(economics: econ);
-        var result = await svc.StartAsync(1, "u", 100, bet: 100, default);
+        var result = await svc.StartAsync(1, "u", 100, bet: 100, Op(2), default);
         Assert.Equal(BlackjackError.NotEnoughCoins, result.Error);
     }
 
@@ -51,14 +53,14 @@ public class BlackjackServiceTests
     {
         var hands = new InMemoryBlackjackHandStore();
         var svc = MakeService(hands: hands);
-        await svc.StartAsync(1, "u", 100, bet: 10, default);
+        await svc.StartAsync(1, "u", 100, bet: 10, Op(3), default);
 
         // Check if the result was a blackjack (immediate settle), if so skip
         var snapshot = await svc.GetSnapshotAsync(1, default);
         if (snapshot.snapshot == null)
             return; // Natural blackjack settled immediately — no active hand to test
 
-        var result = await svc.StartAsync(1, "u", 100, bet: 10, default);
+        var result = await svc.StartAsync(1, "u", 100, bet: 10, Op(4), default);
         Assert.Equal(BlackjackError.HandInProgress, result.Error);
     }
 
@@ -67,16 +69,26 @@ public class BlackjackServiceTests
     {
         var econ = new FakeEconomicsService();
         var svc = MakeService(economics: econ);
-        await svc.StartAsync(1, "u", 100, bet: 50, default);
+        await svc.StartAsync(1, "u", 100, bet: 50, Op(5), default);
         Assert.Single(econ.Debits);
         Assert.Equal(50, econ.Debits[0].Amount);
+    }
+
+    [Fact]
+    public async Task StartAsync_SameOperation_DebitsOnlyOnce()
+    {
+        var econ = new FakeEconomicsService();
+        var svc = MakeService(economics: econ);
+        await svc.StartAsync(1, "u", 100, bet: 50, Op(6), default);
+        await svc.StartAsync(1, "u", 100, bet: 50, Op(6), default);
+        Assert.Single(econ.Debits);
     }
 
     [Fact]
     public async Task StartAsync_ValidBet_ReturnsSnapshotOrBlackjack()
     {
         var svc = MakeService();
-        var result = await svc.StartAsync(1, "u", 100, bet: 10, default);
+        var result = await svc.StartAsync(1, "u", 100, bet: 10, Op(7), default);
         Assert.Equal(BlackjackError.None, result.Error);
         Assert.NotNull(result.Snapshot);
     }
@@ -90,7 +102,7 @@ public class BlackjackServiceTests
         {
             var econ = new FakeEconomicsService();
             var svc = MakeService(economics: econ);
-            var result = await svc.StartAsync(1, "u", 100, bet: 10, default);
+            var result = await svc.StartAsync(1, "u", 100, bet: 10, Op(1000 + i), default);
             if (result.Snapshot?.Outcome == BlackjackOutcome.PlayerBlackjack)
             {
                 wins++;
@@ -130,15 +142,12 @@ public class BlackjackServiceTests
     [Fact]
     public async Task StandAsync_ActiveHand_SettlesWithOutcome()
     {
-        var hands = new InMemoryBlackjackHandStore();
-        var svc = MakeService(hands: hands);
-
         BlackjackResult? standResult = null;
         for (var attempt = 0; attempt < 50; attempt++)
         {
             var econ = new FakeEconomicsService();
             var freshSvc = MakeService(economics: econ, hands: new InMemoryBlackjackHandStore());
-            var start = await freshSvc.StartAsync(1, "u", 100, bet: 10, default);
+            var start = await freshSvc.StartAsync(1, "u", 100, bet: 10, Op(2000 + attempt), default);
             if (start.Snapshot?.Outcome != null) continue; // natural blackjack, no active hand
 
             standResult = await freshSvc.StandAsync(1, default);
