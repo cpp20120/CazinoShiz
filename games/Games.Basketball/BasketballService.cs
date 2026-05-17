@@ -14,6 +14,7 @@ namespace Games.Basketball;
 public interface IBasketballService
 {
     Task<BasketballBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct);
+    Task<BasketballBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, int sourceMessageId, CancellationToken ct);
     Task<BasketballThrowResult> ThrowAsync(long userId, string displayName, long chatId, int face, CancellationToken ct);
 
     /// <summary>Refund and clear pending bet when bot cannot complete SendMessage/SendDice after debit.</summary>
@@ -37,7 +38,10 @@ public sealed class BasketballService(
         [1] = 0, [2] = 0, [3] = 0, [4] = 2, [5] = 2,
     };
 
-    public async Task<BasketballBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct)
+    public Task<BasketballBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, CancellationToken ct) =>
+        PlaceBetAsync(userId, displayName, chatId, amount, sourceMessageId: 0, ct);
+
+    public async Task<BasketballBetResult> PlaceBetAsync(long userId, string displayName, long chatId, int amount, int sourceMessageId, CancellationToken ct)
     {
         var maxBet = tuning.GetSection<BasketballOptions>(BasketballOptions.SectionName).MaxBet;
         if (amount <= 0 || amount > maxBet) return BasketballBetResult.Fail(BasketballBetError.InvalidAmount);
@@ -72,16 +76,19 @@ public sealed class BasketballService(
             return new BasketballBetResult(
                 BasketballBetError.DailyRollLimit, 0, balance, 0, null, gate.UsedToday, gate.Limit);
 
-        if (!await economics.TryDebitAsync(userId, chatId, amount, "basketball.bet", ct))
+        var betOperationId = $"basketball:bet:{chatId}:{sourceMessageId}:{userId}";
+        var debit = await economics.TryDebitOnceAsync(userId, chatId, amount, "basketball.bet", betOperationId, ct);
+        if (debit.Rejected)
         {
             await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Basketball, ct);
             return BasketballBetResult.Fail(BasketballBetError.NotEnoughCoins, balance);
         }
 
-        if (!await bets.InsertAsync(new BasketballBet(userId, chatId, amount, DateTimeOffset.UtcNow), ct))
+        var createdAt = DateTimeOffset.UtcNow;
+        if (!await bets.InsertAsync(new BasketballBet(userId, chatId, amount, createdAt), ct))
         {
             await telegramDiceRolls.TryRefundRollAsync(userId, chatId, MiniGameIds.Basketball, ct);
-            await economics.CreditAsync(userId, chatId, amount, "basketball.bet.refund", ct);
+            await economics.CreditOnceAsync(userId, chatId, amount, "basketball.bet.refund", $"{betOperationId}:insert-refund", ct);
             return BasketballBetResult.Fail(BasketballBetError.AlreadyPending, balance);
         }
 
@@ -93,7 +100,7 @@ public sealed class BasketballService(
             ["user_id"] = userId, ["chat_id"] = chatId, ["amount"] = amount,
         });
 
-        return new BasketballBetResult(BasketballBetError.None, amount, balance - amount, 0, null, 0, 0);
+        return new BasketballBetResult(BasketballBetError.None, amount, debit.NewBalance, 0, null, 0, 0);
     }
 
     public async Task<BasketballThrowResult> ThrowAsync(long userId, string displayName, long chatId, int face, CancellationToken ct)
@@ -106,7 +113,7 @@ public sealed class BasketballService(
         var payout = bet.Amount * multiplier;
 
         if (payout > 0)
-            await economics.CreditAsync(userId, chatId, payout, "basketball.payout", ct);
+            await economics.CreditOnceAsync(userId, chatId, payout, "basketball.payout", BuildBetOperationId(bet, "payout"), ct);
 
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Basketball);
@@ -144,7 +151,7 @@ public sealed class BasketballService(
         var bet = await bets.FindAsync(userId, chatId, ct);
         if (bet == null) return;
 
-        await economics.CreditAsync(userId, chatId, bet.Amount, "basketball.send_dice_failed", ct);
+        await economics.CreditOnceAsync(userId, chatId, bet.Amount, "basketball.send_dice_failed", BuildBetOperationId(bet, "send-dice-failed"), ct);
         await bets.DeleteAsync(userId, chatId, ct);
         BotMiniGameSession.ClearCompletedRound(userId, chatId, MiniGameIds.Basketball);
         await Sessions.ClearCompletedRoundAsync(userId, chatId, MiniGameIds.Basketball, ct);
@@ -157,4 +164,7 @@ public sealed class BasketballService(
             ["amount"] = bet.Amount,
         });
     }
+
+    private static string BuildBetOperationId(BasketballBet bet, string action) =>
+        $"basketball:{action}:{bet.UserId}:{bet.ChatId}:{bet.CreatedAt.ToUnixTimeMilliseconds()}";
 }

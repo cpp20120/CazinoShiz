@@ -104,7 +104,7 @@ public sealed partial class FootballHandler(
             return;
         }
 
-        var r = await service.PlaceBetAsync(userId, displayName, chatId, amount, ctx.Ct);
+        var r = await service.PlaceBetAsync(userId, displayName, chatId, amount, reply.MessageId, ctx.Ct);
         var text = r.Error switch
         {
             FootballBetError.None => string.Format(Loc("bet.accepted"), r.Amount),
@@ -188,7 +188,7 @@ public sealed partial class FootballHandler(
 
                 // User threw ⚽ without a prior /football command → quick-play with default bet.
                 var defaultBet = tuning.GetSection<FootballOptions>(FootballOptions.SectionName).DefaultBet;
-                var betR = await service.PlaceBetAsync(userId, displayName, chatId, defaultBet, ctx.Ct);
+                var betR = await service.PlaceBetAsync(userId, displayName, chatId, defaultBet, msg.MessageId, ctx.Ct);
                 if (betR.Error != FootballBetError.None)
                 {
                     var errText = betR.Error switch
