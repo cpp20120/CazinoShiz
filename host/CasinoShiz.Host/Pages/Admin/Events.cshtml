@@ -2,11 +2,11 @@
 @model CasinoShiz.Host.Pages.Admin.EventsModel
 @{ ViewData["Title"] = "Events"; }
 
-<h2>Domain events</h2>
+<h2>Events</h2>
 
 <div class="card">
     <form method="get" class="inline">
-        <label>Module:</label>
+        <label>Module/game:</label>
         <select name="Module" onchange="this.form.submit()">
             <option value="">(all)</option>
             @foreach (var m in Model.Modules)
@@ -27,17 +27,53 @@
         <a href="/admin/groups" class="muted" style="margin-left:6px" title="Where chat list comes from">chats &amp; groups</a>
         <noscript><button type="submit">Filter</button></noscript>
     </form>
-    <p class="muted" style="margin:8px 0 0 0">With a chat selected, only events that include a <code>ChatId</code> in JSON are shown (some modules omit it).</p>
+    <p class="muted" style="margin:8px 0 0 0">
+        Shows both domain events from <code>event_log</code> and event-sourced sub-events from <code>module_events</code>.
+        With a chat selected, only events that include a <code>ChatId</code> in JSON are shown.
+    </p>
 </div>
 
 <div class="card">
+    <h3>Sub-events by type</h3>
+    @if (Model.EventTypeCounts.Count == 0)
+    {
+        <p class="muted">No event types for this filter.</p>
+    }
+    else
+    {
+        <table>
+            <thead>
+                <tr>
+                    <th>Source</th>
+                    <th>Type</th>
+                    <th>Count</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var x in Model.EventTypeCounts)
+                {
+                    <tr>
+                        <td><span class="pill">@x.Source</span></td>
+                        <td><code>@x.EventType</code></td>
+                        <td>@x.Count</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<div class="card">
+    <h3>Timeline</h3>
     <table>
         <thead>
             <tr>
                 <th style="width: 60px">#</th>
+                <th>Source</th>
                 <th>When</th>
                 <th>Type</th>
-                <th style="width: 60%">Payload</th>
+                <th>Stream</th>
+                <th style="width: 50%">Payload</th>
             </tr>
         </thead>
         <tbody>
@@ -45,16 +81,31 @@
             {
                 <tr>
                     <td class="muted">@e.Id</td>
+                    <td><span class="pill">@e.Source</span></td>
                     <td class="muted">@e.OccurredAt.UtcDateTime.ToString("MM-dd HH:mm:ss")</td>
                     <td><code>@e.EventType</code></td>
+                    <td class="muted">
+                        @if (!string.IsNullOrEmpty(e.StreamId))
+                        {
+                            <code>@e.StreamId</code>
+                            @if (e.Version.HasValue)
+                            {
+                                <span> v@e.Version.Value</span>
+                            }
+                        }
+                        else
+                        {
+                            <span>—</span>
+                        }
+                    </td>
                     <td><pre>@e.PayloadJson</pre></td>
                 </tr>
             }
             @if (Model.Rows.Count == 0)
             {
-                <tr><td colspan="4" class="muted">No events for this filter.</td></tr>
+                <tr><td colspan="6" class="muted">No events for this filter.</td></tr>
             }
         </tbody>
     </table>
 </div>
-<p class="muted">Showing up to 200 most recent events.</p>
+<p class="muted">Showing up to 300 most recent events. Source <code>domain</code> = <code>event_log</code>; source <code>es</code> = <code>module_events</code>.</p>
