@@ -18,6 +18,7 @@ namespace BotFramework.Host.Composition;
 public sealed partial class BackgroundJobRunner(
     ModuleRegistrations registrations,
     IServiceProvider services,
+    IBackgroundJobStatusService statuses,
     ILogger<BackgroundJobRunner> logger) : IHostedService
 {
     private readonly List<Task> _jobTasks = [];
@@ -29,6 +30,8 @@ public sealed partial class BackgroundJobRunner(
 
         foreach (var job in registrations.BackgroundJobs.Select(jobType => (IBackgroundJob)services.GetRequiredService(jobType)))
         {
+            statuses.Register(job.Name);
+            statuses.MarkStarting(job.Name);
             LogStartingJob(job.Name);
             _jobTasks.Add(Task.Run(() => RunWithSupervisionAsync(job, _cts.Token), _cts.Token));
         }
@@ -52,18 +55,23 @@ public sealed partial class BackgroundJobRunner(
         {
             try
             {
+                statuses.MarkRunning(job.Name);
                 await job.RunAsync(ct);
+                statuses.MarkCompleted(job.Name);
                 return;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
+                statuses.MarkStopped(job.Name);
                 return;
             }
             catch (Exception ex)
             {
+                statuses.MarkCrashed(job.Name, ex, backoffMs);
                 LogJobCrashed(job.Name, ex, backoffMs);
-                try { await Task.Delay(backoffMs, ct); } catch (OperationCanceledException) { return; }
+                try { await Task.Delay(backoffMs, ct); } catch (OperationCanceledException) { statuses.MarkStopped(job.Name); return; }
                 backoffMs = Math.Min(backoffMs * 2, 60_000);
+                statuses.MarkStarting(job.Name);
             }
         }
     }
