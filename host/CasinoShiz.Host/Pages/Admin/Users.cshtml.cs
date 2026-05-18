@@ -28,26 +28,34 @@ public sealed class UsersModel(
     }
 
     public async Task<IActionResult> OnPostSetAsync(
-        long userId, long balanceScopeId, int coins, CancellationToken ct)
+        long userId, long balanceScopeId, int coins, string operationId, CancellationToken ct)
     {
         var actor = HttpContext.Session.GetAdminSession();
         if (actor?.Role != AdminRole.SuperAdmin)
             return StatusCode(403);
 
+        if (!IsValidOperationId(operationId))
+        {
+            TempData["FlashError"] = true;
+            TempData["Flash"] = "Invalid operation id.";
+            return RedirectToPage(new { q = Q });
+        }
+
         var current = await economics.GetBalanceAsync(userId, balanceScopeId, ct);
         var d = coins - current;
+        var newCoins = current;
         if (d != 0)
-            await economics.AdjustUncheckedAsync(userId, balanceScopeId, d, ct);
+            newCoins = await ApplyAdminAdjustmentOnceAsync(userId, balanceScopeId, d, "admin.set", operationId, ct);
 
         await audit.LogAsync(actor.UserId, actor.Name, "users.set_coins",
-            new { targetUserId = userId, balanceScopeId, coins }, ct);
+            new { targetUserId = userId, balanceScopeId, coins, newCoins, operationId }, ct);
 
-        TempData["Flash"] = $"User {userId} scope {balanceScopeId} → {coins} coins";
+        TempData["Flash"] = $"User {userId} scope {balanceScopeId} → {newCoins} coins";
         return RedirectToPage(new { q = Q });
     }
 
     public async Task<IActionResult> OnPostAdjustAsync(
-        long userId, long balanceScopeId, int delta, CancellationToken ct)
+        long userId, long balanceScopeId, int delta, string operationId, CancellationToken ct)
     {
         var actor = HttpContext.Session.GetAdminSession();
         if (actor?.Role != AdminRole.SuperAdmin)
@@ -59,16 +67,97 @@ public sealed class UsersModel(
             return RedirectToPage(new { q = Q });
         }
 
-        await economics.AdjustUncheckedAsync(userId, balanceScopeId, delta, ct);
-        var newCoins = await economics.GetBalanceAsync(userId, balanceScopeId, ct);
+        if (!IsValidOperationId(operationId))
+        {
+            TempData["FlashError"] = true;
+            TempData["Flash"] = "Invalid operation id.";
+            return RedirectToPage(new { q = Q });
+        }
+
+        var newCoins = await ApplyAdminAdjustmentOnceAsync(userId, balanceScopeId, delta, "admin.adjust", operationId, ct);
 
         await audit.LogAsync(actor.UserId, actor.Name, "users.adjust_coins",
-            new { targetUserId = userId, balanceScopeId, delta, newCoins }, ct);
+            new { targetUserId = userId, balanceScopeId, delta, newCoins, operationId }, ct);
 
         TempData["Flash"] =
             $"User {userId} scope {balanceScopeId}: {(delta > 0 ? "+" : "")}{delta} → {newCoins} coins";
         return RedirectToPage(new { q = Q });
     }
+
+    private async Task<int> ApplyAdminAdjustmentOnceAsync(
+        long userId,
+        long balanceScopeId,
+        int delta,
+        string reason,
+        string operationId,
+        CancellationToken ct)
+    {
+        const string existingSql = """
+            SELECT balance_after
+            FROM economics_ledger
+            WHERE operation_id = @operationId
+            """;
+        const string selectSql = """
+            SELECT coins, version FROM users
+            WHERE telegram_user_id = @userId AND balance_scope_id = @balanceScopeId
+            FOR UPDATE
+            """;
+        const string updateSql = """
+            UPDATE users
+            SET coins = @newCoins, version = @newVersion, updated_at = now()
+            WHERE telegram_user_id = @userId AND balance_scope_id = @balanceScopeId
+            """;
+        const string insertLedger = """
+            INSERT INTO economics_ledger (telegram_user_id, balance_scope_id, delta, balance_after, reason, operation_id)
+            VALUES (@userId, @balanceScopeId, @delta, @newCoins, @reason, @operationId)
+            """;
+
+        await using var conn = await connections.OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var existing = await conn.QuerySingleOrDefaultAsync<int?>(new CommandDefinition(
+            existingSql,
+            new { operationId },
+            transaction: tx,
+            cancellationToken: ct));
+        if (existing.HasValue)
+        {
+            await tx.CommitAsync(ct);
+            return existing.Value;
+        }
+
+        var row = await conn.QuerySingleOrDefaultAsync<(int coins, long version)>(new CommandDefinition(
+            selectSql,
+            new { userId, balanceScopeId },
+            transaction: tx,
+            cancellationToken: ct));
+        if (row.Equals(default((int, long))))
+        {
+            await tx.RollbackAsync(ct);
+            throw new InvalidOperationException($"User {userId} scope {balanceScopeId} not found.");
+        }
+
+        var newCoins = row.coins + delta;
+        var newVersion = row.version + 1;
+        await conn.ExecuteAsync(new CommandDefinition(
+            updateSql,
+            new { userId, balanceScopeId, newCoins, newVersion },
+            transaction: tx,
+            cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            insertLedger,
+            new { userId, balanceScopeId, delta, newCoins, reason, operationId },
+            transaction: tx,
+            cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return newCoins;
+    }
+
+    private static bool IsValidOperationId(string? operationId) =>
+        !string.IsNullOrWhiteSpace(operationId)
+        && operationId.Length <= 128
+        && Guid.TryParse(operationId, out _);
 
     private async Task LoadAsync(CancellationToken ct)
     {
