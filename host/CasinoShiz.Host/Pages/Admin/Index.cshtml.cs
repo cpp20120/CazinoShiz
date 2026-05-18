@@ -1,4 +1,5 @@
 using BotFramework.Host;
+using BotFramework.Host.Composition;
 using BotFramework.Sdk;
 using Dapper;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -7,7 +8,8 @@ namespace CasinoShiz.Host.Pages.Admin;
 
 public sealed class IndexModel(
     INpgsqlConnectionFactory connections,
-    IEnumerable<IModule> modules) : PageModel
+    IEnumerable<IModule> modules,
+    IBackgroundJobStatusService backgroundJobs) : PageModel
 {
     public int PeopleCount { get; private set; }
     public int WalletRowCount { get; private set; }
@@ -17,6 +19,7 @@ public sealed class IndexModel(
     public IReadOnlyList<IModule> Modules { get; private set; } = modules.ToList();
     public IReadOnlyList<ModuleCount> EventsByModule { get; private set; } = [];
     public IReadOnlyList<MiniGameStickerTracking> StickerGames { get; private set; } = [];
+    public IReadOnlyList<BackgroundJobStatusSnapshot> BackgroundJobs { get; private set; } = [];
 
     public async Task OnGetAsync(CancellationToken ct)
     {
@@ -73,6 +76,7 @@ public sealed class IndexModel(
             ORDER BY count(e.id) DESC, g.game_id
             """, cancellationToken: ct));
         StickerGames = stickerRows.ToList();
+        BackgroundJobs = backgroundJobs.Snapshot();
     }
 }
 

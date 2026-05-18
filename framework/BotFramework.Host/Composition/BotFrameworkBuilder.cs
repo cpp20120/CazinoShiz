@@ -225,6 +225,7 @@ public static class BotFrameworkBuilderExtensions
         services.AddSingleton<IEventLog, PostgresEventLog>();
         services.AddSingleton<EventLogSubscriber>();
         services.AddSingleton<ClickHouseEventMirror>();
+        services.AddSingleton<IBackgroundJobStatusService, BackgroundJobStatusService>();
 
         services.AddHostedService<ModuleMigrationRunner>();
         services.AddHostedService(sp => sp.GetRequiredService<RuntimeTuningAccessor>());
