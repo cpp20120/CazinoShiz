@@ -13,11 +13,11 @@
 </div>
 
 <div class="card">
-    <h3>Background jobs</h3>
-    <p class="muted">Module jobs supervised by <code>BackgroundJobRunner</code>. Use <code>/__debug_jobs</code> for the Telegram debug view.</p>
+    <h3>Background / host jobs</h3>
+    <p class="muted">Module jobs supervised by <code>BackgroundJobRunner</code> plus host-level periodic services. Use <code>/__debug_jobs</code> for the Telegram debug view.</p>
     @if (Model.BackgroundJobs.Count == 0)
     {
-        <p class="muted">No background jobs registered.</p>
+        <p class="muted">No jobs registered.</p>
     }
     else
     {
@@ -25,14 +25,15 @@
             <thead>
                 <tr>
                     <th>Name</th>
+                    <th>Kind</th>
                     <th>State</th>
                     <th>Heartbeat</th>
-                    <th>Started</th>
+                    <th>Next</th>
                     <th>Completed</th>
                     <th>Failed</th>
                     <th>Crashes</th>
                     <th>Backoff</th>
-                    <th>Error</th>
+                    <th>Note / Error</th>
                 </tr>
             </thead>
             <tbody>
@@ -40,14 +41,15 @@
                 {
                     <tr>
                         <td><code>@job.Name</code></td>
+                        <td><span class="pill">@job.Kind</span></td>
                         <td><span class="pill">@job.State</span></td>
                         <td class="muted">@(job.LastHeartbeatAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
-                        <td class="muted">@(job.LastStartedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
+                        <td class="muted">@(job.NextRunAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
                         <td class="muted">@(job.LastCompletedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
                         <td class="muted">@(job.LastFailedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</td>
                         <td>@job.CrashCount</td>
                         <td>@(job.RestartBackoffMs?.ToString() ?? "—")</td>
-                        <td class="muted">@(job.LastError ?? "—")</td>
+                        <td class="muted">@(job.LastError ?? job.Note ?? "—")</td>
                     </tr>
                 }
             </tbody>

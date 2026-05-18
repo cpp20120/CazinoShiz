@@ -41,25 +41,28 @@ public sealed class DebugJobsHandler(
 
         var snapshots = jobs.Snapshot();
         var sb = new StringBuilder();
-        sb.AppendLine("<b>Background jobs</b>");
+        sb.AppendLine("<b>Background / host jobs</b>");
         if (snapshots.Count == 0)
         {
-            sb.AppendLine("No module background jobs registered.");
+            sb.AppendLine("No jobs registered.");
         }
         else
         {
             foreach (var job in snapshots)
             {
                 sb.AppendLine();
-                sb.AppendLine($"<b>{Enc(job.Name)}</b>");
+                sb.AppendLine($"<b>{Enc(job.Name)}</b> <code>{Enc(job.Kind)}</code>");
                 sb.AppendLine($"state: <code>{Enc(job.State)}</code>");
                 sb.AppendLine($"heartbeat: <code>{Fmt(job.LastHeartbeatAt)}</code>");
                 sb.AppendLine($"started: <code>{Fmt(job.LastStartedAt)}</code>");
                 sb.AppendLine($"completed: <code>{Fmt(job.LastCompletedAt)}</code>");
                 sb.AppendLine($"failed: <code>{Fmt(job.LastFailedAt)}</code>");
+                sb.AppendLine($"next: <code>{Fmt(job.NextRunAt)}</code>");
                 sb.AppendLine($"crashes: <code>{job.CrashCount}</code>");
                 if (job.RestartBackoffMs.HasValue)
                     sb.AppendLine($"restart backoff: <code>{job.RestartBackoffMs.Value}ms</code>");
+                if (!string.IsNullOrWhiteSpace(job.Note))
+                    sb.AppendLine($"note: <code>{Enc(job.Note)}</code>");
                 if (!string.IsNullOrWhiteSpace(job.LastError))
                     sb.AppendLine($"error: <code>{Enc(job.LastError)}</code>");
             }
