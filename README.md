@@ -43,6 +43,18 @@ The primary purpose of this project is educational, focusing on architecture pat
 | `/redeem` | Freespin/redeem code activation. |
 | `/top`, `/balance`, `/daily`, `/help` | Leaderboard, wallet balance, daily bonus, and help. |
 
+### Operations documentation
+
+See [docs/operations.md](docs/operations.md) for the runtime runbook covering:
+
+- daily bonus and downtime catch-up
+- scheduled horse races
+- `/__debug_jobs` and Admin Dashboard job visibility
+- idempotent money-flow SQL checks
+- admin wallet edits
+- event dispatch failure retry commands
+- Docker port mapping checks
+
 ### 1v1 Challenges
 
 `/challenge` lets one player challenge another player to a PvP stake. The challenger can use a username:
@@ -172,7 +184,7 @@ Roles:
 
 Admin pages include:
 
-- Dashboard: loaded modules, wallet totals, event counts, sticker-game play counts.
+- Dashboard: loaded modules, wallet totals, event counts, sticker-game play counts, and background/host job status.
 - People, Wallets, Ledger, History: user and balance tracking.
 - Chats: known group/private/channel list from Telegram updates.
 - Bets: pending game bets across supported modules.
@@ -181,7 +193,7 @@ Admin pages include:
 - Events: recent domain events with module/chat filters.
 - Settings: runtime configuration overview.
 
-All write actions are logged to the `admin_audit` table.
+All write actions are logged to the `admin_audit` table. Admin wallet Set/+/- operations also write idempotent `economics_ledger.operation_id` values to protect against duplicate form submits.
 
 ## Diagnostics & Health
 
@@ -190,6 +202,9 @@ The host provides built-in endpoints and hidden commands for monitoring:
 - **HTTP `/health/live`**: Liveness probe endpoint. Returns HTTP 200 (or 503) based on basic application responsiveness.
 - **HTTP `/health/ready`**: Readiness probe endpoint. Returns HTTP 200 (or 503) along with the status of configured infrastructure dependencies (PostgreSQL, Redis, ClickHouse).
 - **Telegram `/debug` command**: A hidden bot command that reports technical process metrics directly in the chat, including the current `chat_id`, `chat_type`, process `uptime`, total `cpu time`, and memory usage (`rss`).
+- **Telegram `/__debug_jobs` command**: Shows module and host job status, including horse scheduled races and daily bonus catch-up.
+- **Telegram `/__debug_dispatch_failures` command**: Lists unresolved projection/event dispatch failures.
+- **Telegram `/__debug_retry_dispatch_failure <id>` command**: Retries one unresolved dispatch failure.
 
 ## Configuration
 
@@ -207,6 +222,12 @@ Most settings can be provided in `appsettings.json` or as environment variables 
 | `Bot__WebhookPort` | no | HTTP port used by the host. |
 | `Bot__TrustedChannel` | no | Channel username for trusted broadcasts/race posting. |
 | `Bot__StartingCoins` | no | Initial user balance. |
+| `Bot__DailyBonus__Enabled` | no | Enables manual `/daily` and catch-up logic. |
+| `Bot__DailyBonus__PercentOfBalance` | no | Percent of current balance credited by daily bonus. |
+| `Bot__DailyBonus__MaxBonus` | no | Upper cap for daily bonus amount. |
+| `Bot__DailyBonus__TimezoneOffsetHours` | no | Local-day boundary used by daily bonus and catch-up. |
+| `Bot__DailyBonus__CatchUpEnabled` | no | Enables downtime catch-up for missed past local days. |
+| `Bot__DailyBonus__MaxCatchUpDays` | no | Safety cap for number of days catch-up can process. |
 | `ConnectionStrings__Postgres` | yes | PostgreSQL connection string. |
 | `Redis__Enabled` | no | Enables Redis-backed infrastructure. |
 | `Redis__ConnectionString` | if enabled | Redis connection string, for example `redis:6379`. |
@@ -220,8 +241,11 @@ Most settings can be provided in `appsettings.json` or as environment variables 
 | `Games__transfer__FeePercent` | no | Transfer fee ratio. |
 | `Games__horse__AutoRunEnabled` | no | Enables scheduled horse races. |
 | `Games__horse__AutoRunLocalHour` / `Games__horse__AutoRunLocalMinute` | no | Local scheduled race time. |
+| `Games__horse__TimezoneOffsetHours` | no | Local day/timezone for horse scheduled races. |
 
 Telegram dice games also support per-game `MaxBet`, `DefaultBet`, and redeem drop chance options under `Games:<game>`.
+
+See [docs/operations.md](docs/operations.md) for operation ids, SQL smoke checks, catch-up behavior, scheduled jobs, and Docker port mapping notes.
 
 ## Database And Migrations
 
@@ -231,6 +255,8 @@ Important module tables include:
 
 - `users`: wallet balances scoped by chat/user.
 - `event_log`: domain events used by admin tracking.
+- `module_events`: append-only Event Sourcing event streams.
+- `event_dispatch_failures`: unresolved projection/dispatch failures with retry metadata.
 - `challenge_duels`: 1v1 challenge state.
 - `pixelbattle_tiles`: PixelBattle grid state.
 - per-game pending tables such as `blackjack_hands`, `horse_bets`, and Telegram dice bet tables.
@@ -240,6 +266,13 @@ Important module tables include:
 When enabled, analytics events are buffered to ClickHouse and visualized in Grafana. The Docker stack also includes Prometheus targets for Postgres, Redis, and container metrics.
 
 If Grafana panels are empty, check Prometheus targets first, then verify Grafana data sources. Old cached Grafana state may require recreating the stack or removing the `grafana_data` volume.
+
+Operational visibility is available through:
+
+- Admin Dashboard background/host jobs table.
+- `/__debug_jobs` for Telegram-side job status.
+- `/__debug_dispatch_failures` and `/__debug_retry_dispatch_failure <id>` for failed event dispatches.
+- SQL checks in [docs/operations.md](docs/operations.md).
 
 ## License
 
