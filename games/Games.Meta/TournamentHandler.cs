@@ -50,6 +50,9 @@ public sealed class TournamentHandler(ITournamentService tournaments) : IUpdateH
             case "start":
                 await HandleStartAsync(ctx, msg, user, parts);
                 break;
+            case "finish":
+                await HandleFinishAsync(ctx, msg, user, parts);
+                break;
             default:
                 await ReplyHelpAsync(ctx, msg);
                 break;
@@ -119,7 +122,7 @@ public sealed class TournamentHandler(ITournamentService tournaments) : IUpdateH
 
         var lines = new List<string> { $"👥 <b>Участники турнира #{tournamentId}</b>" };
         foreach (var p in players.Take(40))
-            lines.Add($"• <b>{Html(p.DisplayName)}</b> — <code>{Html(p.Status)}</code>");
+            lines.Add($"• <b>{Html(p.DisplayName)}</b> — <code>{Html(p.Status)}</code> · <code>{p.UserId}</code>");
         if (players.Count > 40) lines.Add($"…и ещё {players.Count - 40} участников.");
         await SendHtmlAsync(ctx, msg, string.Join("\n", lines));
     }
@@ -149,8 +152,23 @@ public sealed class TournamentHandler(ITournamentService tournaments) : IUpdateH
 
         var ok = await tournaments.StartAsync(tournamentId, user.Id, ctx.Ct);
         await SendHtmlAsync(ctx, msg, ok
-            ? $"🚀 Турнир <code>{tournamentId}</code> стартовал. Bracket resolution будет подключён следующим слоем."
+            ? $"🚀 Турнир <code>{tournamentId}</code> стартовал. После игр creator может закрыть его: <code>/tournament finish {tournamentId} &lt;winnerUserId&gt;</code>"
             : "❌ Не удалось стартовать турнир: нужен creator, статус open и минимум 2 участника.");
+    }
+
+    private async Task HandleFinishAsync(UpdateContext ctx, Message msg, User user, string[] parts)
+    {
+        if (parts.Length < 4 || !long.TryParse(parts[2], out var tournamentId) || !long.TryParse(parts[3], out var winnerUserId))
+        {
+            await SendHtmlAsync(ctx, msg, "Использование: <code>/tournament finish &lt;id&gt; &lt;winnerUserId&gt;</code>");
+            return;
+        }
+
+        var before = await tournaments.GetAsync(tournamentId, ctx.Ct);
+        var winner = await tournaments.FinishAsync(tournamentId, user.Id, winnerUserId, ctx.Ct);
+        await SendHtmlAsync(ctx, msg, winner is null
+            ? "❌ Не удалось завершить турнир: нужен creator, статус started и winner из joined players."
+            : $"🏆 Турнир <code>{tournamentId}</code> завершён. Победитель: <b>{Html(winner.DisplayName)}</b>. Prize paid: <b>{before?.PrizePool ?? 0}</b>");
     }
 
     private static string FormatTournament(TournamentInfo t) => string.Join("\n", [
@@ -172,6 +190,7 @@ public sealed class TournamentHandler(ITournamentService tournaments) : IUpdateH
         "<code>/tournament players &lt;id&gt;</code>",
         "<code>/tournament list</code>",
         "<code>/tournament start &lt;id&gt;</code>",
+        "<code>/tournament finish &lt;id&gt; &lt;winnerUserId&gt;</code>",
     ]));
 
     private Task SendHtmlAsync(UpdateContext ctx, Message msg, string text) =>
