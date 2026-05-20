@@ -22,6 +22,9 @@ public sealed partial class DiceHandler(
     ILogger<DiceHandler> logger) : IUpdateHandler
 {
     private const string DiceEmoji = "🎰";
+    private const string Usage = "🎰 <b>Слоты</b>\n"
+        + "<code>/slot</code>, <code>/slots</code>, <code>slot</code> или <code>slots</code> — бот отправит 🎰 и применит обычную стоимость спина.\n"
+        + "Можно просто отправить 🎰 — результат считается так же.";
 
     public async Task HandleAsync(UpdateContext ctx)
     {
@@ -46,14 +49,14 @@ public sealed partial class DiceHandler(
         var action = parts.Length > 1 ? parts[1] : "";
         if (action.Equals("help", StringComparison.OrdinalIgnoreCase))
         {
-            await ctx.Bot.SendMessage(chatId, Loc("usage"), parseMode: ParseMode.Html,
+            await ctx.Bot.SendMessage(chatId, Usage, parseMode: ParseMode.Html,
                 replyParameters: reply, cancellationToken: ctx.Ct);
             return;
         }
 
         if (!string.IsNullOrWhiteSpace(action) && !action.Equals("spin", StringComparison.OrdinalIgnoreCase))
         {
-            await ctx.Bot.SendMessage(chatId, Loc("usage"), parseMode: ParseMode.Html,
+            await ctx.Bot.SendMessage(chatId, Usage, parseMode: ParseMode.Html,
                 replyParameters: reply, cancellationToken: ctx.Ct);
             return;
         }
