@@ -2,7 +2,7 @@ using BotFramework.Sdk;
 
 namespace Games.Meta;
 
-public sealed class MetaXpProjection(IMetaService meta, ILogger<MetaXpProjection> logger)
+public sealed class MetaXpProjection(IMetaService meta, IRiskService risks, ILogger<MetaXpProjection> logger)
     : DomainEventSubscriber<GameCompletedMetaEvent>
 {
     protected override async Task HandleAsync(GameCompletedMetaEvent ev, CancellationToken ct)
@@ -24,6 +24,8 @@ public sealed class MetaXpProjection(IMetaService meta, ILogger<MetaXpProjection
             player.Xp,
             player.Level,
             player.Rating);
+
+        await risks.EvaluateGameCompletedAsync(ev, player, ct);
 
         var achievements = AchievementRegistry.Evaluate(ev, player);
         var unlocked = await meta.UnlockAchievementsAsync(

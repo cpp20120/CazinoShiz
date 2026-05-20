@@ -10,6 +10,8 @@ public interface ITournamentService
     Task<IReadOnlyList<TournamentInfo>> GetOpenAsync(long chatId, int limit, CancellationToken ct);
     Task<IReadOnlyList<TournamentPlayerInfo>> GetPlayersAsync(long tournamentId, CancellationToken ct);
     Task<bool> StartAsync(long tournamentId, long userId, CancellationToken ct);
+    Task<TournamentPlayerInfo?> FinishAsync(long tournamentId, long actorUserId, long winnerUserId, CancellationToken ct);
+    Task<IReadOnlyList<TournamentPlayerInfo>?> CancelAsync(long tournamentId, long actorUserId, CancellationToken ct);
 }
 
 public sealed class TournamentService(
@@ -72,4 +74,52 @@ public sealed class TournamentService(
 
     public Task<bool> StartAsync(long tournamentId, long userId, CancellationToken ct) =>
         tournaments.StartAsync(tournamentId, userId, ct);
+
+    public async Task<TournamentPlayerInfo?> FinishAsync(long tournamentId, long actorUserId, long winnerUserId, CancellationToken ct)
+    {
+        var before = await tournaments.GetAsync(tournamentId, ct);
+        if (before is null) return null;
+
+        var winner = await tournaments.FinishAsync(tournamentId, actorUserId, winnerUserId, ct);
+        if (winner is null) return null;
+
+        if (before.PrizePool > 0)
+        {
+            var amount = (int)Math.Min(int.MaxValue, before.PrizePool);
+            await economics.CreditOnceAsync(
+                winner.UserId,
+                before.ChatId,
+                amount,
+                "tournament.prize",
+                $"tournament:prize:{before.Id}:{winner.UserId}",
+                ct);
+        }
+
+        return winner;
+    }
+
+    public async Task<IReadOnlyList<TournamentPlayerInfo>?> CancelAsync(long tournamentId, long actorUserId, CancellationToken ct)
+    {
+        var before = await tournaments.GetAsync(tournamentId, ct);
+        if (before is null) return null;
+
+        var players = await tournaments.CancelAsync(tournamentId, actorUserId, ct);
+        if (players is null) return null;
+
+        if (before.EntryFee > 0)
+        {
+            foreach (var player in players)
+            {
+                await economics.CreditOnceAsync(
+                    player.UserId,
+                    before.ChatId,
+                    before.EntryFee,
+                    "tournament.cancel.refund",
+                    $"tournament:cancel-refund:{before.Id}:{player.UserId}",
+                    ct);
+            }
+        }
+
+        return players;
+    }
 }

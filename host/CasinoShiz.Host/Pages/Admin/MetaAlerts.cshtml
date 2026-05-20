@@ -1,0 +1,89 @@
+@page "/admin/meta-alerts"
+@model CasinoShiz.Host.Pages.Admin.MetaAlertsModel
+@{ ViewData["Title"] = "Meta alerts"; }
+
+<h2>Meta alerts</h2>
+<p class="muted">Open/handled meta risk flags from <code>meta_risk_flags</code>. Use filters to narrow by chat or user.</p>
+
+@if (!string.IsNullOrEmpty(Model.Flash))
+{
+    <div class="flash @(Model.FlashError ? "error" : "")">@Model.Flash</div>
+}
+
+<div class="card">
+    <form method="get" class="inline">
+        <input type="text" name="chatId" value="@Model.ChatId" placeholder="Chat id" style="width: 160px" />
+        <input type="text" name="userId" value="@Model.UserId" placeholder="User id" style="width: 160px" />
+        <select name="status">
+            <option value="open" selected="@(Model.Status == "open")">open</option>
+            <option value="resolved" selected="@(Model.Status == "resolved")">resolved</option>
+            <option value="ignored" selected="@(Model.Status == "ignored")">ignored</option>
+            <option value="all" selected="@(Model.Status == "all")">all</option>
+        </select>
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Time (UTC)</th>
+                <th>Severity</th>
+                <th>Kind</th>
+                <th>Status</th>
+                <th>Chat</th>
+                <th>User</th>
+                <th>Reason</th>
+                <th>Evidence</th>
+                @if (Model.CanUpdate)
+                {
+                    <th></th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var r in Model.Rows)
+        {
+            <tr>
+                <td class="muted"><code>@r.Id</code></td>
+                <td class="muted">@r.CreatedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td><b>@r.Severity</b></td>
+                <td><code>@r.Kind</code></td>
+                <td><code>@r.Status</code></td>
+                <td><code>@r.ChatId</code></td>
+                <td><code>@r.UserId</code><br /><span class="muted">@r.DisplayName</span></td>
+                <td>@r.Reason</td>
+                <td><details><summary>json</summary><pre style="white-space: pre-wrap; max-width: 520px">@r.EvidenceJson</pre></details></td>
+                @if (Model.CanUpdate)
+                {
+                    <td>
+                        @if (r.Status == "open")
+                        {
+                            <form method="post" asp-page-handler="Update" class="inline" onsubmit="return confirm('Resolve alert #@r.Id?');">
+                                <input type="hidden" name="flagId" value="@r.Id" />
+                                <input type="hidden" name="targetStatus" value="resolved" />
+                                <button type="submit" class="ghost" style="font-size: 11px">Resolve</button>
+                            </form>
+                            <form method="post" asp-page-handler="Update" class="inline" onsubmit="return confirm('Ignore alert #@r.Id?');">
+                                <input type="hidden" name="flagId" value="@r.Id" />
+                                <input type="hidden" name="targetStatus" value="ignored" />
+                                <button type="submit" class="ghost danger" style="font-size: 11px">Ignore</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <span class="muted">—</span>
+                        }
+                    </td>
+                }
+            </tr>
+        }
+        @if (Model.Rows.Count == 0)
+        {
+            <tr><td colspan="@(Model.CanUpdate ? 10 : 9)" class="muted">No alerts.</td></tr>
+        }
+        </tbody>
+    </table>
+</div>

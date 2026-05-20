@@ -181,5 +181,35 @@ public sealed class MetaMigrations : IModuleMigrations
             CREATE INDEX ix_meta_tournament_players_tournament
                 ON meta_tournament_players (tournament_id, joined_at ASC);
             """),
+
+        new Migration("006_risk_flags", """
+            CREATE TABLE meta_risk_flags (
+                id            BIGSERIAL    PRIMARY KEY,
+                season_id     BIGINT       NOT NULL REFERENCES meta_seasons(id) ON DELETE CASCADE,
+                chat_id       BIGINT       NOT NULL,
+                user_id       BIGINT       NOT NULL,
+                display_name  TEXT         NOT NULL,
+                kind          TEXT         NOT NULL,
+                severity      TEXT         NOT NULL,
+                status        TEXT         NOT NULL DEFAULT 'open',
+                reason        TEXT         NOT NULL,
+                evidence      JSONB        NOT NULL DEFAULT '{}'::jsonb,
+                created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                resolved_at   TIMESTAMPTZ  NULL,
+                CONSTRAINT ck_meta_risk_flags_severity CHECK (severity IN ('low', 'medium', 'high', 'critical')),
+                CONSTRAINT ck_meta_risk_flags_status CHECK (status IN ('open', 'ignored', 'resolved'))
+            );
+
+            CREATE INDEX ix_meta_risk_flags_open
+                ON meta_risk_flags (season_id, chat_id, status, severity, created_at DESC);
+
+            CREATE INDEX ix_meta_risk_flags_user
+                ON meta_risk_flags (season_id, chat_id, user_id, created_at DESC);
+
+            CREATE UNIQUE INDEX ux_meta_risk_flags_recent_duplicate
+                ON meta_risk_flags (season_id, chat_id, user_id, kind, status)
+                WHERE status = 'open';
+            """),
     ];
 }
