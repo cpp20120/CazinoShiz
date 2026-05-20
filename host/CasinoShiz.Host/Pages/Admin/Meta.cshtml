@@ -1,0 +1,59 @@
+@page "/admin/meta"
+@model CasinoShiz.Host.Pages.Admin.MetaModel
+@{ ViewData["Title"] = "Meta"; }
+
+<h2>Meta</h2>
+<p class="muted">Season meta control center: seasons, config, rewards, risk alerts, clans and tournaments.</p>
+
+<div class="cards">
+    <div class="stat"><div class="label">Active season</div><div class="value">@(Model.ActiveSeasonName ?? "—")</div><div class="muted">@(Model.ActiveSeasonId is null ? "No active season" : $"#{Model.ActiveSeasonId}")</div></div>
+    <div class="stat"><div class="label">Seasons</div><div class="value">@Model.TotalSeasons</div></div>
+    <div class="stat"><div class="label">Season players</div><div class="value">@Model.SeasonPlayers</div></div>
+    <div class="stat"><div class="label">Open alerts</div><div class="value">@Model.OpenAlerts</div></div>
+    <div class="stat"><div class="label">Clans</div><div class="value">@Model.Clans</div></div>
+    <div class="stat"><div class="label">Open tournaments</div><div class="value">@Model.OpenTournaments</div></div>
+</div>
+
+<div class="card">
+    <h3>Controls</h3>
+    <table>
+        <thead><tr><th>Area</th><th>What is there</th><th>Open</th></tr></thead>
+        <tbody>
+            <tr>
+                <td><b>Seasons & config</b></td>
+                <td>Create/activate/finish seasons, edit config JSON, pay player and clan rewards.</td>
+                <td><a href="/admin/meta-seasons">Open seasons</a></td>
+            </tr>
+            <tr>
+                <td><b>Risk alerts</b></td>
+                <td>View open/handled risk flags, inspect evidence JSON, resolve or ignore alerts.</td>
+                <td><a href="/admin/meta-alerts">Open alerts</a></td>
+            </tr>
+            <tr>
+                <td><b>Leaderboard rewards</b></td>
+                <td>Player top-3 payouts are available from the season row in Seasons & config.</td>
+                <td><a href="/admin/meta-seasons">Pay player rewards</a></td>
+            </tr>
+            <tr>
+                <td><b>Clan rewards</b></td>
+                <td>Clan top-3 owner payouts are available from the season row in Seasons & config.</td>
+                <td><a href="/admin/meta-seasons">Pay clan rewards</a></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h3>Telegram commands</h3>
+    <p class="muted">Useful in-chat checks for the same meta layer.</p>
+    <p>
+        <code>/season</code>
+        <code>/profile</code>
+        <code>/topseason</code>
+        <code>/achievements</code>
+        <code>/quests</code>
+        <code>/clan top</code>
+        <code>/tournament list</code>
+        <code>/risk</code>
+    </p>
+</div>
