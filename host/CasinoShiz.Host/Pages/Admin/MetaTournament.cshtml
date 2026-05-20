@@ -1,0 +1,88 @@
+@page "/admin/meta-tournament/{id:long}"
+@model CasinoShiz.Host.Pages.Admin.MetaTournamentModel
+@{ ViewData["Title"] = $"Tournament #{Model.Tournament?.Id}"; }
+
+@if (Model.Tournament is null)
+{
+    <h2>Tournament not found</h2>
+    return;
+}
+
+<h2>Tournament #@Model.Tournament.Id replay</h2>
+<p class="muted"><a href="/admin/meta-tournaments">← Back to tournaments</a></p>
+
+<div class="cards">
+    <div class="stat"><div class="label">Status</div><div class="value">@Model.Tournament.Status</div></div>
+    <div class="stat"><div class="label">Game</div><div class="value">@Model.Tournament.GameKey</div><div class="muted">@Model.Tournament.Type</div></div>
+    <div class="stat"><div class="label">Players</div><div class="value">@Model.Tournament.PlayerCount/@Model.Tournament.MaxPlayers</div></div>
+    <div class="stat"><div class="label">Prize</div><div class="value">@Model.Tournament.PrizePool</div><div class="muted">fee @Model.Tournament.EntryFee</div></div>
+    <div class="stat"><div class="label">Season</div><div class="value">#@Model.Tournament.SeasonId</div><div class="muted">@Model.Tournament.SeasonName</div></div>
+    <div class="stat"><div class="label">Chat</div><div class="value">@Model.Tournament.ChatId</div></div>
+</div>
+
+<div class="card">
+    <h3>Players</h3>
+    <table>
+        <thead><tr><th>User</th><th>Status</th><th>Joined</th></tr></thead>
+        <tbody>
+        @foreach (var p in Model.Players)
+        {
+            <tr>
+                <td><code>@p.UserId</code><br /><b>@p.DisplayName</b></td>
+                <td><code>@p.Status</code></td>
+                <td class="muted">@p.JoinedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h3>Bracket replay</h3>
+    @if (Model.Matches.Count == 0)
+    {
+        <p class="muted">No bracket yet. Start the tournament in Telegram to generate matches.</p>
+    }
+    else
+    {
+        <div style="display: grid; grid-auto-flow: column; grid-auto-columns: minmax(260px, 1fr); gap: 14px; overflow-x: auto; padding-bottom: 8px;">
+            @foreach (var round in Model.Matches.GroupBy(x => x.Round).OrderBy(x => x.Key))
+            {
+                <div>
+                    <h4>Round @round.Key</h4>
+                    @foreach (var m in round.OrderBy(x => x.MatchIndex))
+                    {
+                        var p1Win = m.VictorUserId is not null && m.Player1UserId == m.VictorUserId;
+                        var p2Win = m.VictorUserId is not null && m.Player2UserId == m.VictorUserId;
+                        <div class="card" style="padding: 12px; margin-bottom: 12px; border: 1px solid #334155;">
+                            <div class="muted">Match <code>@m.Id</code> · slot @m.MatchIndex · <code>@m.Status</code></div>
+                            <div style="padding: 6px 0; @(p1Win ? "font-weight:700;color:#86efac" : "")">
+                                @(m.Player1DisplayName ?? "—")
+                                @if (m.Player1UserId is not null) { <code>@m.Player1UserId</code> }
+                            </div>
+                            <div class="muted">vs</div>
+                            <div style="padding: 6px 0; @(p2Win ? "font-weight:700;color:#86efac" : "")">
+                                @(m.Player2DisplayName ?? "—")
+                                @if (m.Player2UserId is not null) { <code>@m.Player2UserId</code> }
+                            </div>
+                            @if (m.VictorUserId is not null)
+                            {
+                                <div class="muted">victor <code>@m.VictorUserId</code></div>
+                            }
+                            <div class="muted" style="margin-top: 6px">updated @m.UpdatedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+<div class="card">
+    <h3>Telegram control</h3>
+    <p>
+        <code>/tournament bracket @Model.Tournament.Id</code>
+        <code>/tournament report &lt;matchId&gt; &lt;victorUserId&gt;</code>
+        <code>/tournament players @Model.Tournament.Id</code>
+    </p>
+</div>
