@@ -9,6 +9,7 @@ namespace CasinoShiz.Host.Pages.Admin;
 
 public sealed class MetaSeasonsModel(
     INpgsqlConnectionFactory connections,
+    IEconomicsService economics,
     IAdminAuditLog audit) : PageModel
 {
     public IReadOnlyList<MetaSeasonAdminRow> Seasons { get; private set; } = [];
@@ -125,6 +126,62 @@ public sealed class MetaSeasonsModel(
         return RedirectToPage();
     }
 
+    public async Task<IActionResult> OnPostPayRewardsAsync(long seasonId, CancellationToken ct)
+    {
+        var actor = HttpContext.Session.GetAdminSession();
+        if (actor?.Role != AdminRole.SuperAdmin) return Forbid();
+
+        const string seasonSql = "SELECT status FROM meta_seasons WHERE id = @seasonId";
+        const string topSql = """
+            SELECT row_number() OVER (ORDER BY xp DESC, rating DESC, user_id ASC)::int AS Place,
+                   chat_id AS ChatId,
+                   user_id AS UserId,
+                   display_name AS DisplayName,
+                   xp AS Xp,
+                   rating AS Rating
+            FROM meta_season_players
+            WHERE season_id = @seasonId
+            ORDER BY xp DESC, rating DESC, user_id ASC
+            LIMIT 3
+            """;
+
+        await using var conn = await connections.OpenAsync(ct);
+        var status = await conn.ExecuteScalarAsync<string?>(new CommandDefinition(seasonSql, new { seasonId }, cancellationToken: ct));
+        if (status is null)
+        {
+            TempData["FlashError"] = true;
+            TempData["Flash"] = $"Season #{seasonId} not found.";
+            return RedirectToPage();
+        }
+
+        var winners = (await conn.QueryAsync<SeasonRewardWinner>(new CommandDefinition(topSql, new { seasonId }, cancellationToken: ct))).ToList();
+        var paid = 0;
+        foreach (var winner in winners)
+        {
+            var amount = RewardForPlace(winner.Place);
+            if (amount <= 0) continue;
+
+            await economics.EnsureUserAsync(winner.UserId, winner.ChatId, winner.DisplayName, ct);
+            await economics.CreditOnceAsync(
+                winner.UserId,
+                winner.ChatId,
+                amount,
+                "season.reward",
+                $"season:reward:{seasonId}:{winner.Place}:{winner.ChatId}:{winner.UserId}",
+                ct);
+            paid++;
+        }
+
+        await audit.LogAsync(actor.UserId, actor.Name, "meta_season.pay_rewards", new
+        {
+            seasonId,
+            winners = winners.Select(x => new { x.Place, x.ChatId, x.UserId, x.DisplayName, amount = RewardForPlace(x.Place) }).ToArray(),
+        }, ct);
+
+        TempData["Flash"] = $"Season #{seasonId} rewards processed for {paid} winners.";
+        return RedirectToPage();
+    }
+
     public async Task<IActionResult> OnPostUpdateConfigAsync(long seasonId, string configJson, CancellationToken ct)
     {
         var actor = HttpContext.Session.GetAdminSession();
@@ -180,6 +237,14 @@ public sealed class MetaSeasonsModel(
         Seasons = rows.ToList();
     }
 
+    private static int RewardForPlace(int place) => place switch
+    {
+        1 => 5_000,
+        2 => 2_500,
+        3 => 1_000,
+        _ => 0,
+    };
+
     private static bool IsJsonObject(string value)
     {
         try
@@ -215,3 +280,11 @@ public sealed record MetaSeasonAdminRow(
     string ConfigJson,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
+
+public sealed record SeasonRewardWinner(
+    int Place,
+    long ChatId,
+    long UserId,
+    string DisplayName,
+    long Xp,
+    int Rating);

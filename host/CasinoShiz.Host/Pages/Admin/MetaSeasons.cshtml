@@ -3,7 +3,7 @@
 @{ ViewData["Title"] = "Meta seasons"; }
 
 <h2>Meta seasons</h2>
-<p class="muted">Manage season lifecycle and JSON config. Only SuperAdmin can mutate seasons.</p>
+<p class="muted">Manage season lifecycle, JSON config, and end-of-season rewards. Only SuperAdmin can mutate seasons.</p>
 
 @if (!string.IsNullOrEmpty(Model.Flash))
 {
@@ -93,6 +93,11 @@
                                 <button type="submit" class="ghost danger">Finish</button>
                             </form>
                         }
+                        <form method="post" asp-page-handler="PayRewards" class="inline" onsubmit="return confirm('Pay top-3 rewards for season #@s.Id? This is ledger-idempotent.');">
+                            <input type="hidden" name="seasonId" value="@s.Id" />
+                            <button type="submit" class="ghost">Pay rewards</button>
+                        </form>
+                        <div class="muted" style="font-size: 11px; margin-top: 4px">Rewards: #1 5000, #2 2500, #3 1000</div>
                     </td>
                 }
             </tr>
