@@ -99,8 +99,8 @@ public class FootballServiceTests
             new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         await svc.PlaceBetAsync(1, "u", 100, 50, default);
         await svc.ThrowAsync(1, "u", 100, 4, default);
-        Assert.Single(bus.Published);
-        Assert.IsType<FootballThrowCompleted>(bus.Published[0]);
+        Assert.Single(bus.Published.OfType<FootballThrowCompleted>());
+        Assert.Single(bus.Published.OfType<GameCompletedMetaEvent>());
     }
 
     [Fact]

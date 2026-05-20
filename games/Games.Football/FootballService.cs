@@ -129,6 +129,18 @@ public sealed class FootballService(
         await events.PublishAsync(
             new FootballThrowCompleted(userId, chatId, face, bet.Amount, multiplier, payout, occurredAt),
             ct);
+        await events.PublishAsync(
+            new GameCompletedMetaEvent(
+                ChatId: chatId,
+                UserId: userId,
+                DisplayName: displayName,
+                GameKey: MiniGameIds.Football,
+                Stake: bet.Amount,
+                Payout: payout,
+                IsWin: payout - bet.Amount > 0,
+                Multiplier: bet.Amount > 0 ? decimal.Divide(payout, bet.Amount) : 0m,
+                OccurredAt: occurredAt),
+            ct);
         await TelegramMiniGameRedeemDrops.MaybePublishAsync(
             events, football.RedeemDropChance, userId, chatId, MiniGameIds.Football, occurredAt, ct);
 

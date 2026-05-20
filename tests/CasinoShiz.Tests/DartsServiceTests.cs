@@ -295,8 +295,8 @@ public class DartsServiceTests
         var pr = await svc.PlaceBetAsync(1, "u", 100, 50, CmdMsg, default);
         await ArmAsync(rounds, pr.RoundId, 100);
         await svc.ThrowAsync(pr.RoundId, 1, "u", 100, BotMsg, 4, default);
-        Assert.Single(bus.Published);
-        Assert.IsType<DartsThrowCompleted>(bus.Published[0]);
+        Assert.Single(bus.Published.OfType<DartsThrowCompleted>());
+        Assert.Single(bus.Published.OfType<GameCompletedMetaEvent>());
     }
 
     [Fact]

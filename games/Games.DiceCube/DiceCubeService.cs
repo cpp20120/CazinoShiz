@@ -191,6 +191,18 @@ public sealed class DiceCubeService(
         await events.PublishAsync(
             new DiceCubeRollCompleted(userId, chatId, face, bet.Amount, multiplier, payout, occurredAt),
             ct);
+        await events.PublishAsync(
+            new GameCompletedMetaEvent(
+                ChatId: chatId,
+                UserId: userId,
+                DisplayName: displayName,
+                GameKey: MiniGameIds.DiceCube,
+                Stake: bet.Amount,
+                Payout: payout,
+                IsWin: payout - bet.Amount > 0,
+                Multiplier: bet.Amount > 0 ? decimal.Divide(payout, bet.Amount) : 0m,
+                OccurredAt: occurredAt),
+            ct);
         await TelegramMiniGameRedeemDrops.MaybePublishAsync(
             events, cube.RedeemDropChance, userId, chatId, MiniGameIds.DiceCube, occurredAt, ct);
 

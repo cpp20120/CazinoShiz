@@ -167,6 +167,18 @@ public sealed class DartsService(
         await events.PublishAsync(
             new DartsThrowCompleted(userId, chatId, face, bet.Amount, multiplier, payout, occurredAt),
             ct);
+        await events.PublishAsync(
+            new GameCompletedMetaEvent(
+                ChatId: chatId,
+                UserId: userId,
+                DisplayName: displayName,
+                GameKey: MiniGameIds.Darts,
+                Stake: bet.Amount,
+                Payout: payout,
+                IsWin: payout - bet.Amount > 0,
+                Multiplier: bet.Amount > 0 ? decimal.Divide(payout, bet.Amount) : 0m,
+                OccurredAt: occurredAt),
+            ct);
         await TelegramMiniGameRedeemDrops.MaybePublishAsync(
             events, darts.RedeemDropChance, userId, chatId, MiniGameIds.Darts, occurredAt, ct);
 
@@ -267,6 +279,18 @@ public sealed class DartsService(
         var occurredAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         await events.PublishAsync(
             new DartsThrowCompleted(userId, chatId, face, amount, multiplier, payout, occurredAt),
+            ct);
+        await events.PublishAsync(
+            new GameCompletedMetaEvent(
+                ChatId: chatId,
+                UserId: userId,
+                DisplayName: displayName,
+                GameKey: MiniGameIds.Darts,
+                Stake: amount,
+                Payout: payout,
+                IsWin: payout - amount > 0,
+                Multiplier: amount > 0 ? decimal.Divide(payout, amount) : 0m,
+                OccurredAt: occurredAt),
             ct);
         await TelegramMiniGameRedeemDrops.MaybePublishAsync(
             events, darts.RedeemDropChance, userId, chatId, MiniGameIds.Darts, occurredAt, ct);

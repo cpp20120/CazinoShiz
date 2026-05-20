@@ -328,8 +328,8 @@ public class DiceCubeServiceTests
             new FakeRuntimeTuning(), new NullMiniGameSessionGhostHeal(), new NullTelegramDiceDailyRollLimiter());
         await svc.PlaceBetAsync(1, "u", 100, 50, default);
         await svc.RollAsync(1, "u", 100, 4, default);
-        Assert.Single(bus.Published);
-        Assert.IsType<DiceCubeRollCompleted>(bus.Published[0]);
+        Assert.Single(bus.Published.OfType<DiceCubeRollCompleted>());
+        Assert.Single(bus.Published.OfType<GameCompletedMetaEvent>());
     }
 
     [Fact]
