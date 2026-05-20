@@ -31,7 +31,7 @@ public class DiceServiceTests
     public async Task PlayAsync_ForwardedMessage_ReturnsForwarded()
     {
         var svc = MakeService();
-        var result = await svc.PlayAsync(1, "u", 64, 100, isForwarded: true, default);
+        var result = await svc.PlayAsync(1, "u", 64, 100, sourceMessageId: 1, isForwarded: true, ct: default);
         Assert.Equal(DiceOutcome.Forwarded, result.Outcome);
     }
 
@@ -40,7 +40,7 @@ public class DiceServiceTests
     {
         var econ = new FakeEconomicsService();
         var svc = MakeService(econ);
-        await svc.PlayAsync(1, "u", 64, 100, isForwarded: true, default);
+        await svc.PlayAsync(1, "u", 64, 100, sourceMessageId: 1, isForwarded: true, ct: default);
         Assert.Empty(econ.Debits);
     }
 
@@ -49,7 +49,7 @@ public class DiceServiceTests
     {
         var econ = new FakeEconomicsService { StartingBalance = 0 };
         var svc = MakeService(econ);
-        var result = await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        var result = await svc.PlayAsync(1, "u", 64, 100, sourceMessageId: 1, isForwarded: false, ct: default);
         Assert.Equal(DiceOutcome.NotEnoughCoins, result.Outcome);
     }
 
@@ -57,7 +57,7 @@ public class DiceServiceTests
     public async Task PlayAsync_DailyRollLimit_ReturnsLimitExceeded()
     {
         var svc = MakeService(limiter: new RejectingTelegramDiceDailyRollLimiter());
-        var result = await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        var result = await svc.PlayAsync(1, "u", 64, 100, sourceMessageId: 1, isForwarded: false, ct: default);
         Assert.Equal(DiceOutcome.DailyRollLimitExceeded, result.Outcome);
         Assert.Equal(3, result.DailyDiceUsed);
         Assert.Equal(10, result.DailyDiceLimit);
@@ -81,8 +81,8 @@ public class DiceServiceTests
                 new NullMiniGameSessionGhostHeal(),
                 limiter);
 
-            var firstDice = await dice.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
-            var secondDice = await dice.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+            var firstDice = await dice.PlayAsync(1, "u", 64, 100, sourceMessageId: 1, isForwarded: false, ct: default);
+            var secondDice = await dice.PlayAsync(1, "u", 64, 100, sourceMessageId: 2, isForwarded: false, ct: default);
             var basketballBet = await basketball.PlaceBetAsync(1, "u", 100, 10, default);
 
             Assert.Equal(DiceOutcome.Played, firstDice.Outcome);
@@ -101,7 +101,7 @@ public class DiceServiceTests
         var recording = new RecordingTelegramDiceDailyRollLimiter();
         var econ = new FakeEconomicsService { StartingBalance = 0 };
         var svc = MakeService(econ, limiter: recording);
-        await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        await svc.PlayAsync(1, "u", 64, 100, sourceMessageId: 1, isForwarded: false, ct: default);
         Assert.Equal(1, recording.RefundCount);
     }
 
@@ -110,7 +110,7 @@ public class DiceServiceTests
     {
         var svc = MakeService();
         // value 64 decodes to [3,3,3] = three sevens
-        var result = await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        var result = await svc.PlayAsync(1, "u", 64, 100, sourceMessageId: 1, isForwarded: false, ct: default);
         Assert.Equal(DiceOutcome.Played, result.Outcome);
         Assert.Equal(77, result.Prize);
     }
@@ -120,7 +120,7 @@ public class DiceServiceTests
     {
         var svc = MakeService();
         // value 1 decodes to [0,0,0] = three bars
-        var result = await svc.PlayAsync(1, "u", 1, 100, isForwarded: false, default);
+        var result = await svc.PlayAsync(1, "u", 1, 100, sourceMessageId: 1, isForwarded: false, ct: default);
         Assert.Equal(DiceOutcome.Played, result.Outcome);
         Assert.Equal(21, result.Prize);
     }
@@ -130,7 +130,7 @@ public class DiceServiceTests
     {
         var svc = MakeService();
         // value 22 decodes to [1,1,1] = three cherries
-        var result = await svc.PlayAsync(1, "u", 22, 100, isForwarded: false, default);
+        var result = await svc.PlayAsync(1, "u", 22, 100, sourceMessageId: 1, isForwarded: false, ct: default);
         Assert.Equal(DiceOutcome.Played, result.Outcome);
         Assert.Equal(23, result.Prize);
     }
@@ -140,7 +140,7 @@ public class DiceServiceTests
     {
         var svc = MakeService();
         // value 43 decodes to [2,2,2] = three lemons
-        var result = await svc.PlayAsync(1, "u", 43, 100, isForwarded: false, default);
+        var result = await svc.PlayAsync(1, "u", 43, 100, sourceMessageId: 1, isForwarded: false, ct: default);
         Assert.Equal(DiceOutcome.Played, result.Outcome);
         Assert.Equal(30, result.Prize);
     }
@@ -150,7 +150,7 @@ public class DiceServiceTests
     {
         var econ = new FakeEconomicsService();
         var svc = MakeService(econ, cost: 7);
-        await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        await svc.PlayAsync(1, "u", 64, 100, sourceMessageId: 1, isForwarded: false, ct: default);
         Assert.Single(econ.Debits);
         // loss = cost + gas; gas for cost=7 (< 10) is at least 1
         Assert.True(econ.Debits[0].Amount >= 8);
@@ -162,7 +162,7 @@ public class DiceServiceTests
         var econ = new FakeEconomicsService();
         var svc = MakeService(econ);
         // three sevens always wins
-        await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        await svc.PlayAsync(1, "u", 64, 100, sourceMessageId: 1, isForwarded: false, ct: default);
         Assert.Single(econ.Credits);
         Assert.Equal(77, econ.Credits[0].Amount);
     }
@@ -173,7 +173,7 @@ public class DiceServiceTests
         var bus = new NullEventBus();
         var svc = MakeService(bus: bus, redeemDropChance: 1);
 
-        await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        await svc.PlayAsync(1, "u", 64, 100, sourceMessageId: 1, isForwarded: false, ct: default);
 
         Assert.Contains(bus.Published, ev =>
             ev is TelegramMiniGameRedeemCodeDropRequested
@@ -190,7 +190,7 @@ public class DiceServiceTests
         var bus = new NullEventBus();
         var svc = MakeService(bus: bus, redeemDropChance: 0);
 
-        await svc.PlayAsync(1, "u", 64, 100, isForwarded: false, default);
+        await svc.PlayAsync(1, "u", 64, 100, sourceMessageId: 1, isForwarded: false, ct: default);
 
         Assert.DoesNotContain(bus.Published, ev => ev is TelegramMiniGameRedeemCodeDropRequested);
     }
