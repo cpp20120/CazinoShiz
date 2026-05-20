@@ -9,8 +9,10 @@ public interface ITournamentService
     Task<TournamentInfo?> GetAsync(long tournamentId, CancellationToken ct);
     Task<IReadOnlyList<TournamentInfo>> GetOpenAsync(long chatId, int limit, CancellationToken ct);
     Task<IReadOnlyList<TournamentPlayerInfo>> GetPlayersAsync(long tournamentId, CancellationToken ct);
+    Task<IReadOnlyList<TournamentMatchInfo>> GetMatchesAsync(long tournamentId, CancellationToken ct);
     Task<bool> StartAsync(long tournamentId, long userId, CancellationToken ct);
-    Task<TournamentPlayerInfo?> FinishAsync(long tournamentId, long actorUserId, long winnerUserId, CancellationToken ct);
+    Task<TournamentReportResult> ReportMatchAsync(long matchId, long actorUserId, long victorUserId, CancellationToken ct);
+    Task<TournamentPlayerInfo?> FinishAsync(long tournamentId, long actorUserId, long victorUserId, CancellationToken ct);
     Task<IReadOnlyList<TournamentPlayerInfo>?> CancelAsync(long tournamentId, long actorUserId, CancellationToken ct);
 }
 
@@ -72,30 +74,55 @@ public sealed class TournamentService(
     public Task<IReadOnlyList<TournamentPlayerInfo>> GetPlayersAsync(long tournamentId, CancellationToken ct) =>
         tournaments.GetPlayersAsync(tournamentId, ct);
 
+    public Task<IReadOnlyList<TournamentMatchInfo>> GetMatchesAsync(long tournamentId, CancellationToken ct) =>
+        tournaments.GetMatchesAsync(tournamentId, ct);
+
     public Task<bool> StartAsync(long tournamentId, long userId, CancellationToken ct) =>
         tournaments.StartAsync(tournamentId, userId, ct);
 
-    public async Task<TournamentPlayerInfo?> FinishAsync(long tournamentId, long actorUserId, long winnerUserId, CancellationToken ct)
+    public async Task<TournamentReportResult> ReportMatchAsync(long matchId, long actorUserId, long victorUserId, CancellationToken ct)
+    {
+        TournamentInfo? before = null;
+        var result = await tournaments.ReportMatchAsync(matchId, actorUserId, victorUserId, ct);
+        if (!result.Updated || !result.Finished || result.Victor is null) return result;
+
+        before = await tournaments.GetAsync(result.Victor.TournamentId, ct);
+        if (before?.PrizePool > 0)
+        {
+            var amount = (int)Math.Min(int.MaxValue, before.PrizePool);
+            await economics.CreditOnceAsync(
+                result.Victor.UserId,
+                before.ChatId,
+                amount,
+                "tournament.prize",
+                $"tournament:prize:{before.Id}:{result.Victor.UserId}",
+                ct);
+        }
+
+        return result;
+    }
+
+    public async Task<TournamentPlayerInfo?> FinishAsync(long tournamentId, long actorUserId, long victorUserId, CancellationToken ct)
     {
         var before = await tournaments.GetAsync(tournamentId, ct);
         if (before is null) return null;
 
-        var winner = await tournaments.FinishAsync(tournamentId, actorUserId, winnerUserId, ct);
-        if (winner is null) return null;
+        var victor = await tournaments.FinishAsync(tournamentId, actorUserId, victorUserId, ct);
+        if (victor is null) return null;
 
         if (before.PrizePool > 0)
         {
             var amount = (int)Math.Min(int.MaxValue, before.PrizePool);
             await economics.CreditOnceAsync(
-                winner.UserId,
+                victor.UserId,
                 before.ChatId,
                 amount,
                 "tournament.prize",
-                $"tournament:prize:{before.Id}:{winner.UserId}",
+                $"tournament:prize:{before.Id}:{victor.UserId}",
                 ct);
         }
 
-        return winner;
+        return victor;
     }
 
     public async Task<IReadOnlyList<TournamentPlayerInfo>?> CancelAsync(long tournamentId, long actorUserId, CancellationToken ct)
