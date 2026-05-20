@@ -25,6 +25,7 @@ public interface ITournamentStore
     Task<IReadOnlyList<TournamentPlayerInfo>> GetPlayersAsync(long tournamentId, CancellationToken ct);
     Task<bool> StartAsync(long tournamentId, long userId, CancellationToken ct);
     Task<TournamentPlayerInfo?> FinishAsync(long tournamentId, long actorUserId, long winnerUserId, CancellationToken ct);
+    Task<IReadOnlyList<TournamentPlayerInfo>?> CancelAsync(long tournamentId, long actorUserId, CancellationToken ct);
 }
 
 public sealed class TournamentStore(INpgsqlConnectionFactory connections) : ITournamentStore
@@ -243,6 +244,43 @@ public sealed class TournamentStore(INpgsqlConnectionFactory connections) : ITou
 
         await tx.CommitAsync(ct);
         return winner with { Status = "winner" };
+    }
+
+    public async Task<IReadOnlyList<TournamentPlayerInfo>?> CancelAsync(long tournamentId, long actorUserId, CancellationToken ct)
+    {
+        await using var conn = await connections.OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var tournament = await GetForUpdateAsync(conn, tx, tournamentId, ct);
+        if (tournament is null || tournament.CreatedBy != actorUserId || tournament.Status is not ("open" or "started"))
+        {
+            await tx.CommitAsync(ct);
+            return null;
+        }
+
+        var players = (await conn.QueryAsync<TournamentPlayerInfo>(new CommandDefinition(
+            """
+            SELECT tournament_id AS TournamentId,
+                   user_id AS UserId,
+                   display_name AS DisplayName,
+                   status,
+                   joined_at AS JoinedAt
+            FROM meta_tournament_players
+            WHERE tournament_id = @tournamentId AND status = 'joined'
+            ORDER BY joined_at ASC
+            """,
+            new { tournamentId },
+            transaction: tx,
+            cancellationToken: ct))).ToList();
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE meta_tournaments SET status = 'cancelled', updated_at = now() WHERE id = @tournamentId",
+            new { tournamentId },
+            transaction: tx,
+            cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return players;
     }
 
     private async Task<TournamentInfo?> GetForUpdateAsync(
