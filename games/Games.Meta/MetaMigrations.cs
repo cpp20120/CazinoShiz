@@ -95,5 +95,56 @@ public sealed class MetaMigrations : IModuleMigrations
             CREATE INDEX ix_meta_player_quests_user_period
                 ON meta_player_quests (season_id, chat_id, user_id, period_key, completed, claimed);
             """),
+
+        new Migration("004_clans", """
+            CREATE TABLE meta_clans (
+                id            BIGSERIAL    PRIMARY KEY,
+                chat_id       BIGINT       NOT NULL,
+                name          TEXT         NOT NULL,
+                tag           TEXT         NOT NULL,
+                owner_user_id BIGINT       NOT NULL,
+                created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                CONSTRAINT ck_meta_clans_tag_len CHECK (char_length(tag) BETWEEN 2 AND 12),
+                CONSTRAINT ck_meta_clans_name_len CHECK (char_length(name) BETWEEN 2 AND 64)
+            );
+
+            CREATE UNIQUE INDEX ux_meta_clans_chat_tag
+                ON meta_clans (chat_id, lower(tag));
+
+            CREATE TABLE meta_clan_members (
+                clan_id      BIGINT      NOT NULL REFERENCES meta_clans(id) ON DELETE CASCADE,
+                chat_id      BIGINT      NOT NULL,
+                user_id      BIGINT      NOT NULL,
+                display_name TEXT        NOT NULL,
+                role         TEXT        NOT NULL DEFAULT 'member',
+                joined_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+                PRIMARY KEY (clan_id, user_id),
+                CONSTRAINT ck_meta_clan_members_role CHECK (role IN ('owner', 'officer', 'member'))
+            );
+
+            CREATE UNIQUE INDEX ux_meta_clan_members_chat_user
+                ON meta_clan_members (chat_id, user_id);
+
+            CREATE INDEX ix_meta_clan_members_clan
+                ON meta_clan_members (clan_id, joined_at ASC);
+
+            CREATE TABLE meta_season_clans (
+                season_id BIGINT  NOT NULL REFERENCES meta_seasons(id) ON DELETE CASCADE,
+                chat_id   BIGINT  NOT NULL,
+                clan_id   BIGINT  NOT NULL REFERENCES meta_clans(id) ON DELETE CASCADE,
+                xp        BIGINT  NOT NULL DEFAULT 0,
+                rating    INTEGER NOT NULL DEFAULT 1000,
+                wins      INTEGER NOT NULL DEFAULT 0,
+                losses    INTEGER NOT NULL DEFAULT 0,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                PRIMARY KEY (season_id, chat_id, clan_id),
+                CONSTRAINT ck_meta_season_clans_xp CHECK (xp >= 0),
+                CONSTRAINT ck_meta_season_clans_rating CHECK (rating >= 0)
+            );
+
+            CREATE INDEX ix_meta_season_clans_top
+                ON meta_season_clans (season_id, chat_id, xp DESC, rating DESC, clan_id ASC);
+            """),
     ];
 }
