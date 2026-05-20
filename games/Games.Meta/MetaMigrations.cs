@@ -146,5 +146,40 @@ public sealed class MetaMigrations : IModuleMigrations
             CREATE INDEX ix_meta_season_clans_top
                 ON meta_season_clans (season_id, chat_id, xp DESC, rating DESC, clan_id ASC);
             """),
+
+        new Migration("005_tournaments", """
+            CREATE TABLE meta_tournaments (
+                id          BIGSERIAL    PRIMARY KEY,
+                season_id   BIGINT       NOT NULL REFERENCES meta_seasons(id) ON DELETE CASCADE,
+                chat_id     BIGINT       NOT NULL,
+                game_key    TEXT         NOT NULL,
+                type        TEXT         NOT NULL DEFAULT 'single_elimination',
+                status      TEXT         NOT NULL DEFAULT 'open',
+                entry_fee   INTEGER      NOT NULL DEFAULT 0,
+                max_players INTEGER      NOT NULL,
+                created_by  BIGINT       NOT NULL,
+                created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                CONSTRAINT ck_meta_tournaments_status CHECK (status IN ('open', 'started', 'cancelled', 'finished')),
+                CONSTRAINT ck_meta_tournaments_entry_fee CHECK (entry_fee >= 0),
+                CONSTRAINT ck_meta_tournaments_max_players CHECK (max_players BETWEEN 2 AND 64)
+            );
+
+            CREATE INDEX ix_meta_tournaments_chat_status
+                ON meta_tournaments (season_id, chat_id, status, created_at DESC);
+
+            CREATE TABLE meta_tournament_players (
+                tournament_id BIGINT      NOT NULL REFERENCES meta_tournaments(id) ON DELETE CASCADE,
+                user_id       BIGINT      NOT NULL,
+                display_name  TEXT        NOT NULL,
+                status        TEXT        NOT NULL DEFAULT 'joined',
+                joined_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+                PRIMARY KEY (tournament_id, user_id),
+                CONSTRAINT ck_meta_tournament_players_status CHECK (status IN ('joined', 'dropped', 'eliminated', 'winner'))
+            );
+
+            CREATE INDEX ix_meta_tournament_players_tournament
+                ON meta_tournament_players (tournament_id, joined_at ASC);
+            """),
     ];
 }
