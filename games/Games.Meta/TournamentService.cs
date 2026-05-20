@@ -11,6 +11,7 @@ public interface ITournamentService
     Task<IReadOnlyList<TournamentPlayerInfo>> GetPlayersAsync(long tournamentId, CancellationToken ct);
     Task<bool> StartAsync(long tournamentId, long userId, CancellationToken ct);
     Task<TournamentPlayerInfo?> FinishAsync(long tournamentId, long actorUserId, long winnerUserId, CancellationToken ct);
+    Task<IReadOnlyList<TournamentPlayerInfo>?> CancelAsync(long tournamentId, long actorUserId, CancellationToken ct);
 }
 
 public sealed class TournamentService(
@@ -95,5 +96,30 @@ public sealed class TournamentService(
         }
 
         return winner;
+    }
+
+    public async Task<IReadOnlyList<TournamentPlayerInfo>?> CancelAsync(long tournamentId, long actorUserId, CancellationToken ct)
+    {
+        var before = await tournaments.GetAsync(tournamentId, ct);
+        if (before is null) return null;
+
+        var players = await tournaments.CancelAsync(tournamentId, actorUserId, ct);
+        if (players is null) return null;
+
+        if (before.EntryFee > 0)
+        {
+            foreach (var player in players)
+            {
+                await economics.CreditOnceAsync(
+                    player.UserId,
+                    before.ChatId,
+                    before.EntryFee,
+                    "tournament.cancel.refund",
+                    $"tournament:cancel-refund:{before.Id}:{player.UserId}",
+                    ct);
+            }
+        }
+
+        return players;
     }
 }
