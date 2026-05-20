@@ -6,13 +6,14 @@ public sealed class MetaModule : IModule
 {
     public string Id => "meta";
     public string DisplayName => "⭐ Мета";
-    public string Version => "0.1.0";
+    public string Version => "0.2.0";
 
     public void ConfigureServices(IModuleServiceCollection services)
     {
         services
             .AddScoped<IMetaStore, MetaStore>()
             .AddScoped<IMetaService, MetaService>()
+            .AddDomainEventSubscription<MetaXpProjection>("meta.game_completed")
             .AddHandler<MetaHandler>();
     }
 
