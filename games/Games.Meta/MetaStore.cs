@@ -15,6 +15,13 @@ public interface IMetaStore
         long payout,
         bool isWin,
         CancellationToken ct);
+    Task<IReadOnlyList<AchievementUnlock>> UnlockAchievementsAsync(
+        long seasonId,
+        long chatId,
+        long userId,
+        IEnumerable<AchievementDefinition> achievements,
+        CancellationToken ct);
+    Task<IReadOnlyList<PlayerAchievementView>> GetAchievementsAsync(long chatId, long userId, CancellationToken ct);
     Task<SeasonProfile> GetProfileAsync(long chatId, long userId, string displayName, CancellationToken ct);
     Task<IReadOnlyList<SeasonLeaderboardEntry>> GetTopAsync(long chatId, int limit, CancellationToken ct);
 }
@@ -262,6 +269,66 @@ public sealed class MetaStore(INpgsqlConnectionFactory connections) : IMetaStore
             levelSql,
             new { level = correctedLevel, seasonId = season.Id, chatId, userId },
             cancellationToken: ct));
+    }
+
+    public async Task<IReadOnlyList<AchievementUnlock>> UnlockAchievementsAsync(
+        long seasonId,
+        long chatId,
+        long userId,
+        IEnumerable<AchievementDefinition> achievements,
+        CancellationToken ct)
+    {
+        var ids = achievements.Select(x => x.Id).Distinct(StringComparer.Ordinal).ToArray();
+        if (ids.Length == 0) return [];
+
+        const string sql = """
+            INSERT INTO meta_player_achievements (achievement_id, season_id, chat_id, user_id)
+            SELECT unnest(@ids), @seasonId, @chatId, @userId
+            ON CONFLICT (achievement_id, season_id, chat_id, user_id) DO NOTHING
+            RETURNING achievement_id AS AchievementId,
+                      season_id AS SeasonId,
+                      chat_id AS ChatId,
+                      user_id AS UserId,
+                      unlocked_at AS UnlockedAt
+            """;
+
+        await using var conn = await connections.OpenAsync(ct);
+        var rows = await conn.QueryAsync<AchievementUnlock>(new CommandDefinition(
+            sql,
+            new { ids, seasonId, chatId, userId },
+            cancellationToken: ct));
+        return rows.ToList();
+    }
+
+    public async Task<IReadOnlyList<PlayerAchievementView>> GetAchievementsAsync(long chatId, long userId, CancellationToken ct)
+    {
+        var season = await GetOrCreateActiveSeasonAsync(ct);
+        const string sql = """
+            SELECT achievement_id AS AchievementId,
+                   unlocked_at AS UnlockedAt
+            FROM meta_player_achievements
+            WHERE season_id = @seasonId AND chat_id = @chatId AND user_id = @userId
+            """;
+
+        await using var conn = await connections.OpenAsync(ct);
+        var unlocked = await conn.QueryAsync<(string AchievementId, DateTimeOffset UnlockedAt)>(new CommandDefinition(
+            sql,
+            new { seasonId = season.Id, chatId, userId },
+            cancellationToken: ct));
+        var map = unlocked.ToDictionary(x => x.AchievementId, x => x.UnlockedAt, StringComparer.Ordinal);
+
+        return AchievementRegistry.All
+            .Select(x => new PlayerAchievementView(
+                x.Id,
+                x.IsSecret && !map.ContainsKey(x.Id) ? "???" : x.Title,
+                x.IsSecret && !map.ContainsKey(x.Id) ? "Секретная ачивка." : x.Description,
+                x.Category,
+                map.ContainsKey(x.Id),
+                map.GetValueOrDefault(x.Id)))
+            .OrderByDescending(x => x.IsUnlocked)
+            .ThenBy(x => x.Category)
+            .ThenBy(x => x.Id)
+            .ToList();
     }
 
     public async Task<SeasonProfile> GetProfileAsync(
