@@ -11,7 +11,9 @@ namespace Games.Meta;
 [Command("/rank")]
 [Command("/topseason")]
 [Command("/achievements")]
-public sealed class MetaHandler(IMetaService meta) : IUpdateHandler
+[Command("/quests")]
+[Command("/quest")]
+public sealed class MetaHandler(IMetaService meta, IQuestService quests) : IUpdateHandler
 {
     public async Task HandleAsync(UpdateContext ctx)
     {
@@ -27,6 +29,10 @@ public sealed class MetaHandler(IMetaService meta) : IUpdateHandler
             await HandleTopSeasonAsync(ctx, msg);
         else if (msg.Text.StartsWith("/achievements", StringComparison.OrdinalIgnoreCase))
             await HandleAchievementsAsync(ctx, msg);
+        else if (msg.Text.StartsWith("/quests", StringComparison.OrdinalIgnoreCase))
+            await HandleQuestsAsync(ctx, msg);
+        else if (msg.Text.StartsWith("/quest", StringComparison.OrdinalIgnoreCase))
+            await HandleQuestAsync(ctx, msg);
     }
 
     private async Task HandleSeasonAsync(UpdateContext ctx, Message msg)
@@ -39,7 +45,7 @@ public sealed class MetaHandler(IMetaService meta) : IUpdateHandler
             $"Старт: <code>{FormatDate(season.StartsAt)}</code>",
             $"Финиш: <code>{FormatDate(season.EndsAt)}</code>",
             "",
-            "Мета-система уже заведена: профиль, ранги, ачивки и сезонный топ."
+            "Мета-система уже заведена: профиль, ранги, ачивки, квесты и сезонный топ."
         ]);
 
         await ctx.Bot.SendMessage(msg.Chat.Id, text,
@@ -125,6 +131,62 @@ public sealed class MetaHandler(IMetaService meta) : IUpdateHandler
             lines.Add($"…и ещё {achievements.Count - 20} ачивок.");
 
         await ctx.Bot.SendMessage(msg.Chat.Id, string.Join("\n", lines),
+            parseMode: ParseMode.Html,
+            replyParameters: new ReplyParameters { MessageId = msg.MessageId },
+            cancellationToken: ctx.Ct);
+    }
+
+    private async Task HandleQuestsAsync(UpdateContext ctx, Message msg)
+    {
+        var user = msg.From;
+        if (user is null) return;
+
+        var rows = await quests.GetQuestsAsync(msg.Chat.Id, user.Id, ctx.Ct);
+        var lines = new List<string>
+        {
+            "📜 <b>Квесты</b>",
+            "Забрать награду: <code>/quest claim &lt;id&gt;</code>",
+            "",
+        };
+
+        foreach (var q in rows)
+        {
+            var mark = q.Claimed ? "💰" : q.Completed ? "✅" : "⬜";
+            lines.Add($"{mark} <code>{Html(q.Id)}</code> <b>{Html(q.Title)}</b> [{Html(q.Period)}]");
+            lines.Add($"   {Html(q.Description)} — <code>{q.Progress}/{q.Target}</code>, reward: <b>{q.RewardXp} XP</b> + <b>{q.RewardCoins}</b> coins");
+        }
+
+        await ctx.Bot.SendMessage(msg.Chat.Id, string.Join("\n", lines),
+            parseMode: ParseMode.Html,
+            replyParameters: new ReplyParameters { MessageId = msg.MessageId },
+            cancellationToken: ctx.Ct);
+    }
+
+    private async Task HandleQuestAsync(UpdateContext ctx, Message msg)
+    {
+        var user = msg.From;
+        if (user is null) return;
+
+        var parts = msg.Text?.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+        if (parts.Length < 3 || !string.Equals(parts[1], "claim", StringComparison.OrdinalIgnoreCase))
+        {
+            await ctx.Bot.SendMessage(msg.Chat.Id,
+                "Использование: <code>/quest claim &lt;id&gt;</code>",
+                parseMode: ParseMode.Html,
+                replyParameters: new ReplyParameters { MessageId = msg.MessageId },
+                cancellationToken: ctx.Ct);
+            return;
+        }
+
+        var result = await quests.ClaimAsync(msg.Chat.Id, user.Id, DisplayName(user), parts[2], ctx.Ct);
+        var text = result switch
+        {
+            null => "❌ Квест не найден.",
+            { Claimed: false } => "⏳ Квест ещё не выполнен или награда уже забрана.",
+            _ => $"🎁 Забрана награда за <b>{Html(result.Title)}</b>: <b>{result.RewardXp} XP</b> + <b>{result.RewardCoins}</b> coins"
+        };
+
+        await ctx.Bot.SendMessage(msg.Chat.Id, text,
             parseMode: ParseMode.Html,
             replyParameters: new ReplyParameters { MessageId = msg.MessageId },
             cancellationToken: ctx.Ct);
