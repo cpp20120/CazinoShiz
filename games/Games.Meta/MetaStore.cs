@@ -15,6 +15,13 @@ public interface IMetaStore
         long payout,
         bool isWin,
         CancellationToken ct);
+    Task<SeasonPlayer> AddSeasonXpAsync(
+        long seasonId,
+        long chatId,
+        long userId,
+        string displayName,
+        long xpDelta,
+        CancellationToken ct);
     Task<IReadOnlyList<AchievementUnlock>> UnlockAchievementsAsync(
         long seasonId,
         long chatId,
@@ -241,15 +248,25 @@ public sealed class MetaStore(INpgsqlConnectionFactory connections) : IMetaStore
             },
             cancellationToken: ct));
 
-        var correctedLevel = LevelForXp(player.Xp);
-        if (correctedLevel == player.Level)
-            return player;
+        return await CorrectLevelAsync(conn, season.Id, chatId, userId, player, ct);
+    }
 
-        const string levelSql = """
-            UPDATE meta_season_players
-            SET level = @level,
-                updated_at = now()
-            WHERE season_id = @seasonId AND chat_id = @chatId AND user_id = @userId
+    public async Task<SeasonPlayer> AddSeasonXpAsync(
+        long seasonId,
+        long chatId,
+        long userId,
+        string displayName,
+        long xpDelta,
+        CancellationToken ct)
+    {
+        xpDelta = Math.Max(0, xpDelta);
+        const string sql = """
+            INSERT INTO meta_season_players (season_id, chat_id, user_id, display_name, xp, level)
+            VALUES (@seasonId, @chatId, @userId, @displayName, @xpDelta, @level)
+            ON CONFLICT (season_id, chat_id, user_id)
+            DO UPDATE SET display_name = EXCLUDED.display_name,
+                          xp = meta_season_players.xp + @xpDelta,
+                          updated_at = now()
             RETURNING season_id AS SeasonId,
                       chat_id AS ChatId,
                       user_id AS UserId,
@@ -265,10 +282,21 @@ public sealed class MetaStore(INpgsqlConnectionFactory connections) : IMetaStore
                       updated_at AS UpdatedAt
             """;
 
-        return await conn.QuerySingleAsync<SeasonPlayer>(new CommandDefinition(
-            levelSql,
-            new { level = correctedLevel, seasonId = season.Id, chatId, userId },
+        await using var conn = await connections.OpenAsync(ct);
+        var player = await conn.QuerySingleAsync<SeasonPlayer>(new CommandDefinition(
+            sql,
+            new
+            {
+                seasonId,
+                chatId,
+                userId,
+                displayName,
+                xpDelta,
+                level = LevelForXp(xpDelta),
+            },
             cancellationToken: ct));
+
+        return await CorrectLevelAsync(conn, seasonId, chatId, userId, player, ct);
     }
 
     public async Task<IReadOnlyList<AchievementUnlock>> UnlockAchievementsAsync(
@@ -369,6 +397,44 @@ public sealed class MetaStore(INpgsqlConnectionFactory connections) : IMetaStore
             new { seasonId = season.Id, chatId, limit = Math.Clamp(limit, 1, 100) },
             cancellationToken: ct));
         return rows.ToList();
+    }
+
+    private async Task<SeasonPlayer> CorrectLevelAsync(
+        System.Data.Common.DbConnection conn,
+        long seasonId,
+        long chatId,
+        long userId,
+        SeasonPlayer player,
+        CancellationToken ct)
+    {
+        var correctedLevel = LevelForXp(player.Xp);
+        if (correctedLevel == player.Level)
+            return player;
+
+        const string levelSql = """
+            UPDATE meta_season_players
+            SET level = @level,
+                updated_at = now()
+            WHERE season_id = @seasonId AND chat_id = @chatId AND user_id = @userId
+            RETURNING season_id AS SeasonId,
+                      chat_id AS ChatId,
+                      user_id AS UserId,
+                      display_name AS DisplayName,
+                      xp,
+                      level,
+                      rating,
+                      games_played AS GamesPlayed,
+                      wins,
+                      losses,
+                      total_staked AS TotalStaked,
+                      total_payout AS TotalPayout,
+                      updated_at AS UpdatedAt
+            """;
+
+        return await conn.QuerySingleAsync<SeasonPlayer>(new CommandDefinition(
+            levelSql,
+            new { level = correctedLevel, seasonId, chatId, userId },
+            cancellationToken: ct));
     }
 
     private static long CalculateXpDelta(long stake, bool isWin)

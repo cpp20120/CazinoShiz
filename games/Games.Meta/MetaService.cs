@@ -14,6 +14,13 @@ public interface IMetaService
         long payout,
         bool isWin,
         CancellationToken ct);
+    Task<SeasonPlayer> AddSeasonXpAsync(
+        long seasonId,
+        long chatId,
+        long userId,
+        string displayName,
+        long xpDelta,
+        CancellationToken ct);
     Task<IReadOnlyList<AchievementUnlock>> UnlockAchievementsAsync(
         long seasonId,
         long chatId,
@@ -45,6 +52,15 @@ public sealed class MetaService(IMetaStore store) : IMetaService
         bool isWin,
         CancellationToken ct) =>
         store.ApplyGameCompletedAsync(chatId, userId, displayName, stake, payout, isWin, ct);
+
+    public Task<SeasonPlayer> AddSeasonXpAsync(
+        long seasonId,
+        long chatId,
+        long userId,
+        string displayName,
+        long xpDelta,
+        CancellationToken ct) =>
+        store.AddSeasonXpAsync(seasonId, chatId, userId, displayName, xpDelta, ct);
 
     public Task<IReadOnlyList<AchievementUnlock>> UnlockAchievementsAsync(
         long seasonId,

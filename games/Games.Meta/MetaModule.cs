@@ -6,14 +6,17 @@ public sealed class MetaModule : IModule
 {
     public string Id => "meta";
     public string DisplayName => "⭐ Мета";
-    public string Version => "0.3.0";
+    public string Version => "0.4.0";
 
     public void ConfigureServices(IModuleServiceCollection services)
     {
         services
             .AddScoped<IMetaStore, MetaStore>()
             .AddScoped<IMetaService, MetaService>()
+            .AddScoped<IQuestStore, QuestStore>()
+            .AddScoped<IQuestService, QuestService>()
             .AddDomainEventSubscription<MetaXpProjection>("meta.game_completed")
+            .AddDomainEventSubscription<QuestProjection>("meta.game_completed")
             .AddHandler<MetaHandler>();
     }
 
@@ -26,6 +29,8 @@ public sealed class MetaModule : IModule
         new BotCommand("/rank", "meta.cmd.rank"),
         new BotCommand("/topseason", "meta.cmd.topseason"),
         new BotCommand("/achievements", "meta.cmd.achievements"),
+        new BotCommand("/quests", "meta.cmd.quests"),
+        new BotCommand("/quest", "meta.cmd.quest"),
     ];
 
     public IReadOnlyList<LocaleBundle> GetLocales() =>
@@ -38,6 +43,8 @@ public sealed class MetaModule : IModule
             ["cmd.rank"] = "Ранг сезона",
             ["cmd.topseason"] = "Сезонный топ",
             ["cmd.achievements"] = "Ачивки сезона",
+            ["cmd.quests"] = "Квесты сезона",
+            ["cmd.quest"] = "Забрать награду за квест",
         }),
     ];
 }

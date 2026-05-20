@@ -72,5 +72,28 @@ public sealed class MetaMigrations : IModuleMigrations
             CREATE INDEX ix_meta_player_achievements_user
                 ON meta_player_achievements (season_id, chat_id, user_id, unlocked_at DESC);
             """),
+
+        new Migration("003_quests", """
+            CREATE TABLE meta_player_quests (
+                quest_id     TEXT        NOT NULL,
+                season_id    BIGINT      NOT NULL REFERENCES meta_seasons(id) ON DELETE CASCADE,
+                chat_id      BIGINT      NOT NULL,
+                user_id      BIGINT      NOT NULL,
+                period_key   TEXT        NOT NULL,
+                progress     INTEGER     NOT NULL DEFAULT 0,
+                target       INTEGER     NOT NULL,
+                completed    BOOLEAN     NOT NULL DEFAULT false,
+                claimed      BOOLEAN     NOT NULL DEFAULT false,
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                claimed_at   TIMESTAMPTZ NULL,
+                PRIMARY KEY (quest_id, season_id, chat_id, user_id, period_key),
+                CONSTRAINT ck_meta_player_quests_progress CHECK (progress >= 0),
+                CONSTRAINT ck_meta_player_quests_target CHECK (target > 0)
+            );
+
+            CREATE INDEX ix_meta_player_quests_user_period
+                ON meta_player_quests (season_id, chat_id, user_id, period_key, completed, claimed);
+            """),
     ];
 }
