@@ -53,6 +53,9 @@ public sealed class TournamentHandler(ITournamentService tournaments) : IUpdateH
             case "finish":
                 await HandleFinishAsync(ctx, msg, user, parts);
                 break;
+            case "cancel":
+                await HandleCancelAsync(ctx, msg, user, parts);
+                break;
             default:
                 await ReplyHelpAsync(ctx, msg);
                 break;
@@ -171,6 +174,20 @@ public sealed class TournamentHandler(ITournamentService tournaments) : IUpdateH
             : $"🏆 Турнир <code>{tournamentId}</code> завершён. Победитель: <b>{Html(winner.DisplayName)}</b>. Prize paid: <b>{before?.PrizePool ?? 0}</b>");
     }
 
+    private async Task HandleCancelAsync(UpdateContext ctx, Message msg, User user, string[] parts)
+    {
+        if (parts.Length < 3 || !long.TryParse(parts[2], out var tournamentId))
+        {
+            await SendHtmlAsync(ctx, msg, "Использование: <code>/tournament cancel &lt;id&gt;</code>");
+            return;
+        }
+
+        var players = await tournaments.CancelAsync(tournamentId, user.Id, ctx.Ct);
+        await SendHtmlAsync(ctx, msg, players is null
+            ? "❌ Не удалось отменить турнир: нужен creator и статус open/started."
+            : $"🧾 Турнир <code>{tournamentId}</code> отменён. Refund выдан участникам: <b>{players.Count}</b>.");
+    }
+
     private static string FormatTournament(TournamentInfo t) => string.Join("\n", [
         $"🏆 <b>Турнир #{t.Id}</b>",
         $"Игра: <b>{Html(t.GameKey)}</b>",
@@ -191,6 +208,7 @@ public sealed class TournamentHandler(ITournamentService tournaments) : IUpdateH
         "<code>/tournament list</code>",
         "<code>/tournament start &lt;id&gt;</code>",
         "<code>/tournament finish &lt;id&gt; &lt;winnerUserId&gt;</code>",
+        "<code>/tournament cancel &lt;id&gt;</code>",
     ]));
 
     private Task SendHtmlAsync(UpdateContext ctx, Message msg, string text) =>
