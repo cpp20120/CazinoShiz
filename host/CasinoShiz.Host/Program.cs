@@ -38,6 +38,7 @@ using Microsoft.AspNetCore.Builder;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddRazorPages();
 builder.Services.AddSingleton<CasinoShiz.Host.Pages.Admin.HorseGifCache>();
 builder.Services.AddScoped<IMiniGameSessionGhostHeal, MiniGameSessionGhostHeal>();
 
@@ -81,6 +82,7 @@ var app = builder.Build();
 app.UseForwardedHeaders();
 app.UseBotFramework();
 app.UseStaticFiles();
+app.MapRazorPages();
 app.MapPixelBattle();
 
 app.Run();
