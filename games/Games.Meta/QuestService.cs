@@ -1,4 +1,5 @@
 using BotFramework.Host.Services;
+using BotFramework.Sdk;
 
 namespace Games.Meta;
 
@@ -47,13 +48,12 @@ public sealed class QuestService(
 
         if (result.RewardXp > 0)
         {
-            await meta.ApplyGameCompletedAsync(
+            await meta.AddSeasonXpAsync(
+                season.Id,
                 chatId,
                 userId,
                 displayName,
-                stake: 0,
-                payout: 0,
-                isWin: false,
+                result.RewardXp,
                 ct);
         }
 
