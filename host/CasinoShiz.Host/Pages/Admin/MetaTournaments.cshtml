@@ -1,0 +1,60 @@
+@page "/admin/meta-tournaments"
+@model CasinoShiz.Host.Pages.Admin.MetaTournamentsModel
+@{ ViewData["Title"] = "Meta tournaments"; }
+
+<h2>Meta tournaments</h2>
+<p class="muted">Tournament replay and bracket entry point. Open a tournament to inspect players, rounds and matches.</p>
+
+<div class="card">
+    <form method="get" class="inline">
+        <input type="text" name="chatId" value="@Model.ChatId" placeholder="Chat id" style="width: 160px" />
+        <select name="status">
+            <option value="all" selected="@(Model.Status == "all")">all</option>
+            <option value="open" selected="@(Model.Status == "open")">open</option>
+            <option value="started" selected="@(Model.Status == "started")">started</option>
+            <option value="finished" selected="@(Model.Status == "finished")">finished</option>
+            <option value="cancelled" selected="@(Model.Status == "cancelled")">cancelled</option>
+        </select>
+        <button type="submit">Filter</button>
+    </form>
+</div>
+
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Season</th>
+                <th>Chat</th>
+                <th>Game</th>
+                <th>Status</th>
+                <th>Players</th>
+                <th>Prize</th>
+                <th>Matches</th>
+                <th>Created</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var r in Model.Rows)
+        {
+            <tr>
+                <td><code>@r.Id</code></td>
+                <td><code>@r.SeasonId</code><br /><span class="muted">@r.SeasonName</span></td>
+                <td><code>@r.ChatId</code></td>
+                <td><b>@r.GameKey</b><br /><span class="muted">@r.Type</span></td>
+                <td><code>@r.Status</code></td>
+                <td><code>@r.PlayerCount/@r.MaxPlayers</code></td>
+                <td><b>@r.PrizePool</b><br /><span class="muted">fee @r.EntryFee</span></td>
+                <td><code>@r.DoneMatchCount/@r.MatchCount</code><br /><span class="muted">ready @r.ReadyMatchCount</span></td>
+                <td class="muted">@r.CreatedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                <td><a href="/admin/meta-tournament/@r.Id">Open replay</a></td>
+            </tr>
+        }
+        @if (Model.Rows.Count == 0)
+        {
+            <tr><td colspan="10" class="muted">No tournaments.</td></tr>
+        }
+        </tbody>
+    </table>
+</div>
