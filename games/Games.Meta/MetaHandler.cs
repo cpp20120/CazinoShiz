@@ -10,6 +10,7 @@ namespace Games.Meta;
 [Command("/profile")]
 [Command("/rank")]
 [Command("/topseason")]
+[Command("/achievements")]
 public sealed class MetaHandler(IMetaService meta) : IUpdateHandler
 {
     public async Task HandleAsync(UpdateContext ctx)
@@ -24,6 +25,8 @@ public sealed class MetaHandler(IMetaService meta) : IUpdateHandler
             await HandleProfileAsync(ctx, msg);
         else if (msg.Text.StartsWith("/topseason", StringComparison.OrdinalIgnoreCase))
             await HandleTopSeasonAsync(ctx, msg);
+        else if (msg.Text.StartsWith("/achievements", StringComparison.OrdinalIgnoreCase))
+            await HandleAchievementsAsync(ctx, msg);
     }
 
     private async Task HandleSeasonAsync(UpdateContext ctx, Message msg)
@@ -36,7 +39,7 @@ public sealed class MetaHandler(IMetaService meta) : IUpdateHandler
             $"Старт: <code>{FormatDate(season.StartsAt)}</code>",
             $"Финиш: <code>{FormatDate(season.EndsAt)}</code>",
             "",
-            "Мета-система уже заведена: профиль, ранги и сезонный топ. XP из игр будет подключаться отдельными проекциями."
+            "Мета-система уже заведена: профиль, ранги, ачивки и сезонный топ."
         ]);
 
         await ctx.Bot.SendMessage(msg.Chat.Id, text,
@@ -90,6 +93,36 @@ public sealed class MetaHandler(IMetaService meta) : IUpdateHandler
         {
             lines.Add($"{entry.Place}. <b>{Html(entry.DisplayName)}</b> — XP <b>{entry.Xp}</b>, lvl <b>{entry.Level}</b>, rating <b>{entry.Rating}</b>");
         }
+
+        await ctx.Bot.SendMessage(msg.Chat.Id, string.Join("\n", lines),
+            parseMode: ParseMode.Html,
+            replyParameters: new ReplyParameters { MessageId = msg.MessageId },
+            cancellationToken: ctx.Ct);
+    }
+
+    private async Task HandleAchievementsAsync(UpdateContext ctx, Message msg)
+    {
+        var user = msg.From;
+        if (user is null) return;
+
+        var achievements = await meta.GetAchievementsAsync(msg.Chat.Id, user.Id, ctx.Ct);
+        var unlocked = achievements.Count(x => x.IsUnlocked);
+        var total = achievements.Count;
+
+        var lines = new List<string>
+        {
+            $"🏆 <b>Ачивки сезона</b> <code>{unlocked}/{total}</code>",
+        };
+
+        foreach (var achievement in achievements.Take(20))
+        {
+            var mark = achievement.IsUnlocked ? "✅" : "⬜";
+            var suffix = achievement.UnlockedAt is { } at ? $" · <code>{FormatDate(at)}</code>" : "";
+            lines.Add($"{mark} <b>{Html(achievement.Title)}</b> — {Html(achievement.Description)}{suffix}");
+        }
+
+        if (achievements.Count > 20)
+            lines.Add($"…и ещё {achievements.Count - 20} ачивок.");
 
         await ctx.Bot.SendMessage(msg.Chat.Id, string.Join("\n", lines),
             parseMode: ParseMode.Html,
