@@ -1,13 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// DiceHandler — MessageDice("🎰") handler. Framework's UpdateRouter discovers
-// this via the [MessageDice] attribute and dispatches every 🎰 from a user.
+// DiceHandler — handles both slot commands and raw 🎰 throws.
 //
-// Responsibility split against the monolith's DiceHandler:
-//   • identical presentation: same Russian copy, HTML parse mode, reply to the
-//     dice message. The text comes from the module-scoped ILocalizer so other
-//     modules can reuse the framework's locale machinery without colliding.
-//   • no freespin-code fan-out: that's Redeem's job and Redeem isn't a module
-//     yet. Follow-up in #15.
+// Commands send a bot 🎰 and settle it for the command author. Raw user 🎰 messages
+// are still supported and use the same default slot cost/rules.
 // ─────────────────────────────────────────────────────────────────────────────
 
 using BotFramework.Host;
@@ -18,19 +13,28 @@ using Telegram.Bot.Types.Enums;
 
 namespace Games.Dice;
 
+[Command("/slot")]
+[Command("/slots")]
 [MessageDice("🎰")]
 public sealed partial class DiceHandler(
     IDiceService service,
     ILocalizer localizer,
     ILogger<DiceHandler> logger) : IUpdateHandler
 {
+    private const string DiceEmoji = "🎰";
+
     public async Task HandleAsync(UpdateContext ctx)
     {
-        var msg = ctx.MessageOrEdited;
-        if (msg?.Dice?.Emoji != "🎰") return;
-        if (msg.Dice is not { Value: > 0 }) return;
+        var diceMsg = ctx.MessageOrEdited;
+        if (diceMsg?.Dice?.Emoji == DiceEmoji)
+        {
+            await HandleDiceAsync(ctx, diceMsg);
+            return;
+        }
 
-        var dice = msg.Dice!;
+        var msg = ctx.Update.Message;
+        if (msg?.Text is null) return;
+
         var userId = msg.From?.Id ?? 0;
         if (userId == 0 || msg.From?.IsBot == true) return;
 
@@ -38,9 +42,59 @@ public sealed partial class DiceHandler(
         var reply = new ReplyParameters { MessageId = msg.MessageId };
         var displayName = msg.From?.Username ?? msg.From?.FirstName ?? $"User ID: {userId}";
 
+        var parts = msg.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var action = parts.Length > 1 ? parts[1] : "";
+        if (action.Equals("help", StringComparison.OrdinalIgnoreCase))
+        {
+            await ctx.Bot.SendMessage(chatId, Loc("usage"), parseMode: ParseMode.Html,
+                replyParameters: reply, cancellationToken: ctx.Ct);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(action) && !action.Equals("spin", StringComparison.OrdinalIgnoreCase))
+        {
+            await ctx.Bot.SendMessage(chatId, Loc("usage"), parseMode: ParseMode.Html,
+                replyParameters: reply, cancellationToken: ctx.Ct);
+            return;
+        }
+
+        try
+        {
+            var diceSent = await ctx.Bot.SendDice(chatId, emoji: DiceEmoji, replyParameters: reply,
+                cancellationToken: ctx.Ct);
+            if (diceSent.Dice is { Value: > 0 })
+            {
+                await HandleDiceAsync(ctx, diceSent, userId, displayName, isForwarded: false);
+            }
+            else
+            {
+                BotMiniGameDiceOwner.Bind(chatId, diceSent.MessageId, userId, displayName);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogReplyFailed(userId, ex);
+        }
+    }
+
+    private async Task HandleDiceAsync(UpdateContext ctx, Message msg)
+    {
+        if (!BotMiniGameDiceOwner.TryResolveDicePlayer(msg, out var userId, out var displayName))
+            return;
+        await HandleDiceAsync(ctx, msg, userId, displayName, msg.ForwardOrigin != null);
+    }
+
+    private async Task HandleDiceAsync(UpdateContext ctx, Message msg, long userId, string displayName, bool isForwarded)
+    {
+        if (msg.Dice is not { Value: > 0 }) return;
+
+        var dice = msg.Dice!;
+        var chatId = msg.Chat.Id;
+        var reply = new ReplyParameters { MessageId = msg.MessageId };
+
         var result = await service.PlayAsync(
             userId, displayName, dice.Value, chatId, msg.MessageId,
-            isForwarded: msg.ForwardOrigin != null,
+            isForwarded,
             ctx.Ct);
 
         switch (result.Outcome)
@@ -76,7 +130,7 @@ public sealed partial class DiceHandler(
             result.Gas > 0 ? string.Format(Loc("result.gas"), result.Gas) : "",
             FormatRemainingAttempts(result.DailyDiceUsed, result.DailyDiceLimit),
         };
-        var text = string.Join("\n", lines);
+        var text = string.Join("\n", lines.Where(x => !string.IsNullOrWhiteSpace(x)));
 
         try
         {
@@ -87,6 +141,13 @@ public sealed partial class DiceHandler(
         catch (Exception ex)
         {
             LogReplyFailed(userId, ex);
+        }
+        finally
+        {
+            if (msg.From is { IsBot: true })
+                BotMiniGameDiceOwner.MarkCompleted(chatId, msg.MessageId);
+            else
+                BotMiniGameDiceOwner.Unbind(chatId, msg.MessageId);
         }
     }
 
