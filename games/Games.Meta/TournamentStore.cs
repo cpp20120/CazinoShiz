@@ -24,6 +24,7 @@ public interface ITournamentStore
     Task<IReadOnlyList<TournamentInfo>> GetOpenAsync(MetaSeason season, long chatId, int limit, CancellationToken ct);
     Task<IReadOnlyList<TournamentPlayerInfo>> GetPlayersAsync(long tournamentId, CancellationToken ct);
     Task<bool> StartAsync(long tournamentId, long userId, CancellationToken ct);
+    Task<TournamentPlayerInfo?> FinishAsync(long tournamentId, long actorUserId, long winnerUserId, CancellationToken ct);
 }
 
 public sealed class TournamentStore(INpgsqlConnectionFactory connections) : ITournamentStore
@@ -121,7 +122,7 @@ public sealed class TournamentStore(INpgsqlConnectionFactory connections) : ITou
                    COUNT(p.user_id)::int AS PlayerCount,
                    (COUNT(p.user_id) * t.entry_fee)::bigint AS PrizePool
             FROM meta_tournaments t
-            LEFT JOIN meta_tournament_players p ON p.tournament_id = t.id AND p.status = 'joined'
+            LEFT JOIN meta_tournament_players p ON p.tournament_id = t.id AND p.status IN ('joined', 'winner', 'eliminated')
             WHERE t.id = @tournamentId
             GROUP BY t.id, t.season_id, t.chat_id, t.game_key, t.type, t.status, t.entry_fee, t.max_players, t.created_by, t.created_at
             LIMIT 1
@@ -192,6 +193,58 @@ public sealed class TournamentStore(INpgsqlConnectionFactory connections) : ITou
         return changed > 0;
     }
 
+    public async Task<TournamentPlayerInfo?> FinishAsync(long tournamentId, long actorUserId, long winnerUserId, CancellationToken ct)
+    {
+        await using var conn = await connections.OpenAsync(ct);
+        await using var tx = await conn.BeginTransactionAsync(ct);
+
+        var tournament = await GetForUpdateAsync(conn, tx, tournamentId, ct);
+        if (tournament is null || tournament.CreatedBy != actorUserId || tournament.Status != "started")
+        {
+            await tx.CommitAsync(ct);
+            return null;
+        }
+
+        var winner = await conn.QuerySingleOrDefaultAsync<TournamentPlayerInfo>(new CommandDefinition(
+            """
+            SELECT tournament_id AS TournamentId,
+                   user_id AS UserId,
+                   display_name AS DisplayName,
+                   status,
+                   joined_at AS JoinedAt
+            FROM meta_tournament_players
+            WHERE tournament_id = @tournamentId AND user_id = @winnerUserId AND status = 'joined'
+            LIMIT 1
+            """,
+            new { tournamentId, winnerUserId },
+            transaction: tx,
+            cancellationToken: ct));
+        if (winner is null)
+        {
+            await tx.CommitAsync(ct);
+            return null;
+        }
+
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE meta_tournament_players SET status = 'eliminated' WHERE tournament_id = @tournamentId AND status = 'joined' AND user_id <> @winnerUserId",
+            new { tournamentId, winnerUserId },
+            transaction: tx,
+            cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE meta_tournament_players SET status = 'winner' WHERE tournament_id = @tournamentId AND user_id = @winnerUserId",
+            new { tournamentId, winnerUserId },
+            transaction: tx,
+            cancellationToken: ct));
+        await conn.ExecuteAsync(new CommandDefinition(
+            "UPDATE meta_tournaments SET status = 'finished', updated_at = now() WHERE id = @tournamentId",
+            new { tournamentId },
+            transaction: tx,
+            cancellationToken: ct));
+
+        await tx.CommitAsync(ct);
+        return winner with { Status = "winner" };
+    }
+
     private async Task<TournamentInfo?> GetForUpdateAsync(
         System.Data.Common.DbConnection conn,
         System.Data.Common.DbTransaction tx,
@@ -212,7 +265,7 @@ public sealed class TournamentStore(INpgsqlConnectionFactory connections) : ITou
                    COUNT(p.user_id)::int AS PlayerCount,
                    (COUNT(p.user_id) * t.entry_fee)::bigint AS PrizePool
             FROM meta_tournaments t
-            LEFT JOIN meta_tournament_players p ON p.tournament_id = t.id AND p.status = 'joined'
+            LEFT JOIN meta_tournament_players p ON p.tournament_id = t.id AND p.status IN ('joined', 'winner', 'eliminated')
             WHERE t.id = @tournamentId
             GROUP BY t.id, t.season_id, t.chat_id, t.game_key, t.type, t.status, t.entry_fee, t.max_players, t.created_by, t.created_at
             FOR UPDATE OF t
