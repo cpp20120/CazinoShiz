@@ -7,6 +7,14 @@ public interface IMetaStore
 {
     Task<MetaSeason> GetOrCreateActiveSeasonAsync(CancellationToken ct);
     Task<SeasonPlayer> EnsurePlayerAsync(MetaSeason season, long chatId, long userId, string displayName, CancellationToken ct);
+    Task<SeasonPlayer> ApplyGameCompletedAsync(
+        long chatId,
+        long userId,
+        string displayName,
+        long stake,
+        long payout,
+        bool isWin,
+        CancellationToken ct);
     Task<SeasonProfile> GetProfileAsync(long chatId, long userId, string displayName, CancellationToken ct);
     Task<IReadOnlyList<SeasonLeaderboardEntry>> GetTopAsync(long chatId, int limit, CancellationToken ct);
 }
@@ -140,6 +148,122 @@ public sealed class MetaStore(INpgsqlConnectionFactory connections) : IMetaStore
             cancellationToken: ct));
     }
 
+    public async Task<SeasonPlayer> ApplyGameCompletedAsync(
+        long chatId,
+        long userId,
+        string displayName,
+        long stake,
+        long payout,
+        bool isWin,
+        CancellationToken ct)
+    {
+        var season = await GetOrCreateActiveSeasonAsync(ct);
+        var xpDelta = CalculateXpDelta(stake, isWin);
+        var ratingDelta = isWin ? 16 : -12;
+
+        const string sql = """
+            INSERT INTO meta_season_players (
+                season_id,
+                chat_id,
+                user_id,
+                display_name,
+                xp,
+                level,
+                rating,
+                games_played,
+                wins,
+                losses,
+                total_staked,
+                total_payout
+            )
+            VALUES (
+                @seasonId,
+                @chatId,
+                @userId,
+                @displayName,
+                @xpDelta,
+                @level,
+                GREATEST(0, 1000 + @ratingDelta),
+                1,
+                CASE WHEN @isWin THEN 1 ELSE 0 END,
+                CASE WHEN @isWin THEN 0 ELSE 1 END,
+                @stake,
+                @payout
+            )
+            ON CONFLICT (season_id, chat_id, user_id)
+            DO UPDATE SET display_name = EXCLUDED.display_name,
+                          xp = meta_season_players.xp + @xpDelta,
+                          level = @level,
+                          rating = GREATEST(0, meta_season_players.rating + @ratingDelta),
+                          games_played = meta_season_players.games_played + 1,
+                          wins = meta_season_players.wins + CASE WHEN @isWin THEN 1 ELSE 0 END,
+                          losses = meta_season_players.losses + CASE WHEN @isWin THEN 0 ELSE 1 END,
+                          total_staked = meta_season_players.total_staked + @stake,
+                          total_payout = meta_season_players.total_payout + @payout,
+                          updated_at = now()
+            RETURNING season_id AS SeasonId,
+                      chat_id AS ChatId,
+                      user_id AS UserId,
+                      display_name AS DisplayName,
+                      xp,
+                      level,
+                      rating,
+                      games_played AS GamesPlayed,
+                      wins,
+                      losses,
+                      total_staked AS TotalStaked,
+                      total_payout AS TotalPayout,
+                      updated_at AS UpdatedAt
+            """;
+
+        await using var conn = await connections.OpenAsync(ct);
+        var player = await conn.QuerySingleAsync<SeasonPlayer>(new CommandDefinition(
+            sql,
+            new
+            {
+                seasonId = season.Id,
+                chatId,
+                userId,
+                displayName,
+                xpDelta,
+                level = LevelForXp(xpDelta),
+                ratingDelta,
+                isWin,
+                stake = Math.Max(0, stake),
+                payout = Math.Max(0, payout),
+            },
+            cancellationToken: ct));
+
+        var correctedLevel = LevelForXp(player.Xp);
+        if (correctedLevel == player.Level)
+            return player;
+
+        const string levelSql = """
+            UPDATE meta_season_players
+            SET level = @level,
+                updated_at = now()
+            WHERE season_id = @seasonId AND chat_id = @chatId AND user_id = @userId
+            RETURNING season_id AS SeasonId,
+                      chat_id AS ChatId,
+                      user_id AS UserId,
+                      display_name AS DisplayName,
+                      xp,
+                      level,
+                      rating,
+                      games_played AS GamesPlayed,
+                      wins,
+                      losses,
+                      total_staked AS TotalStaked,
+                      total_payout AS TotalPayout,
+                      updated_at AS UpdatedAt
+            """;
+
+        return await conn.QuerySingleAsync<SeasonPlayer>(new CommandDefinition(
+            levelSql,
+            new { level = correctedLevel, seasonId = season.Id, chatId, userId },
+            cancellationToken: ct));
+    }
+
     public async Task<SeasonProfile> GetProfileAsync(
         long chatId,
         long userId,
@@ -178,6 +302,20 @@ public sealed class MetaStore(INpgsqlConnectionFactory connections) : IMetaStore
             new { seasonId = season.Id, chatId, limit = Math.Clamp(limit, 1, 100) },
             cancellationToken: ct));
         return rows.ToList();
+    }
+
+    private static long CalculateXpDelta(long stake, bool isWin)
+    {
+        var baseXp = isWin ? 25 : 2;
+        var playXp = 5;
+        var stakeXp = (long)Math.Floor(Math.Max(0, stake) * 0.01m);
+        return Math.Clamp(playXp + baseXp + stakeXp, 1, 500);
+    }
+
+    private static int LevelForXp(long xp)
+    {
+        if (xp <= 0) return 1;
+        return Math.Max(1, (int)Math.Floor(Math.Sqrt(xp / 100.0)) + 1);
     }
 
     private static long XpForLevel(int level)

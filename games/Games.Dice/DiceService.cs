@@ -125,6 +125,19 @@ public sealed class DiceService(
                 OccurredAt: rolledAt.ToUnixTimeMilliseconds()),
             ct);
 
+        await events.PublishAsync(
+            new GameCompletedMetaEvent(
+                ChatId: chatId,
+                UserId: userId,
+                DisplayName: displayName,
+                GameKey: MiniGameIds.Dice,
+                Stake: loss,
+                Payout: prize,
+                IsWin: prize - loss > 0,
+                Multiplier: loss > 0 ? decimal.Divide(prize, loss) : 0m,
+                OccurredAt: rolledAt.ToUnixTimeMilliseconds()),
+            ct);
+
         await TelegramMiniGameRedeemDrops.MaybePublishAsync(
             events,
             diceOpts.RedeemDropChance,
