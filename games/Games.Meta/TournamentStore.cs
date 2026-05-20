@@ -18,7 +18,8 @@ public interface ITournamentStore
 }
 
 public sealed class TournamentStore(INpgsqlConnectionFactory connections) : ITournamentStore
-{\n    public async Task<TournamentCreateResult> CreateAsync(MetaSeason season, long chatId, long createdBy, string gameKey, int entryFee, int maxPlayers, CancellationToken ct)
+{
+    public async Task<TournamentCreateResult> CreateAsync(MetaSeason season, long chatId, long createdBy, string gameKey, int entryFee, int maxPlayers, CancellationToken ct)
     {
         gameKey = NormalizeGameKey(gameKey);
         if (!IsSupportedGame(gameKey))
