@@ -93,11 +93,16 @@
                                 <button type="submit" class="ghost danger">Finish</button>
                             </form>
                         }
-                        <form method="post" asp-page-handler="PayRewards" class="inline" onsubmit="return confirm('Pay top-3 rewards for season #@s.Id? This is ledger-idempotent.');">
+                        <form method="post" asp-page-handler="PayRewards" class="inline" onsubmit="return confirm('Pay top-3 player rewards for season #@s.Id? This is ledger-idempotent.');">
                             <input type="hidden" name="seasonId" value="@s.Id" />
-                            <button type="submit" class="ghost">Pay rewards</button>
+                            <button type="submit" class="ghost">Pay player rewards</button>
                         </form>
-                        <div class="muted" style="font-size: 11px; margin-top: 4px">Rewards: #1 5000, #2 2500, #3 1000</div>
+                        <form method="post" asp-page-handler="PayClanRewards" class="inline" onsubmit="return confirm('Pay top-3 clan rewards for season #@s.Id to clan owners? This is ledger-idempotent.');">
+                            <input type="hidden" name="seasonId" value="@s.Id" />
+                            <button type="submit" class="ghost">Pay clan rewards</button>
+                        </form>
+                        <div class="muted" style="font-size: 11px; margin-top: 4px">Player rewards: #1 5000, #2 2500, #3 1000</div>
+                        <div class="muted" style="font-size: 11px">Clan owner rewards: #1 10000, #2 5000, #3 2500</div>
                     </td>
                 }
             </tr>
