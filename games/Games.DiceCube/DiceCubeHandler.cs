@@ -16,6 +16,7 @@ using Telegram.Bot.Types.Enums;
 namespace Games.DiceCube;
 
 [Command("/dice")]
+[Command("/cube")]
 [MessageDice("🎲")]
 public sealed partial class DiceCubeHandler(
     IDiceCubeService service,
