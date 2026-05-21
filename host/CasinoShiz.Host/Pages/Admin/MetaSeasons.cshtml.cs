@@ -2,6 +2,7 @@ using BotFramework.Host;
 using BotFramework.Host.Services;
 using BotFramework.Sdk;
 using Dapper;
+using Games.Meta;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
@@ -10,7 +11,8 @@ namespace CasinoShiz.Host.Pages.Admin;
 public sealed class MetaSeasonsModel(
     INpgsqlConnectionFactory connections,
     IEconomicsService economics,
-    IAdminAuditLog audit) : PageModel
+    IAdminAuditLog audit,
+    IMetaHistoryStore history) : PageModel
 {
     public IReadOnlyList<MetaSeasonAdminRow> Seasons { get; private set; } = [];
     public AdminSession? Actor { get; private set; }
@@ -59,6 +61,7 @@ public sealed class MetaSeasonsModel(
         await using var conn = await connections.OpenAsync(ct);
         var id = await conn.ExecuteScalarAsync<long>(new CommandDefinition(sql, new { name = Name, durationDays = DurationDays, configJson = ConfigJson }, cancellationToken: ct));
         await audit.LogAsync(actor.UserId, actor.Name, "meta_season.create", new { id, Name, DurationDays }, ct);
+        await history.AppendAsync("season.created", "season", id.ToString(), id, null, actor.UserId, new { id, Name, DurationDays, actor = actor.Name }, ct);
 
         TempData["Flash"] = $"Season #{id} created as planned.";
         return RedirectToPage();
@@ -88,6 +91,7 @@ public sealed class MetaSeasonsModel(
         if (changed > 0)
         {
             await audit.LogAsync(actor.UserId, actor.Name, "meta_season.activate", new { seasonId }, ct);
+            await history.AppendAsync("season.activated", "season", seasonId.ToString(), seasonId, null, actor.UserId, new { seasonId, actor = actor.Name }, ct);
             TempData["Flash"] = $"Season #{seasonId} activated.";
         }
         else
@@ -115,6 +119,7 @@ public sealed class MetaSeasonsModel(
         if (changed > 0)
         {
             await audit.LogAsync(actor.UserId, actor.Name, "meta_season.finish", new { seasonId }, ct);
+            await history.AppendAsync("season.finished", "season", seasonId.ToString(), seasonId, null, actor.UserId, new { seasonId, actor = actor.Name }, ct);
             TempData["Flash"] = $"Season #{seasonId} finished.";
         }
         else
@@ -172,11 +177,13 @@ public sealed class MetaSeasonsModel(
             paid++;
         }
 
+        var winnerPayload = winners.Select(x => new { x.Place, x.ChatId, x.UserId, x.DisplayName, amount = RewardForPlace(x.Place) }).ToArray();
         await audit.LogAsync(actor.UserId, actor.Name, "meta_season.pay_rewards", new
         {
             seasonId,
-            winners = winners.Select(x => new { x.Place, x.ChatId, x.UserId, x.DisplayName, amount = RewardForPlace(x.Place) }).ToArray(),
+            winners = winnerPayload,
         }, ct);
+        await history.AppendAsync("season.reward_paid", "season", seasonId.ToString(), seasonId, null, actor.UserId, new { seasonId, paid, winners = winnerPayload, actor = actor.Name }, ct);
 
         TempData["Flash"] = $"Season #{seasonId} rewards processed for {paid} winners.";
         return RedirectToPage();
@@ -233,11 +240,13 @@ public sealed class MetaSeasonsModel(
             paid++;
         }
 
+        var winnerPayload = winners.Select(x => new { x.Place, x.ChatId, x.ClanId, x.ClanTag, x.ClanName, x.OwnerUserId, amount = ClanRewardForPlace(x.Place) }).ToArray();
         await audit.LogAsync(actor.UserId, actor.Name, "meta_season.pay_clan_rewards", new
         {
             seasonId,
-            winners = winners.Select(x => new { x.Place, x.ChatId, x.ClanId, x.ClanTag, x.ClanName, x.OwnerUserId, amount = ClanRewardForPlace(x.Place) }).ToArray(),
+            winners = winnerPayload,
         }, ct);
+        await history.AppendAsync("season.clan_reward_paid", "season", seasonId.ToString(), seasonId, null, actor.UserId, new { seasonId, paid, winners = winnerPayload, actor = actor.Name }, ct);
 
         TempData["Flash"] = $"Season #{seasonId} clan rewards processed for {paid} clans.";
         return RedirectToPage();
@@ -266,6 +275,7 @@ public sealed class MetaSeasonsModel(
         if (changed > 0)
         {
             await audit.LogAsync(actor.UserId, actor.Name, "meta_season.config_update", new { seasonId }, ct);
+            await history.AppendAsync("season.config_updated", "season", seasonId.ToString(), seasonId, null, actor.UserId, new { seasonId, actor = actor.Name }, ct);
             TempData["Flash"] = $"Season #{seasonId} config updated.";
         }
         else

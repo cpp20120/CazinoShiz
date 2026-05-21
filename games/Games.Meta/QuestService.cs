@@ -13,7 +13,8 @@ public interface IQuestService
 public sealed class QuestService(
     IMetaService meta,
     IQuestStore quests,
-    IEconomicsService economics) : IQuestService
+    IEconomicsService economics,
+    IMetaHistoryStore history) : IQuestService
 {
     public async Task<IReadOnlyList<QuestProgressUpdate>> ApplyGameCompletedAsync(GameCompletedMetaEvent ev, CancellationToken ct)
     {
@@ -56,6 +57,23 @@ public sealed class QuestService(
                 result.RewardXp,
                 ct);
         }
+
+        await history.AppendAsync(
+            "quest.claimed",
+            "player",
+            $"{season.Id}:{chatId}:{userId}",
+            season.Id,
+            chatId,
+            userId,
+            new
+            {
+                result.QuestId,
+                result.Title,
+                result.RewardXp,
+                result.RewardCoins,
+                displayName,
+            },
+            ct);
 
         return result;
     }
