@@ -15,7 +15,7 @@
                 else { <option value="@m">@m</option> }
             }
         </select>
-        <label>Chat (payload <code>ChatId</code>):</label>
+        <label>Chat:</label>
         <select name="ChatId" onchange="this.form.submit()">
             <option value="">(all)</option>
             @foreach (var c in Model.Chats)
@@ -28,8 +28,8 @@
         <noscript><button type="submit">Filter</button></noscript>
     </form>
     <p class="muted" style="margin:8px 0 0 0">
-        Shows both domain events from <code>event_log</code> and event-sourced sub-events from <code>module_events</code>.
-        With a chat selected, only events that include a <code>ChatId</code> in JSON are shown.
+        Global timeline over <code>event_log</code>, <code>module_events</code> and <code>meta_event_log</code>.
+        Source <code>domain</code> = domain event log, <code>es</code> = module event streams, <code>meta</code> = meta history.
     </p>
 </div>
 
@@ -108,4 +108,4 @@
         </tbody>
     </table>
 </div>
-<p class="muted">Showing up to 300 most recent events. Source <code>domain</code> = <code>event_log</code>; source <code>es</code> = <code>module_events</code>.</p>
+<p class="muted">Showing up to 300 most recent events.</p>
