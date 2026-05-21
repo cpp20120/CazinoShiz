@@ -1,11 +1,14 @@
 using BotFramework.Host;
 using Dapper;
+using Games.Meta;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
 namespace CasinoShiz.Host.Pages.Admin;
 
-public sealed class EventsModel(INpgsqlConnectionFactory connections) : PageModel
+public sealed class EventsModel(
+    INpgsqlConnectionFactory connections,
+    IMetaHistoryStore metaHistory) : PageModel
 {
     public IReadOnlyList<AdminEventRow> Rows { get; private set; } = [];
     public IReadOnlyList<string> Modules { get; private set; } = [];
@@ -15,12 +18,15 @@ public sealed class EventsModel(INpgsqlConnectionFactory connections) : PageMode
     [BindProperty(SupportsGet = true)]
     public string? Module { get; set; }
 
-    /// <summary>Filter to events whose JSON payload has matching <c>ChatId</c> (not all event types have it).</summary>
+    /// <summary>Filter to events whose JSON payload/native columns have matching chat id.</summary>
     [BindProperty(SupportsGet = true)]
     public long? ChatId { get; set; }
 
     public async Task OnGetAsync(CancellationToken ct)
     {
+        // Ensures the meta_event_log table exists before this page joins it into the global timeline.
+        await metaHistory.GetStatsAsync(ct);
+
         await using var conn = await connections.OpenAsync(ct);
 
         var modules = await conn.QueryAsync<string>(new CommandDefinition("""
@@ -28,6 +34,8 @@ public sealed class EventsModel(INpgsqlConnectionFactory connections) : PageMode
                 SELECT DISTINCT split_part(event_type, '.', 1) AS module FROM event_log
                 UNION
                 SELECT DISTINCT split_part(event_type, '.', 1) AS module FROM module_events
+                UNION
+                SELECT 'meta' AS module FROM meta_event_log LIMIT 1
             ) m
             ORDER BY module
             """, cancellationToken: ct));
@@ -60,9 +68,14 @@ public sealed class EventsModel(INpgsqlConnectionFactory connections) : PageMode
                       @chatId IS NULL
                       OR (payload ? 'ChatId' AND (payload->>'ChatId')::bigint = @chatId)
                   )
+                UNION ALL
+                SELECT 'meta' AS source, event_type, payload
+                FROM meta_event_log
+                WHERE (@module = '' OR @module = 'meta')
+                  AND (@chatId IS NULL OR chat_id = @chatId)
             ) e
             GROUP BY source, event_type
-            ORDER BY split_part(event_type, '.', 1), event_type, source
+            ORDER BY source, event_type
             """;
         var counts = await conn.QueryAsync<EventTypeCountRow>(new CommandDefinition(
             countsSql, new { module = Module ?? "", chatId = ChatId }, cancellationToken: ct));
@@ -106,6 +119,19 @@ public sealed class EventsModel(INpgsqlConnectionFactory connections) : PageMode
                       @chatId IS NULL
                       OR (payload ? 'ChatId' AND (payload->>'ChatId')::bigint = @chatId)
                   )
+
+                UNION ALL
+
+                SELECT 'meta' AS source,
+                       id,
+                       aggregate_type || ':' || aggregate_id AS stream_id,
+                       NULL::bigint AS version,
+                       event_type,
+                       payload,
+                       occurred_at
+                FROM meta_event_log
+                WHERE (@module = '' OR @module = 'meta')
+                  AND (@chatId IS NULL OR chat_id = @chatId)
             ) e
             ORDER BY occurred_at DESC, id DESC
             LIMIT 300
