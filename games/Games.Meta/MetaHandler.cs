@@ -46,9 +46,7 @@ public sealed class MetaHandler(IMetaService meta, IQuestService quests, IClanSe
             $"<b>{Html(season.Name)}</b>",
             $"Статус: <code>{Html(season.Status)}</code>",
             $"Старт: <code>{FormatDate(season.StartsAt)}</code>",
-            $"Финиш: <code>{FormatDate(season.EndsAt)}</code>",
-            "",
-            "Мета-система уже заведена: профиль, ранги, ачивки, квесты, кланы и сезонный топ."
+            $"Финиш: <code>{FormatDate(season.EndsAt)}</code>"
         ]);
 
         await ctx.Bot.SendMessage(msg.Chat.Id, text,
