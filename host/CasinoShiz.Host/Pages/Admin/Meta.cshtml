@@ -3,7 +3,7 @@
 @{ ViewData["Title"] = "Meta"; }
 
 <h2>Meta</h2>
-<p class="muted">Season meta control center: seasons, config, rewards, risk alerts, clans and tournaments.</p>
+<p class="muted">Season meta control center: seasons, config, rewards, risk alerts, clans, tournaments and history.</p>
 
 <div class="cards">
     <div class="stat"><div class="label">Active season</div><div class="value">@(Model.ActiveSeasonName ?? "—")</div><div class="muted">@(Model.ActiveSeasonId is null ? "No active season" : $"#{Model.ActiveSeasonId}")</div></div>
@@ -23,6 +23,11 @@
                 <td><b>Seasons & config</b></td>
                 <td>Create/activate/finish seasons, edit config JSON, pay player and clan rewards.</td>
                 <td><a href="/admin/meta-seasons">Open seasons</a></td>
+            </tr>
+            <tr>
+                <td><b>History / ES</b></td>
+                <td>Append-only meta event history, payload inspection, filters and safe reconstruction dry-run data.</td>
+                <td><a href="/admin/meta-events">Open history</a></td>
             </tr>
             <tr>
                 <td><b>Tournament replay</b></td>
