@@ -6,11 +6,12 @@ public sealed class MetaModule : IModule
 {
     public string Id => "meta";
     public string DisplayName => "⭐ Мета";
-    public string Version => "0.7.0";
+    public string Version => "0.8.0";
 
     public void ConfigureServices(IModuleServiceCollection services)
     {
         services
+            .AddScoped<IMetaHistoryStore, MetaHistoryStore>()
             .AddScoped<IMetaStore, MetaStore>()
             .AddScoped<IMetaService, MetaService>()
             .AddScoped<IQuestStore, QuestStore>()
