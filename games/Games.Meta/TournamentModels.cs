@@ -21,5 +21,20 @@ public sealed record TournamentPlayerInfo(
     string Status,
     DateTimeOffset JoinedAt);
 
+public sealed record TournamentMatchInfo(
+    long Id,
+    long TournamentId,
+    int Round,
+    int MatchIndex,
+    string Status,
+    long? Player1UserId,
+    string? Player1DisplayName,
+    long? Player2UserId,
+    string? Player2DisplayName,
+    long? VictorUserId,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
 public sealed record TournamentCreateResult(bool Created, string Message, TournamentInfo? Tournament = null);
 public sealed record TournamentJoinResult(bool Joined, string Message, TournamentInfo? Tournament = null);
+public sealed record TournamentReportResult(bool Updated, bool Finished, string Message, TournamentMatchInfo? Match = null, TournamentPlayerInfo? Victor = null);

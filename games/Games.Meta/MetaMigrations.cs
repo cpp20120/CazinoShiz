@@ -211,5 +211,31 @@ public sealed class MetaMigrations : IModuleMigrations
                 ON meta_risk_flags (season_id, chat_id, user_id, kind, status)
                 WHERE status = 'open';
             """),
+
+        new Migration("007_tournament_matches", """
+            CREATE TABLE meta_tournament_matches (
+                id                    BIGSERIAL    PRIMARY KEY,
+                tournament_id          BIGINT       NOT NULL REFERENCES meta_tournaments(id) ON DELETE CASCADE,
+                round                 INTEGER      NOT NULL,
+                match_index           INTEGER      NOT NULL,
+                status                TEXT         NOT NULL DEFAULT 'pending',
+                player1_user_id        BIGINT       NULL,
+                player1_display_name   TEXT         NULL,
+                player2_user_id        BIGINT       NULL,
+                player2_display_name   TEXT         NULL,
+                victor_user_id         BIGINT       NULL,
+                created_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                updated_at             TIMESTAMPTZ  NOT NULL DEFAULT now(),
+                CONSTRAINT ck_meta_tournament_matches_round CHECK (round >= 1),
+                CONSTRAINT ck_meta_tournament_matches_index CHECK (match_index >= 1),
+                CONSTRAINT ck_meta_tournament_matches_status CHECK (status IN ('pending', 'ready', 'finished', 'byed'))
+            );
+
+            CREATE UNIQUE INDEX ux_meta_tournament_matches_slot
+                ON meta_tournament_matches (tournament_id, round, match_index);
+
+            CREATE INDEX ix_meta_tournament_matches_tournament
+                ON meta_tournament_matches (tournament_id, round, match_index);
+            """),
     ];
 }
