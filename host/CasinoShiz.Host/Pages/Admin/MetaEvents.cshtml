@@ -3,7 +3,12 @@
 @{ ViewData["Title"] = "Meta history"; }
 
 <h2>Meta history</h2>
-<p class="muted">Append-only meta domain history. This is the first ES-compatible layer for replay/reconstruct workflows.</p>
+<p class="muted">Append-only meta domain history and read-model maintenance center.</p>
+
+@if (!string.IsNullOrEmpty(Model.Flash))
+{
+    <div class="flash @(Model.FlashError ? "error" : "")">@Model.Flash</div>
+}
 
 <div class="cards">
     <div class="stat"><div class="label">Total events</div><div class="value">@Model.Stats.TotalEvents</div></div>
@@ -26,11 +31,33 @@
 </div>
 
 <div class="card">
-    <h3>Reconstruct / replay status</h3>
+    <h3>Core read-model refresh</h3>
     <p class="muted">
-        This page currently provides safe dry-run data for reconstruction: event counts, event stream filters and payload inspection.
-        Destructive projection rebuild will be added separately behind SuperAdmin-only confirmation.
+        First safe target: <code>meta_season_players</code> and <code>meta_player_achievements</code> from append-only history.
+        Economy, quests, clans, risk flags and tournament tables are not touched here.
     </p>
+    <div class="cards">
+        <div class="stat"><div class="label">Current players</div><div class="value">@Model.Reconstruction.CurrentPlayers</div></div>
+        <div class="stat"><div class="label">History players</div><div class="value">@Model.Reconstruction.ReconstructablePlayers</div></div>
+        <div class="stat"><div class="label">Current achievements</div><div class="value">@Model.Reconstruction.CurrentAchievements</div></div>
+        <div class="stat"><div class="label">History achievements</div><div class="value">@Model.Reconstruction.ReconstructableAchievements</div></div>
+    </div>
+    @if (Model.CanRefreshCore)
+    {
+        <form method="post" asp-page-handler="RefreshCore" onsubmit="return confirm('Refresh core meta read models from history?');">
+            <p class="muted">Type <code>@CasinoShiz.Host.Pages.Admin.MetaEventsModel.ConfirmToken</code> to continue.</p>
+            <input type="text" name="confirm" placeholder="@CasinoShiz.Host.Pages.Admin.MetaEventsModel.ConfirmToken" style="width: 260px" />
+            <button type="submit" class="danger">Refresh core read models</button>
+        </form>
+    }
+    else
+    {
+        <p class="muted">Only SuperAdmin can run this operation.</p>
+    }
+</div>
+
+<div class="card">
+    <h3>Tracked event types</h3>
     <p>
         <code>game.completed</code>
         <code>achievement.unlocked</code>
