@@ -237,5 +237,31 @@ public sealed class MetaMigrations : IModuleMigrations
             CREATE INDEX ix_meta_tournament_matches_tournament
                 ON meta_tournament_matches (tournament_id, round, match_index);
             """),
+
+        new Migration("008_meta_event_log", """
+            CREATE TABLE IF NOT EXISTS meta_event_log (
+                id              BIGSERIAL    PRIMARY KEY,
+                event_type      TEXT         NOT NULL,
+                aggregate_type  TEXT         NOT NULL,
+                aggregate_id    TEXT         NOT NULL,
+                season_id       BIGINT       NULL,
+                chat_id         BIGINT       NULL,
+                user_id         BIGINT       NULL,
+                payload         JSONB        NOT NULL DEFAULT '{}'::jsonb,
+                occurred_at     TIMESTAMPTZ  NOT NULL DEFAULT now()
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_meta_event_log_type_id
+                ON meta_event_log (event_type, id DESC);
+
+            CREATE INDEX IF NOT EXISTS ix_meta_event_log_aggregate
+                ON meta_event_log (aggregate_type, aggregate_id, id DESC);
+
+            CREATE INDEX IF NOT EXISTS ix_meta_event_log_chat_user
+                ON meta_event_log (chat_id, user_id, id DESC);
+
+            CREATE INDEX IF NOT EXISTS ix_meta_event_log_time
+                ON meta_event_log (occurred_at DESC, id DESC);
+            """),
     ];
 }
