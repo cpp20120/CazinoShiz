@@ -21,6 +21,13 @@ This software must not be used for real-money gambling or any commercial gamblin
 
 The primary purpose of this project is educational, focusing on architecture patterns such as DDD, Event Sourcing, and CQRS.
 
+## Documentation
+
+- [Full bot documentation](docs/docs.md) — games, commands, seasonal meta, architecture, configuration, admin UI, database, and deployment.
+- [Architecture diagrams](docs/arch.md) — Mermaid views of runtime flow, modules, events, persistence, tuning, and deployment.
+- [Operations runbook](docs/operations.md) — scheduled jobs, daily bonus recovery, diagnostics, SQL checks, and incident operations.
+- [Framework documentation](framework/README.md) — module contracts, routing, event sourcing, projections, and migrations.
+
 ## Features
 
 ### Telegram Games
@@ -41,6 +48,7 @@ The primary purpose of this project is educational, focusing on architecture pat
 | `/picklottery` | Per chat pool lottery                               |
 | `/transfer` | Coin transfers between users, including transfer fees. |
 | `/redeem` | Freespin/redeem code activation. |
+| `/menu` | Interactive player hub. See the [seasonal meta documentation](docs/docs.md#seasonal-meta-gamesmeta). |
 | `/top`, `/balance`, `/daily`, `/help` | Leaderboard, wallet balance, daily bonus, and help. |
 
 ### Operations documentation

@@ -22,7 +22,7 @@ public static class RuntimeTuningPayloadSanitizer
         // PvP / utilities
         "challenges", "transfer",
         // Front-end / admin / cross-cutting
-        "pixelbattle", "redeem", "leaderboard", "admin",
+        "pixelbattle", "redeem", "leaderboard", "admin", "meta",
     };
 
     public static JsonObject Sanitize(JsonObject raw)

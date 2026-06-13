@@ -1,4 +1,5 @@
 using BotFramework.Host;
+using BotFramework.Host.Services;
 using Dapper;
 
 namespace Games.Meta;
@@ -29,11 +30,21 @@ public interface IMetaStore
         IEnumerable<AchievementDefinition> achievements,
         CancellationToken ct);
     Task<IReadOnlyList<PlayerAchievementView>> GetAchievementsAsync(long chatId, long userId, CancellationToken ct);
+    Task<GameStreakRecordResult?> RecordGamePlayedAsync(
+        long seasonId,
+        long chatId,
+        long userId,
+        string gameKey,
+        DateOnly playedOn,
+        CancellationToken ct);
+    Task<IReadOnlyList<PlayerGameStreakView>> GetGameStreaksAsync(long chatId, long userId, CancellationToken ct);
     Task<SeasonProfile> GetProfileAsync(long chatId, long userId, string displayName, CancellationToken ct);
     Task<IReadOnlyList<SeasonLeaderboardEntry>> GetTopAsync(long chatId, int limit, CancellationToken ct);
 }
 
-public sealed class MetaStore(INpgsqlConnectionFactory connections) : IMetaStore
+public sealed class MetaStore(
+    INpgsqlConnectionFactory connections,
+    IRuntimeTuningAccessor tuning) : IMetaStore
 {
     private const string DefaultSeasonConfigJson = """
         {
@@ -345,7 +356,8 @@ public sealed class MetaStore(INpgsqlConnectionFactory connections) : IMetaStore
             cancellationToken: ct));
         var map = unlocked.ToDictionary(x => x.AchievementId, x => x.UnlockedAt, StringComparer.Ordinal);
 
-        return AchievementRegistry.All
+        var options = tuning.GetSection<MetaOptions>(MetaOptions.SectionName);
+        return AchievementRegistry.GetAll(options.HighRollerTotalStaked, options.BigPayoutMinimum)
             .Select(x => new PlayerAchievementView(
                 x.Id,
                 x.IsSecret && !map.ContainsKey(x.Id) ? "???" : x.Title,
@@ -357,6 +369,142 @@ public sealed class MetaStore(INpgsqlConnectionFactory connections) : IMetaStore
             .ThenBy(x => x.Category)
             .ThenBy(x => x.Id)
             .ToList();
+    }
+
+    public async Task<GameStreakRecordResult?> RecordGamePlayedAsync(
+        long seasonId,
+        long chatId,
+        long userId,
+        string gameKey,
+        DateOnly playedOn,
+        CancellationToken ct)
+    {
+        if (!GameStreakRegistry.Supports(gameKey)) return null;
+
+        const string advanceSql = """
+            INSERT INTO meta_player_game_streaks (
+                season_id,
+                chat_id,
+                user_id,
+                game_key,
+                current_streak,
+                best_streak,
+                total_play_days,
+                last_played_on
+            )
+            VALUES (@seasonId, @chatId, @userId, @gameKey, 1, 1, 1, @playedOn)
+            ON CONFLICT (season_id, chat_id, user_id, game_key)
+            DO UPDATE SET
+                current_streak = CASE
+                    WHEN EXCLUDED.last_played_on = meta_player_game_streaks.last_played_on + 1
+                        THEN meta_player_game_streaks.current_streak + 1
+                    ELSE 1
+                END,
+                best_streak = GREATEST(
+                    meta_player_game_streaks.best_streak,
+                    CASE
+                        WHEN EXCLUDED.last_played_on = meta_player_game_streaks.last_played_on + 1
+                            THEN meta_player_game_streaks.current_streak + 1
+                        ELSE 1
+                    END
+                ),
+                total_play_days = meta_player_game_streaks.total_play_days + 1,
+                last_played_on = EXCLUDED.last_played_on,
+                updated_at = now()
+            WHERE EXCLUDED.last_played_on > meta_player_game_streaks.last_played_on
+            RETURNING season_id AS SeasonId,
+                      chat_id AS ChatId,
+                      user_id AS UserId,
+                      game_key AS GameKey,
+                      current_streak AS CurrentStreak,
+                      best_streak AS BestStreak,
+                      total_play_days AS TotalPlayDays,
+                      last_played_on AS LastPlayedOn,
+                      updated_at AS UpdatedAt,
+                      true AS Advanced
+            """;
+
+        const string currentSql = """
+            SELECT season_id AS SeasonId,
+                   chat_id AS ChatId,
+                   user_id AS UserId,
+                   game_key AS GameKey,
+                   current_streak AS CurrentStreak,
+                   best_streak AS BestStreak,
+                   total_play_days AS TotalPlayDays,
+                   last_played_on AS LastPlayedOn,
+                   updated_at AS UpdatedAt,
+                   false AS Advanced
+            FROM meta_player_game_streaks
+            WHERE season_id = @seasonId
+              AND chat_id = @chatId
+              AND user_id = @userId
+              AND game_key = @gameKey
+            """;
+
+        await using var conn = await connections.OpenAsync(ct);
+        var args = new { seasonId, chatId, userId, gameKey, playedOn };
+        var row = await conn.QuerySingleOrDefaultAsync<GameStreakRecordRow>(new CommandDefinition(
+            advanceSql,
+            args,
+            cancellationToken: ct));
+        row ??= await conn.QuerySingleAsync<GameStreakRecordRow>(new CommandDefinition(
+            currentSql,
+            new { seasonId, chatId, userId, gameKey, playedOn },
+            cancellationToken: ct));
+        return new GameStreakRecordResult(
+            new GameStreak(
+                row.SeasonId,
+                row.ChatId,
+                row.UserId,
+                row.GameKey,
+                row.CurrentStreak,
+                row.BestStreak,
+                row.TotalPlayDays,
+                row.LastPlayedOn,
+                row.UpdatedAt),
+            row.Advanced);
+    }
+
+    public async Task<IReadOnlyList<PlayerGameStreakView>> GetGameStreaksAsync(
+        long chatId,
+        long userId,
+        CancellationToken ct)
+    {
+        var season = await GetOrCreateActiveSeasonAsync(ct);
+        const string sql = """
+            SELECT game_key AS GameKey,
+                   current_streak AS CurrentStreak,
+                   best_streak AS BestStreak,
+                   total_play_days AS TotalPlayDays,
+                   last_played_on AS LastPlayedOn
+            FROM meta_player_game_streaks
+            WHERE season_id = @seasonId AND chat_id = @chatId AND user_id = @userId
+            """;
+
+        await using var conn = await connections.OpenAsync(ct);
+        var rows = await conn.QueryAsync<GameStreakRow>(new CommandDefinition(
+            sql,
+            new { seasonId = season.Id, chatId, userId },
+            cancellationToken: ct));
+        var map = rows.ToDictionary(x => x.GameKey, StringComparer.Ordinal);
+        var options = tuning.GetSection<MetaOptions>(MetaOptions.SectionName);
+        var now = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(
+            Math.Clamp(options.StreakTimezoneOffsetHours, -14, 14)));
+        var today = DateOnly.FromDateTime(now.DateTime);
+
+        return GameStreakRegistry.Games.Select(game =>
+        {
+            map.TryGetValue(game.GameKey, out var row);
+            return new PlayerGameStreakView(
+                game.GameKey,
+                game.Title,
+                game.Command,
+                row is null ? 0 : GameStreakRegistry.ActiveStreak(row.CurrentStreak, row.LastPlayedOn, today),
+                row?.BestStreak ?? 0,
+                row?.TotalPlayDays ?? 0,
+                row?.LastPlayedOn);
+        }).ToList();
     }
 
     public async Task<SeasonProfile> GetProfileAsync(
@@ -436,6 +584,25 @@ public sealed class MetaStore(INpgsqlConnectionFactory connections) : IMetaStore
             new { level = correctedLevel, seasonId, chatId, userId },
             cancellationToken: ct));
     }
+
+    private sealed record GameStreakRow(
+        string GameKey,
+        int CurrentStreak,
+        int BestStreak,
+        int TotalPlayDays,
+        DateOnly LastPlayedOn);
+
+    private sealed record GameStreakRecordRow(
+        long SeasonId,
+        long ChatId,
+        long UserId,
+        string GameKey,
+        int CurrentStreak,
+        int BestStreak,
+        int TotalPlayDays,
+        DateOnly LastPlayedOn,
+        DateTimeOffset UpdatedAt,
+        bool Advanced);
 
     private static long CalculateXpDelta(long stake, bool isWin)
     {

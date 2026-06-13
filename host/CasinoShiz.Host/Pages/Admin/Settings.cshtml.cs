@@ -15,6 +15,7 @@ using Games.DiceCube;
 using Games.Football;
 using Games.Horse;
 using Games.Leaderboard;
+using Games.Meta;
 using Games.Pick;
 using Games.PixelBattle;
 using Games.Poker;
@@ -51,6 +52,8 @@ public sealed class SettingsModel(
     public BlackjackSettingsInput BlackjackGame { get; set; } = new();
     [BindProperty]
     public SecretHitlerSettingsInput SecretHitlerGame { get; set; } = new();
+    [BindProperty]
+    public MetaSettingsInput MetaGame { get; set; } = new();
     public IReadOnlyList<RedeemDropStats> DropStats { get; private set; } = [];
 
     public async Task<IActionResult> OnGetAsync(CancellationToken ct)
@@ -468,6 +471,33 @@ public sealed class SettingsModel(
             "Secret Hitler settings saved.", ct);
     }
 
+    public async Task<IActionResult> OnPostMetaAsync(CancellationToken ct)
+    {
+        var actor = HttpContext.Session.GetAdminSession();
+        if (actor is null)
+            return RedirectToPage("/Admin/Login");
+        if (actor.Role != AdminRole.SuperAdmin)
+            return StatusCode(403);
+
+        if (MetaGame.HighRollerTotalStaked <= 0 || MetaGame.BigPayoutMinimum <= 0)
+        {
+            Error = "Meta: achievement thresholds must be greater than 0.";
+            return await ReloadPageForErrorAsync(ct);
+        }
+
+        var patch = await LoadPatchObjectAsync(ct);
+        patch["Games"] ??= new JsonObject();
+        var games = (JsonObject)patch["Games"]!;
+        games["meta"] ??= new JsonObject();
+        var meta = (JsonObject)games["meta"]!;
+        meta["HighRollerTotalStaked"] = MetaGame.HighRollerTotalStaked;
+        meta["BigPayoutMinimum"] = MetaGame.BigPayoutMinimum;
+
+        return await SaveAndReloadAsync(actor, patch, "runtime_tuning.meta.save",
+            new { MetaGame.HighRollerTotalStaked, MetaGame.BigPayoutMinimum },
+            "Meta achievement settings saved.", ct);
+    }
+
     private async Task<IActionResult> SaveAndReloadAsync(
         AdminSession actor, JsonObject patch, string auditAction, object auditPayload,
         string flashOnSuccess, CancellationToken ct)
@@ -519,6 +549,7 @@ public sealed class SettingsModel(
             ["pixelbattle"] = JsonSerializer.SerializeToNode(tuning.GetSection<PixelBattleOptions>(PixelBattleOptions.SectionName)),
             ["redeem"] = JsonSerializer.SerializeToNode(tuning.GetSection<RedeemOptions>(RedeemOptions.SectionName)),
             ["leaderboard"] = JsonSerializer.SerializeToNode(tuning.GetSection<LeaderboardOptions>(LeaderboardOptions.SectionName)),
+            ["meta"] = JsonSerializer.SerializeToNode(tuning.GetSection<MetaOptions>(MetaOptions.SectionName)),
         };
         return new JsonObject { ["Bot"] = bot, ["Games"] = games };
     }
@@ -687,6 +718,16 @@ public sealed class SettingsModel(
         };
     }
 
+    private void LoadMetaSettings()
+    {
+        var meta = tuning.GetSection<MetaOptions>(MetaOptions.SectionName);
+        MetaGame = new MetaSettingsInput
+        {
+            HighRollerTotalStaked = meta.HighRollerTotalStaked,
+            BigPayoutMinimum = meta.BigPayoutMinimum,
+        };
+    }
+
     private void LoadAllStructuredSettings()
     {
         LoadStickerGameSettings();
@@ -695,6 +736,7 @@ public sealed class SettingsModel(
         LoadChallengeSettings();
         LoadBlackjackSettings();
         LoadSecretHitlerSettings();
+        LoadMetaSettings();
     }
 
     private static string GameLabel(string gameId) => gameId switch
@@ -745,6 +787,7 @@ public sealed class SettingsModel(
                 TryMerge<PixelBattleOptions>(games, "pixelbattle", PixelBattleOptions.SectionName);
                 TryMerge<RedeemOptions>(games, "redeem", RedeemOptions.SectionName);
                 TryMerge<LeaderboardOptions>(games, "leaderboard", LeaderboardOptions.SectionName);
+                TryMerge<MetaOptions>(games, "meta", MetaOptions.SectionName);
             }
         }
         catch (Exception ex)
@@ -849,6 +892,12 @@ public sealed class SettingsModel(
     public sealed class SecretHitlerSettingsInput
     {
         public int BuyIn { get; set; }
+    }
+
+    public sealed class MetaSettingsInput
+    {
+        public long HighRollerTotalStaked { get; set; } = 1_000;
+        public long BigPayoutMinimum { get; set; } = 1_000;
     }
 
     private sealed class RedeemDropStatsRow

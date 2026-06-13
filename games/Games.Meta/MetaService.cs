@@ -6,6 +6,14 @@ public interface IMetaService
     Task<SeasonProfile> GetProfileAsync(long chatId, long userId, string displayName, CancellationToken ct);
     Task<IReadOnlyList<SeasonLeaderboardEntry>> GetTopAsync(long chatId, int limit, CancellationToken ct);
     Task<IReadOnlyList<PlayerAchievementView>> GetAchievementsAsync(long chatId, long userId, CancellationToken ct);
+    Task<GameStreakRecordResult?> RecordGamePlayedAsync(
+        long seasonId,
+        long chatId,
+        long userId,
+        string gameKey,
+        DateOnly playedOn,
+        CancellationToken ct);
+    Task<IReadOnlyList<PlayerGameStreakView>> GetGameStreaksAsync(long chatId, long userId, CancellationToken ct);
     Task<SeasonPlayer> ApplyGameCompletedAsync(
         long chatId,
         long userId,
@@ -42,6 +50,21 @@ public sealed class MetaService(IMetaStore store) : IMetaService
 
     public Task<IReadOnlyList<PlayerAchievementView>> GetAchievementsAsync(long chatId, long userId, CancellationToken ct) =>
         store.GetAchievementsAsync(chatId, userId, ct);
+
+    public Task<GameStreakRecordResult?> RecordGamePlayedAsync(
+        long seasonId,
+        long chatId,
+        long userId,
+        string gameKey,
+        DateOnly playedOn,
+        CancellationToken ct) =>
+        store.RecordGamePlayedAsync(seasonId, chatId, userId, gameKey, playedOn, ct);
+
+    public Task<IReadOnlyList<PlayerGameStreakView>> GetGameStreaksAsync(
+        long chatId,
+        long userId,
+        CancellationToken ct) =>
+        store.GetGameStreaksAsync(chatId, userId, ct);
 
     public Task<SeasonPlayer> ApplyGameCompletedAsync(
         long chatId,

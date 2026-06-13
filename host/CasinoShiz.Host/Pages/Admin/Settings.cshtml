@@ -138,6 +138,14 @@
         <p style="margin-top:12px"><button type="submit">Save Secret Hitler settings</button></p>
     </form>
 
+    <form method="post" asp-page-handler="Meta" class="card">
+        <h3>Meta / achievements</h3>
+        <p class="muted">High Roller uses total seasonal stake. Big Payout uses the payout from one game. Changes apply immediately to future completed games.</p>
+        <label>High Roller seasonal stake <input asp-for="MetaGame.HighRollerTotalStaked" type="number" min="1" step="1" /></label>
+        <label>Big Payout minimum payout <input asp-for="MetaGame.BigPayoutMinimum" type="number" min="1" step="1" /></label>
+        <p style="margin-top:12px"><button type="submit">Save meta settings</button></p>
+    </form>
+
     <form method="post" asp-page-handler="Challenge" class="card">
         <h3>Challenge / PvP</h3>
         <p class="muted">House fee is in basis points: <code>200</code> = 2%, <code>500</code> = 5%. Pending TTL is how long an outstanding challenge stays open.</p>
