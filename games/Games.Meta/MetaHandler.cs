@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using BotFramework.Sdk;
 using Telegram.Bot;
 using Telegram.Bot.Types;
@@ -41,18 +42,60 @@ public sealed class MetaHandler(IMetaService meta, IQuestService quests, IClanSe
     private async Task HandleSeasonAsync(UpdateContext ctx, Message msg)
     {
         var season = await meta.GetActiveSeasonAsync(ctx.Ct);
-        var text = string.Join("\n", [
-            "🏁 <b>Текущий сезон</b>",
-            $"<b>{Html(season.Name)}</b>",
-            $"Статус: <code>{Html(season.Status)}</code>",
-            $"Старт: <code>{FormatDate(season.StartsAt)}</code>",
-            $"Финиш: <code>{FormatDate(season.EndsAt)}</code>"
-        ]);
+        var (text, entities) = BuildSeasonMessage(season);
 
         await ctx.Bot.SendMessage(msg.Chat.Id, text,
-            parseMode: ParseMode.Html,
+            entities: entities,
             replyParameters: new ReplyParameters { MessageId = msg.MessageId },
             cancellationToken: ctx.Ct);
+    }
+
+    private static (string Text, MessageEntity[] Entities) BuildSeasonMessage(MetaSeason season)
+    {
+        var sb = new StringBuilder();
+        var entities = new List<MessageEntity>();
+
+        AppendEntity(sb, entities, "🏁 Текущий сезон", MessageEntityType.Bold);
+        sb.Append('\n');
+        AppendEntity(sb, entities, season.Name, MessageEntityType.Bold);
+        sb.Append('\n');
+        sb.Append("Статус: ");
+        AppendEntity(sb, entities, season.Status, MessageEntityType.Code);
+        sb.Append('\n');
+        sb.Append("Старт: ");
+        AppendDateTime(sb, entities, season.StartsAt);
+        sb.Append('\n');
+        sb.Append("Финиш: ");
+        AppendDateTime(sb, entities, season.EndsAt);
+
+        return (sb.ToString(), entities.ToArray());
+    }
+
+    private static void AppendEntity(StringBuilder sb, List<MessageEntity> entities, string value, MessageEntityType type)
+    {
+        var offset = sb.Length;
+        sb.Append(value);
+        entities.Add(new MessageEntity
+        {
+            Type = type,
+            Offset = offset,
+            Length = value.Length,
+        });
+    }
+
+    private static void AppendDateTime(StringBuilder sb, List<MessageEntity> entities, DateTimeOffset value)
+    {
+        var fallback = FormatDate(value);
+        var offset = sb.Length;
+        sb.Append(fallback);
+        entities.Add(new MessageEntity
+        {
+            Type = MessageEntityType.DateTime,
+            Offset = offset,
+            Length = fallback.Length,
+            UnixTime = value.UtcDateTime,
+            DateTimeFormat = "dt",
+        });
     }
 
     private async Task HandleProfileAsync(UpdateContext ctx, Message msg)
