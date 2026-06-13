@@ -1,5 +1,7 @@
 using BotFramework.Sdk;
+using BotFramework.Host.Services;
 using Games.Meta;
+using System.Text.Json.Nodes;
 using Xunit;
 
 namespace CasinoShiz.Tests;
@@ -7,10 +9,74 @@ namespace CasinoShiz.Tests;
 public sealed class MetaRegistryTests
 {
     [Fact]
+    public void MetaMigrations_HaveUniqueIds()
+    {
+        var ids = new MetaMigrations().Migrations.Select(x => x.Id).ToArray();
+
+        Assert.Equal(ids.Length, ids.Distinct(StringComparer.Ordinal).Count());
+        Assert.Contains("008_meta_event_log", ids);
+        Assert.Contains("009_game_streaks", ids);
+    }
+
+    [Fact]
     public void AchievementRegistry_AllIdsAreUnique()
     {
         var ids = AchievementRegistry.All.Select(x => x.Id).ToArray();
         Assert.Equal(ids.Length, ids.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void GameStreakRegistry_CreatesThreeAchievementsPerSupportedGame()
+    {
+        var achievements = GameStreakRegistry.GetAchievements();
+
+        Assert.Equal(GameStreakRegistry.Games.Count * 3, achievements.Count);
+        Assert.Equal(achievements.Count, achievements.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Theory]
+    [InlineData(2, 0)]
+    [InlineData(3, 1)]
+    [InlineData(7, 2)]
+    [InlineData(14, 3)]
+    [InlineData(30, 3)]
+    public void GameStreakRegistry_Evaluate_UnlocksReachedMilestones(int currentStreak, int expectedCount)
+    {
+        var streak = new GameStreak(
+            1, 100, 42, MiniGameIds.Darts, currentStreak, currentStreak, currentStreak,
+            new DateOnly(2026, 6, 13), DateTimeOffset.UtcNow);
+
+        var unlocked = GameStreakRegistry.Evaluate(streak);
+
+        Assert.Equal(expectedCount, unlocked.Count);
+        Assert.All(unlocked, x => Assert.StartsWith("streak_darts_", x.Id));
+    }
+
+    [Fact]
+    public void GameStreakRegistry_PlayDay_UsesConfiguredTimezone()
+    {
+        var occurredAt = new DateTimeOffset(2026, 6, 12, 20, 30, 0, TimeSpan.Zero).ToUnixTimeMilliseconds();
+
+        var playDay = GameStreakRegistry.PlayDay(occurredAt, 7);
+
+        Assert.Equal(new DateOnly(2026, 6, 13), playDay);
+    }
+
+    [Theory]
+    [InlineData(2026, 6, 13, 5)]
+    [InlineData(2026, 6, 12, 5)]
+    [InlineData(2026, 6, 11, 0)]
+    public void GameStreakRegistry_ActiveStreak_ExpiresAfterMissedDay(
+        int year,
+        int month,
+        int day,
+        int expected)
+    {
+        var today = new DateOnly(2026, 6, 13);
+
+        var active = GameStreakRegistry.ActiveStreak(5, new DateOnly(year, month, day), today);
+
+        Assert.Equal(expected, active);
     }
 
     [Fact]
@@ -82,6 +148,105 @@ public sealed class MetaRegistryTests
         Assert.Contains("ten_wins", ids);
         Assert.Contains("high_roller", ids);
         Assert.Contains("darts_player", ids);
+    }
+
+    [Theory]
+    [InlineData(999, 1_000, false)]
+    [InlineData(1_000, 1_000, true)]
+    [InlineData(4_999, 5_000, false)]
+    [InlineData(5_000, 5_000, true)]
+    public void AchievementRegistry_Evaluate_HighRollerUsesConfiguredThreshold(
+        long totalStaked,
+        long threshold,
+        bool expected)
+    {
+        var ev = new GameCompletedMetaEvent(100, 42, "u", MiniGameIds.Dice, 10, 0, false, 0, 1);
+        var player = new SeasonPlayer(
+            SeasonId: 1,
+            ChatId: 100,
+            UserId: 42,
+            DisplayName: "u",
+            Xp: 10,
+            Level: 1,
+            Rating: 1000,
+            GamesPlayed: 1,
+            Wins: 0,
+            Losses: 1,
+            TotalStaked: totalStaked,
+            TotalPayout: 0,
+            UpdatedAt: DateTimeOffset.UtcNow);
+
+        var unlocked = AchievementRegistry.Evaluate(ev, player, threshold);
+
+        Assert.Equal(expected, unlocked.Any(x => x.Id == "high_roller"));
+    }
+
+    [Fact]
+    public void AchievementRegistry_GetAll_HighRollerDescriptionUsesConfiguredThreshold()
+    {
+        var achievement = AchievementRegistry.GetAll(1_000).Single(x => x.Id == "high_roller");
+
+        Assert.Contains("1 000", achievement.Description);
+    }
+
+    [Theory]
+    [InlineData(999, 1_000, false)]
+    [InlineData(1_000, 1_000, true)]
+    [InlineData(4_999, 5_000, false)]
+    [InlineData(5_000, 5_000, true)]
+    public void AchievementRegistry_Evaluate_BigPayoutUsesConfiguredThreshold(
+        long payout,
+        long threshold,
+        bool expected)
+    {
+        var ev = new GameCompletedMetaEvent(100, 42, "u", MiniGameIds.Dice, 10, payout, true, 1, 1);
+        var player = new SeasonPlayer(
+            SeasonId: 1,
+            ChatId: 100,
+            UserId: 42,
+            DisplayName: "u",
+            Xp: 10,
+            Level: 1,
+            Rating: 1000,
+            GamesPlayed: 1,
+            Wins: 1,
+            Losses: 0,
+            TotalStaked: 10,
+            TotalPayout: payout,
+            UpdatedAt: DateTimeOffset.UtcNow);
+
+        var unlocked = AchievementRegistry.Evaluate(ev, player, 10_000, threshold);
+
+        Assert.Equal(expected, unlocked.Any(x => x.Id == "big_payout"));
+    }
+
+    [Fact]
+    public void AchievementRegistry_GetAll_BigPayoutDescriptionUsesConfiguredThreshold()
+    {
+        var achievement = AchievementRegistry.GetAll(1_000, 5_000).Single(x => x.Id == "big_payout");
+
+        Assert.Contains("5 000", achievement.Description);
+    }
+
+    [Fact]
+    public void RuntimeTuningSanitizer_AllowsMetaSettings()
+    {
+        var raw = new JsonObject
+        {
+            ["Games"] = new JsonObject
+            {
+                ["meta"] = new JsonObject
+                {
+                    ["HighRollerTotalStaked"] = 1_000,
+                    ["BigPayoutMinimum"] = 5_000,
+                },
+            },
+        };
+
+        var sanitized = RuntimeTuningPayloadSanitizer.Sanitize(raw);
+
+        Assert.Equal(1_000, sanitized["Games"]?["meta"]?["HighRollerTotalStaked"]?.GetValue<int>());
+        Assert.Equal(5_000, sanitized["Games"]?["meta"]?["BigPayoutMinimum"]?.GetValue<int>());
     }
 
     [Fact]

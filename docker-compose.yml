@@ -97,7 +97,7 @@ services:
     image: prom/prometheus:v2.54.0
     restart: unless-stopped
     ports:
-      - "127.0.0.1:9090:9090"  
+      - "127.0.0.1:9080:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -137,7 +137,9 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000" 
+      - "4000:3000"
+    extra_hosts:
+      - "api.telegram.org:149.154.167.220"
     env_file:
       - .env
     environment:
@@ -166,7 +168,7 @@ services:
     image: grafana/grafana:11.2.0
     restart: unless-stopped
     ports:
-      - "3001:3000"  
+      - "4004:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD} 
@@ -174,6 +176,7 @@ services:
       GF_LOG_LEVEL: warn  
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
@@ -203,7 +206,7 @@ services:
 networks:
   internal:
     driver: bridge
-    internal: true  
+    internal: false
 
 volumes:
   postgres_data:

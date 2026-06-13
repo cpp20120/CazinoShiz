@@ -48,3 +48,37 @@ public sealed record DailyClaimedMetaEvent(
 {
     public string EventType => "meta.daily_claimed";
 }
+
+/// <summary>
+/// Emitted once per player, game, and local play day after streak progress changes.
+/// Mirrored to analytics for retention and per-game streak reporting.
+/// </summary>
+public sealed record GameStreakUpdatedMetaEvent(
+    long SeasonId,
+    long ChatId,
+    long UserId,
+    string GameKey,
+    int CurrentStreak,
+    int BestStreak,
+    int TotalPlayDays,
+    DateOnly PlayedOn,
+    long OccurredAt) : IDomainEvent
+{
+    public string EventType => "meta.game_streak_updated";
+}
+
+/// <summary>
+/// Emitted only when an achievement is newly inserted for the player.
+/// </summary>
+public sealed record AchievementUnlockedMetaEvent(
+    long SeasonId,
+    long ChatId,
+    long UserId,
+    string AchievementId,
+    string Title,
+    string Category,
+    string GameKey,
+    long OccurredAt) : IDomainEvent
+{
+    public string EventType => "meta.achievement_unlocked";
+}

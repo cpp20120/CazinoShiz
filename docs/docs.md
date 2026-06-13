@@ -8,6 +8,8 @@ Any fork or modification that adds real-money functionality violates the spirit 
 
 A Telegram casino / mini-game bot. Russian-language UI, ASP.NET Core 10. Implements:
 
+Diagram-first architecture reference: [arch.md](arch.md).
+
 | Family | Commands | Chips |
 |---|---|---|
 | Telegram-dice family | 🎰 (slots) · `/dice` 🎲 · `/darts` 🎯 · `/football` ⚽ · `/basket` 🏀 · `/bowling` 🎳 | Native Telegram dice rolls, optional drop of `/redeem` codes |
@@ -17,6 +19,7 @@ A Telegram casino / mini-game bot. Russian-language UI, ASP.NET Core 10. Impleme
 | PvP | `/challenge` | 1v1 stake duel layered on top of every other game |
 | Webapp | `/pixelbattle` | Telegram WebApp shared pixel canvas |
 | Economy | `/balance` · `/daily` · `/transfer` · `/redeem` · `/top` | Per-chat wallets, daily bonus drip, peer transfer with fee |
+| Seasonal meta | `/menu` · `/profile` · `/quests` · `/achievements` · `/clan` · `/tournament` | Levels, XP, rating, achievements, quests, clans, tournament brackets |
 | Admin Telegram commands | `/topall` · `/analytics` · `/chats` · `/codegen` · `/run …` · `/rename …` · `/horserun` | Restricted to `Bot:Admins` |
 
 ## Stack
@@ -32,7 +35,7 @@ A Telegram casino / mini-game bot. Russian-language UI, ASP.NET Core 10. Impleme
 | Analytics | ClickHouse 24.x via `ClickHouse.Client` 7.x (buffered, degrades gracefully) |
 | Dashboards | Grafana 11 with auto-provisioned ClickHouse + Prometheus datasources |
 | Graphics | SkiaSharp 3.x (horse race GIF renderer, offloaded to thread pool) |
-| Tests | xUnit, 680+ tests covering domain + services + router + framework |
+| Tests | xUnit, 700+ tests covering domain + services + router + framework |
 | Deploy | Docker Compose (bot + postgres + redis + clickhouse + prometheus + grafana) / Helm chart |
 
 ## Layout
@@ -75,6 +78,8 @@ CasinoShiz/
 │   ├── Games.Redeem/                 — freespin codes + emoji captcha
 │   ├── Games.Leaderboard/            — /top, /topall, /balance, /daily, /help
 │   ├── Games.Transfer/               — /transfer (peer coins in groups)
+│   ├── Games.Meta/                   — seasons, profiles, quests, achievements, clans,
+│   │                                   tournaments, risk flags, interactive /menu
 │   └── Games.Admin/                  — admin Telegram commands (/run, /rename, /chats,
 │                                       /analytics)
 ├── host/
@@ -84,7 +89,7 @@ CasinoShiz/
 │       ├── appsettings.json
 │       └── Pages/Admin/              — Razor pages for /admin UI
 └── tests/
-    └── CasinoShiz.Tests/             — 680+ xUnit tests
+    └── CasinoShiz.Tests/             — 700+ xUnit tests
 ```
 
 ## Architecture
@@ -756,6 +761,140 @@ Config (section `Games:leaderboard`):
 | `DefaultLimit` | `15` | How many rows to show by default |
 | `DaysOfInactivityToHide` | `7` | Filters out users with no recent activity unless `full` is passed |
 
+### Seasonal meta (`Games.Meta`)
+
+`Games.Meta` adds persistent progression on top of completed games. Game modules publish
+`GameCompletedMetaEvent`; three projections consume it:
+
+- `MetaXpProjection` updates the seasonal player profile, evaluates risk rules, and unlocks achievements.
+- `QuestProjection` advances matching daily and weekly quests.
+  - `ClanProjection` adds seasonal XP/rating contribution to the player's clan.
+
+All data is scoped by both active season and Telegram chat. A player can therefore have different
+seasonal profiles and clan membership in different chats, matching the per-chat wallet model.
+
+#### Interactive menu
+
+`/menu` opens one inline-keyboard message instead of sending a separate message for every screen.
+It displays the current wallet balance, season level, XP, division, rating, unclaimed quest rewards,
+achievement count, and active season end date.
+
+Menu screens:
+
+- profile and game statistics;
+- active quests, individual claim buttons, and `claim all`;
+- unlocked/locked achievements;
+- seasonal top;
+- compact game command reference;
+- daily bonus claim;
+- close/back navigation.
+
+Callback data contains the menu owner's Telegram user id. In group chats another user cannot
+navigate the menu, claim its quest rewards, or trigger its daily bonus.
+
+#### Seasons, XP, and rating
+
+The first profile request or completed game creates the player row for the active season.
+`/profile` and `/rank` are aliases for the same profile view.
+
+The profile tracks:
+
+- XP and level;
+- rating and derived division;
+- games, wins, and losses;
+- total seasonal stake and payout;
+- display name and last update time.
+
+Useful commands:
+
+| Command | Effect |
+|---|---|
+| `/season` | Active season name, status, start, and finish |
+| `/profile`, `/rank` | Player level, XP progress, rating, division, and statistics |
+| `/topseason` | Top 15 players in this chat by seasonal XP/rating |
+
+#### Achievements
+
+`/achievements` shows unlocked and locked seasonal achievements. Unlock writes are idempotent, so
+replayed domain events cannot issue the same achievement twice.
+
+Current groups include first game/win, game-count milestones, ten wins, game-specific participation,
+seasonal stake volume, and a large single-game payout.
+
+Two economy achievement thresholds are runtime-tunable:
+
+| Config key | Default | Meaning |
+|---|---:|---|
+| `Games:meta:HighRollerTotalStaked` | `1000` | Total seasonal stake required for **High Roller** |
+| `Games:meta:BigPayoutMinimum` | `1000` | Single-game payout required for **Большой занос** |
+
+The configured values are also used in achievement descriptions, so `/achievements` does not show
+stale hard-coded targets. Changing a threshold affects future completed-game evaluation; achievements
+already unlocked are not revoked.
+
+#### Quests
+
+`/quests` lists daily and weekly objectives with progress and coin/XP rewards.
+`/quest claim <id>` claims one completed quest. The interactive menu additionally supports claiming
+all currently completed quests.
+
+Quest rewards use idempotent economics operation ids and add XP through the active season service.
+Current quest templates cover play count, wins, specific games, and weekly stake volume.
+
+#### Clans
+
+Clans are scoped to one Telegram chat. A player can belong to at most one clan in that chat.
+Completed games contribute clan XP; wins and stake volume increase the contribution.
+
+| Command | Effect |
+|---|---|
+| `/clan create <TAG> <name>` | Create a clan and join as owner |
+| `/clan join <TAG>` | Join an existing clan |
+| `/clan info [TAG]` | Show own clan or a clan by tag |
+| `/clan members [TAG]` | List members |
+| `/clan top` | Seasonal clan leaderboard for this chat |
+
+#### Tournaments
+
+`/tournament` and `/tour` manage chat-scoped single-elimination brackets. Entry fees are debited
+idempotently, accumulated into the prize pool, refunded on cancellation, and paid once to the winner.
+Only the creator can start, report/finish, or cancel the tournament.
+
+Supported tournament game keys: `dice`, `dicecube` (alias `cube`), `darts`, `football`,
+`basketball`, and `bowling`. The bracket stores and advances reported winners; it does not
+automatically launch or verify the underlying game.
+
+| Command | Effect |
+|---|---|
+| `/tournament create <game> <entryFee> <maxPlayers>` | Create an open tournament |
+| `/tournament join <id>` | Pay entry fee and join |
+| `/tournament list` | List open tournaments in this chat |
+| `/tournament status <id>` | Tournament summary |
+| `/tournament players <id>` | Participant list |
+| `/tournament start <id>` | Create and start the bracket |
+| `/tournament bracket <id>` | Show rounds and match ids |
+| `/tournament report <matchId> <winnerUserId>` | Report one match result |
+| `/tournament finish <id> <winnerUserId>` | Manually finish and pay the prize |
+| `/tournament cancel <id>` | Cancel and refund joined players |
+
+#### Risk flags
+
+Completed games can create deduplicated seasonal flags for large multipliers, large payouts, and
+unusually high win rate. `/risk [list]`, `/risk resolve <id>`, and `/risk ignore <id>` operate on
+flags in the current chat. The handler is currently not role-gated, so deployments that expose this
+command should account for that until an explicit admin guard is added.
+
+Risk thresholds are currently internal rules in `RiskService`. In particular,
+`Games:meta:BigPayoutMinimum` controls the achievement only and does not change the risk flag threshold.
+
+Meta persistence is owned by `MetaMigrations`:
+
+- `meta_seasons`, `meta_season_players`;
+- `meta_player_achievements`, `meta_player_quests`;
+- `meta_clans`, `meta_clan_members`, `meta_season_clans`;
+- `meta_tournaments`, `meta_tournament_players`, `meta_tournament_matches`;
+- `meta_risk_flags`.
+
 ### Admin Telegram commands (`Games.Admin`)
 
 Restricted to `Bot:Admins` (super-admin) or `Games:admin:Admins` (per-module list).
@@ -804,6 +943,7 @@ Adding a migration = one new `Migration("name", "SQL")` entry in the module's `I
 | `pixelbattle` | `001_initial` | `pixelbattle_version_seq` + `pixelbattle_tiles` (each row stores `index`, `color`, `version`, `updated_by`, `updated_at`) |
 | `pick` | `001_lottery` | `pick_lottery` (one open pool per chat via partial unique index) + `pick_lottery_entries` (PK `(lottery_id, user_id)`) + sweeper index on `deadline_at WHERE status = 'open'` |
 | `pick` | `002_daily_lottery` | `pick_daily_lottery` (unique `(chat_id, day_local)`) + `pick_daily_lottery_tickets` (`BIGSERIAL` PK, one row per ticket) + sweeper / history indexes |
+| `meta` | `001`–`007` | Seasons/players, achievements, quests, clans, tournaments, risk flags, and tournament matches |
 
 ClickHouse migrations are not run by the bot — they live under `db/clickhouse/` and are applied manually (currently `001_rename_analytics_to_cazinoshiz.sql`, used during the `analytics` → `cazinoshiz` database rename).
 
@@ -1073,6 +1213,7 @@ The page combines a **live preview** (read-only effective values), a **JSON patc
 - **Blackjack** — `MinBet`, `MaxBet`, `HandTimeoutMs`
 - **Secret Hitler** — `BuyIn`
 - **Challenge / PvP** — `MinBet`, `MaxBet`, `HouseFeeBasisPoints`, `PendingTtlMinutes`
+- **Meta / achievements** — `HighRollerTotalStaked`, `BigPayoutMinimum`
 - **Pick / lotteries** — full set: `DefaultBet`, `MaxBet`, `HouseEdge`, streak (`StreakBonusPerWin`, `StreakCap`), chain (`ChainMaxDepth`, `ChainTtlSeconds`), `RevealAnimation`; lottery (`DurationSeconds`, `MinEntrantsToSettle`, `HouseFeePercent`, `MinStake`, `MaxStake`); daily lottery (`TicketPrice`, `MaxTicketsPerUserPerDay`, `MaxTicketsPerBuyCommand`, `HouseFeePercent`, `HistoryLimit`, `DrawHourLocal`, `TimezoneOffsetHoursOverride`)
 
 The save flow for every form is the same: `RuntimeTuningPayloadSanitizer.Sanitize` → `RuntimeTuningMerge.MergeSection<T>` for type-level validation → write to `runtime_tuning.payload` → `IRuntimeTuningAccessor.ReloadFromDatabaseAsync` → audit log entry → reload preview. The free-form **JSON patch** path runs through the same sanitize + validate steps.
@@ -1130,6 +1271,8 @@ Intended for operational questions: "which chat uses PvP most?", "which game typ
 | `pixelbattle:*` | See below |
 | `redeem:*` | `FreeSpinGameId`, `CaptchaItems`, `CaptchaTimeoutMs`, `MaxCodegenCount`, `Admins` |
 | `leaderboard:*` | `DefaultLimit`, `DaysOfInactivityToHide` |
+| `meta:HighRollerTotalStaked` | Seasonal stake threshold for the High Roller achievement; default `1000` |
+| `meta:BigPayoutMinimum` | Single-game payout threshold for the Большой занос achievement; default `1000` |
 | `admin:Admins` | Per-module admin list (unioned with `Bot:Admins`) |
 
 `Games:horse` — `HorseCount`, `MinBetsToRun`, `AnnounceDelayMs`, `AnnounceDelay1v1Ms` (used when `HorseCount` is 2, longer delay so the winner message does not appear before the GIF finishes), `TimezoneOffsetHours`, `Admins` (Telegram user IDs allowed to `/horserun` in addition to `Bot:Admins`), `AutoRunEnabled`, `AutoRunLocalHour`, `AutoRunLocalMinute`. When `AutoRunEnabled` is true, `HorseScheduledRaceJob` runs **one global** race per calendar day after the configured local time, if there are enough bets (`MinBetsToRun`). It settles like `/horserun global` and posts the result GIF only to chats that placed bets.
@@ -1283,7 +1426,7 @@ The `/analytics` Telegram command (admin-only, private DM only) wraps `ClickHous
 
 ## Testing
 
-680+ xUnit tests under `tests/CasinoShiz.Tests/`. No external database in CI — games use in-memory fakes (`FakeEconomicsService`, `InMemoryBlackjackHandStore`, etc.). `DailyBonusMath` unit-tests the bonus coin formula.
+700+ xUnit tests under `tests/CasinoShiz.Tests/`. No external database in CI — games use in-memory fakes (`FakeEconomicsService`, `InMemoryBlackjackHandStore`, etc.). `DailyBonusMath` unit-tests the bonus coin formula.
 
 ```bash
 dotnet test
@@ -1323,6 +1466,16 @@ All UI in Russian. Command names are ASCII.
 | `/balance` | Current coin balance for this chat's wallet |
 | `/daily` | Once per local day after offset: small % of balance, capped — see `Bot:DailyBonus` |
 | `/top [full]` | Per-chat leaderboard |
+| `/menu` | Interactive wallet/profile hub with quests, achievements, season top, daily bonus, and game navigation |
+| `/season` | Active season information |
+| `/profile`, `/rank` | Seasonal XP, level, rating, division, and player statistics |
+| `/topseason` | Seasonal leaderboard for this chat |
+| `/achievements` | Seasonal achievement progress |
+| `/quests` | Daily and weekly quest progress |
+| `/quest claim <id>` | Claim one completed quest reward |
+| `/clan create`, `join`, `info`, `members`, `top` | Chat-scoped clans and seasonal clan leaderboard |
+| `/tournament ...`, `/tour ...` | Create/join/manage chat-scoped tournament brackets |
+| `/risk list`, `/risk resolve <id>`, `/risk ignore <id>` | Current-chat risk flags; currently not role-gated |
 | `/help` | Command reference (HTML), dynamic — pulls actual config values |
 
 ### Bot-admin only (`Bot:Admins`)
