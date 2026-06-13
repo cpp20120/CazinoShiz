@@ -16,7 +16,7 @@ datasources:
       defaultDatabase: cazinoshiz
       username: default
     secureJsonData:
-      password: ""
+      password: ${CLICKHOUSE_PASSWORD}
     editable: true
 
   # access must be "proxy" (server-side, default) or "direct" (browser) — "server" is not valid in YAML

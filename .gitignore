@@ -18,6 +18,8 @@ experiments/
 publish/
 *.dmp
 *.gcdump
+*.sql
+nvim.log
 
 **/values.secrets.yaml
 **/values.secrets.yml

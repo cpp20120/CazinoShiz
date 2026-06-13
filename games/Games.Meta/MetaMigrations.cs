@@ -263,5 +263,27 @@ public sealed class MetaMigrations : IModuleMigrations
             CREATE INDEX IF NOT EXISTS ix_meta_event_log_time
                 ON meta_event_log (occurred_at DESC, id DESC);
             """),
+
+        new Migration("009_game_streaks", """
+            CREATE TABLE meta_player_game_streaks (
+                season_id       BIGINT      NOT NULL REFERENCES meta_seasons(id) ON DELETE CASCADE,
+                chat_id         BIGINT      NOT NULL,
+                user_id         BIGINT      NOT NULL,
+                game_key        TEXT        NOT NULL,
+                current_streak  INTEGER     NOT NULL DEFAULT 1,
+                best_streak     INTEGER     NOT NULL DEFAULT 1,
+                total_play_days INTEGER     NOT NULL DEFAULT 1,
+                last_played_on  DATE        NOT NULL,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+                PRIMARY KEY (season_id, chat_id, user_id, game_key),
+                CONSTRAINT ck_meta_game_streaks_current CHECK (current_streak >= 1),
+                CONSTRAINT ck_meta_game_streaks_best CHECK (best_streak >= current_streak),
+                CONSTRAINT ck_meta_game_streaks_days CHECK (total_play_days >= best_streak)
+            );
+
+            CREATE INDEX ix_meta_player_game_streaks_user
+                ON meta_player_game_streaks (season_id, chat_id, user_id, best_streak DESC);
+            """),
     ];
 }

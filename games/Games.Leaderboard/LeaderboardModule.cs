@@ -68,6 +68,9 @@ public sealed class LeaderboardModule : IModule
             // {5}=pickDef {6}=dailyTicketPrice {7}=dailyDrawHour {8}=utcOffsetText (e.g. "+7")
             ["help"] = "🎰 <b>CasinoShiz</b>\n\n"
 
+                + "<b>🧭 Главное меню</b>\n"
+                + "• /menu — профиль, квесты, ачивки, сезонный топ и игры\n\n"
+
                 + "<b>💰 Экономика</b>\n"
                 + "• /balance — твой баланс\n"
                 + "• /daily — ежедневный бонус (процент от баланса с потолком)\n"
@@ -106,6 +109,13 @@ public sealed class LeaderboardModule : IModule
 
                 + "<b>🖼 Прочее</b>\n"
                 + "• /pixelbattle — общий пиксель-холст (мини-приложение)\n\n"
+
+                + "<b>⭐ Сезон</b>\n"
+                + "• /profile — уровень, XP и рейтинг\n"
+                + "• /quests — активные квесты\n"
+                + "• /achievements — достижения\n"
+                + "• /clan — кланы\n"
+                + "• /tournament — турниры\n\n"
 
                 + "<i>Подсказка: у любой команды с аргументами есть <code>help</code> — "
                 + "<code>/transfer help</code>, <code>/pick help</code>, и т.д.</i>"

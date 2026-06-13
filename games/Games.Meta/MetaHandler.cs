@@ -11,6 +11,7 @@ namespace Games.Meta;
 [Command("/rank")]
 [Command("/topseason")]
 [Command("/achievements")]
+[Command("/streaks")]
 [Command("/quests")]
 [Command("/quest")]
 [Command("/clan")]
@@ -30,6 +31,8 @@ public sealed class MetaHandler(IMetaService meta, IQuestService quests, IClanSe
             await HandleTopSeasonAsync(ctx, msg);
         else if (msg.Text.StartsWith("/achievements", StringComparison.OrdinalIgnoreCase))
             await HandleAchievementsAsync(ctx, msg);
+        else if (msg.Text.StartsWith("/streaks", StringComparison.OrdinalIgnoreCase))
+            await HandleStreaksAsync(ctx, msg);
         else if (msg.Text.StartsWith("/quests", StringComparison.OrdinalIgnoreCase))
             await HandleQuestsAsync(ctx, msg);
         else if (msg.Text.StartsWith("/quest", StringComparison.OrdinalIgnoreCase))
@@ -119,13 +122,39 @@ public sealed class MetaHandler(IMetaService meta, IQuestService quests, IClanSe
         var total = achievements.Count;
 
         var lines = new List<string> { $"🏆 <b>Ачивки сезона</b> <code>{unlocked}/{total}</code>" };
-        foreach (var achievement in achievements.Take(20))
+        foreach (var achievement in achievements)
         {
             var mark = achievement.IsUnlocked ? "✅" : "⬜";
             var suffix = achievement.UnlockedAt is { } at ? $" · <code>{FormatDate(at)}</code>" : "";
             lines.Add($"{mark} <b>{Html(achievement.Title)}</b> — {Html(achievement.Description)}{suffix}");
         }
-        if (achievements.Count > 20) lines.Add($"…и ещё {achievements.Count - 20} ачивок.");
+
+        await ctx.Bot.SendMessage(msg.Chat.Id, string.Join("\n", lines),
+            parseMode: ParseMode.Html,
+            replyParameters: new ReplyParameters { MessageId = msg.MessageId },
+            cancellationToken: ctx.Ct);
+    }
+
+    private async Task HandleStreaksAsync(UpdateContext ctx, Message msg)
+    {
+        var user = msg.From;
+        if (user is null) return;
+
+        var streaks = await meta.GetGameStreaksAsync(msg.Chat.Id, user.Id, ctx.Ct);
+        var lines = new List<string>
+        {
+            "🔥 <b>Стрики по играм</b>",
+            "Серия растёт, если играть каждый день.",
+            "",
+        };
+
+        foreach (var streak in streaks)
+        {
+            var lastPlayed = streak.LastPlayedOn is { } day ? $" · <code>{day:dd.MM}</code>" : "";
+            lines.Add(
+                $"<b>{Html(streak.Title)}</b> {Html(streak.Command)} — сейчас <b>{streak.CurrentStreak}</b>, " +
+                $"рекорд <b>{streak.BestStreak}</b>{lastPlayed}");
+        }
 
         await ctx.Bot.SendMessage(msg.Chat.Id, string.Join("\n", lines),
             parseMode: ParseMode.Html,

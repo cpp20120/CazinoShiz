@@ -6,7 +6,7 @@ public sealed class MetaModule : IModule
 {
     public string Id => "meta";
     public string DisplayName => "⭐ Мета";
-    public string Version => "0.9.0";
+    public string Version => "0.10.0";
 
     public void ConfigureServices(IModuleServiceCollection services)
     {
@@ -26,6 +26,7 @@ public sealed class MetaModule : IModule
             .AddDomainEventSubscription<MetaXpProjection>("meta.game_completed")
             .AddDomainEventSubscription<QuestProjection>("meta.game_completed")
             .AddDomainEventSubscription<ClanProjection>("meta.game_completed")
+            .AddHandler<MetaMenuHandler>()
             .AddHandler<MetaHandler>()
             .AddHandler<TournamentHandler>()
             .AddHandler<RiskHandler>();
@@ -35,11 +36,13 @@ public sealed class MetaModule : IModule
 
     public IReadOnlyList<BotCommand> GetBotCommands() =>
     [
+        new BotCommand("/menu", "meta.cmd.menu"),
         new BotCommand("/season", "meta.cmd.season"),
         new BotCommand("/profile", "meta.cmd.profile"),
         new BotCommand("/rank", "meta.cmd.rank"),
         new BotCommand("/topseason", "meta.cmd.topseason"),
         new BotCommand("/achievements", "meta.cmd.achievements"),
+        new BotCommand("/streaks", "meta.cmd.streaks"),
         new BotCommand("/quests", "meta.cmd.quests"),
         new BotCommand("/quest", "meta.cmd.quest"),
         new BotCommand("/clan", "meta.cmd.clan"),
@@ -53,11 +56,13 @@ public sealed class MetaModule : IModule
         new LocaleBundle("ru", new Dictionary<string, string>
         {
             ["display_name"] = "Мета",
+            ["cmd.menu"] = "Интерактивное меню и профиль",
             ["cmd.season"] = "Текущий сезон",
             ["cmd.profile"] = "Профиль сезона",
             ["cmd.rank"] = "Ранг сезона",
             ["cmd.topseason"] = "Сезонный топ",
             ["cmd.achievements"] = "Ачивки сезона",
+            ["cmd.streaks"] = "Стрики по играм",
             ["cmd.quests"] = "Квесты сезона",
             ["cmd.quest"] = "Забрать награду за квест",
             ["cmd.clan"] = "Кланы сезона",

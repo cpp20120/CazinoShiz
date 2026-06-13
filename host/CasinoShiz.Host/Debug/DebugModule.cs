@@ -15,6 +15,7 @@ public sealed class DebugModule : IModule
             .AddProjection<DebugEsSmokeProjection>()
             .AddHandler<DebugHandler>()
             .AddHandler<DebugJobsHandler>()
+            .AddHandler<DebugEventsHandler>()
             .AddHandler<DebugEsSmokeHandler>()
             .AddHandler<DebugDispatchFailuresHandler>()
             .AddHandler<DebugRetryDispatchFailureHandler>();
