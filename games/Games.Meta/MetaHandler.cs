@@ -93,7 +93,7 @@ public sealed class MetaHandler(IMetaService meta, IQuestService quests, IClanSe
             Type = MessageEntityType.DateTime,
             Offset = offset,
             Length = fallback.Length,
-            UnixTime = checked((int)value.ToUnixTimeSeconds()),
+            UnixTime = value.UtcDateTime,
             DateTimeFormat = "dt",
         });
     }
