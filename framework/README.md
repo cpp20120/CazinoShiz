@@ -52,6 +52,16 @@ Admin/ Analytics/ Commands/ Composition/ Contracts/ Economics/ Events/
 Health/ Localization/ Persistence/ Pipeline/ Random/ Redis/ Runtime/ Security/
 ```
 
+`BotFramework.Sdk` is also feature-first. It keeps namespaces stable while the
+physical files are grouped for navigation:
+
+```text
+Admin/ Commands/ Configuration/ Domain/ Events/ Health/ Metrics/
+MiniGames/ Modules/ Pipeline/ Projections/ Snapshots/ UpdateHandling/
+```
+
+`BotFramework.Sdk.Testing` mirrors that split with `Repositories/` and `Fakes/`.
+
 ## Host composition
 
 ```csharp

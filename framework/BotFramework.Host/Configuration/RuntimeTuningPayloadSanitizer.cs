@@ -40,17 +40,17 @@ public static class RuntimeTuningPayloadSanitizer
             if (b.Count > 0) o["Bot"] = b;
         }
 
-        if (raw["Games"] is JsonObject games)
-        {
-            var g = new JsonObject();
-            foreach (var p in games)
-            {
-                if (AllowedGameKeys.Contains(p.Key))
-                    g[p.Key] = p.Value?.DeepClone();
-            }
+        if (raw["Games"] is not JsonObject games)
+            return o;
 
-            if (g.Count > 0) o["Games"] = g;
+        var g = new JsonObject();
+        foreach (var p in games)
+        {
+            if (AllowedGameKeys.Contains(p.Key))
+                g[p.Key] = p.Value?.DeepClone();
         }
+
+        if (g.Count > 0) o["Games"] = g;
 
         return o;
     }

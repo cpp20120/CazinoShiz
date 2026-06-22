@@ -48,7 +48,7 @@ public sealed class CommandBus(
 
     private Func<Task> BuildPipeline(CommandContext ctx, bool hasResult, Action<object?>? capture)
     {
-        Func<Task> terminal = () => InvokeHandlerAsync(ctx, hasResult, capture);
+        var terminal = () => InvokeHandlerAsync(ctx, hasResult, capture);
 
         for (var i = _middleware.Count - 1; i >= 0; i--)
         {

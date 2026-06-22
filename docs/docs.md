@@ -55,9 +55,16 @@ CasinoShiz/
 ├── docs/docs.md                      — this document
 ├── db/clickhouse/                    — manual ClickHouse migration scripts
 ├── framework/
-│   ├── BotFramework.Sdk/             — module contracts: IModule, IUpdateHandler, route attrs,
-│   │                                   IEconomicsService, IAnalyticsService, IDomainEventBus, …
-│   ├── BotFramework.Sdk.Testing/     — xUnit helpers for pure-domain tests
+│   ├── BotFramework.Sdk/             — module contracts split by feature:
+│   │   ├── Admin/                    — admin page contribution contracts
+│   │   ├── Commands/                 — command bus and middleware contracts
+│   │   ├── Domain/                   — aggregate/repository contracts
+│   │   ├── Events/                   — event bus, event store, meta and Telegram events
+│   │   ├── Modules/                  — IModule, DI adapter contracts, migrations
+│   │   ├── MiniGames/                — shared Telegram mini-game session/gate contracts
+│   │   ├── Projections/ Snapshots/   — projection and snapshot contracts
+│   │   └── UpdateHandling/           — handlers and route attributes
+│   ├── BotFramework.Sdk.Testing/     — xUnit helpers split into repositories and fakes
 │   └── BotFramework.Host/            — reusable runtime infrastructure split by feature:
 │       ├── Admin/                    — admin auth, audit, admin endpoint mount
 │       ├── Analytics/                — ClickHouse writer and query/report services

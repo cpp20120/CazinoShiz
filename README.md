@@ -125,8 +125,9 @@ Old WebApp buttons can keep stale Telegram `initData`; send a fresh `/pixelbattl
 
 ```text
 framework/
-  BotFramework.Sdk/          module contracts: IModule, IUpdateHandler, route attrs, economics, analytics
-  BotFramework.Sdk.Testing/  xUnit helpers for module tests
+  BotFramework.Sdk/          module contracts split by feature: admin, commands, domain,
+                             events, modules, mini-games, projections, update handling
+  BotFramework.Sdk.Testing/  xUnit helpers split into repositories and fakes
   BotFramework.Host/         runtime infrastructure split by feature: composition, pipeline, events,
                              economics, analytics, admin auth, persistence, runtime jobs
 games/
