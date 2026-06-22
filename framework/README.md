@@ -6,7 +6,7 @@
 |----------|------|---------------|
 | `BotFramework.Sdk` | Contracts visible to modules: modules, handlers, repositories, events, projections, economics, analytics | every `Games.*` project |
 | `BotFramework.Sdk.Testing` | xUnit helpers and in-memory test doubles | `tests/CasinoShiz.Tests` |
-| `BotFramework.Host` | Infrastructure: ASP.NET Core host, Telegram, Postgres, Redis/CAP, ClickHouse, migrations, admin UI | `host/CasinoShiz.Host` |
+| `BotFramework.Host` | Runtime infrastructure split by feature: composition, pipeline, commands, events, economics, analytics, persistence, runtime jobs, admin/security | `host/CasinoShiz.Host` |
 
 Modules should depend on `BotFramework.Sdk` only. The Host composes modules through `builder.AddBotFramework().AddModule<T>()` and owns infrastructure wiring.
 
@@ -14,9 +14,8 @@ Modules should depend on `BotFramework.Sdk` only. The Host composes modules thro
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ L4  Presentation  (games/*)                                                │
-│     IUpdateHandler + [Command]/[CallbackPrefix]/[MessageDice]/[ChannelPost]│
-│     IAdminPage                                                             │
+│ L4  Application  (games/*/Application)                                     │
+│     Handlers, services, jobs, projections, use-case result records         │
 ├────────────────────────────────────────────────────────────────────────────┤
 │ L3  Domain  (games/*/Domain)                                               │
 │     IAggregateRoot / IEventSourcedAggregate / IDomainEvent                 │
@@ -26,10 +25,31 @@ Modules should depend on `BotFramework.Sdk` only. The Host composes modules thro
 │     IRepository<T>, IEventStore, IProjection, IDomainEventBus              │
 │     IEconomicsService, IAnalyticsService, ILocalizer                       │
 ├────────────────────────────────────────────────────────────────────────────┤
-│ L1  Infrastructure  (BotFramework.Host)                                    │
+│ L1  Infrastructure  (games/*/Infrastructure + BotFramework.Host)           │
 │     Postgres, Redis/CAP, ClickHouse, Telegram Bot API, ASP.NET Core        │
-│     UpdateRouter, UpdatePipeline, migrations, admin UI                     │
+│     stores, migrations, rendering, UpdateRouter, UpdatePipeline, admin UI  │
 └────────────────────────────────────────────────────────────────────────────┘
+```
+
+## Physical Layout
+
+Game modules use a consistent directory shape:
+
+```text
+games/Games.X/
+  Application/
+    Handlers/ Services/ Jobs/ Projections/ Results/ Analytics/
+  Domain/
+    Configuration/ Commands/ Entities/ Events/ Rules/ Results/
+  Infrastructure/
+    Persistence/ Migrations/ Modules/ Rendering/ Integrations/ Queues/
+```
+
+`BotFramework.Host` mirrors the same feature-first approach:
+
+```text
+Admin/ Analytics/ Commands/ Composition/ Contracts/ Economics/ Events/
+Health/ Localization/ Persistence/ Pipeline/ Random/ Redis/ Runtime/ Security/
 ```
 
 ## Host composition

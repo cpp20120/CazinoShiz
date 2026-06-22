@@ -127,19 +127,28 @@ Old WebApp buttons can keep stale Telegram `initData`; send a fresh `/pixelbattl
 framework/
   BotFramework.Sdk/          module contracts: IModule, IUpdateHandler, route attrs, economics, analytics
   BotFramework.Sdk.Testing/  xUnit helpers for module tests
-  BotFramework.Host/         ASP.NET host services, router, migrations, economics, analytics, admin auth
+  BotFramework.Host/         runtime infrastructure split by feature: composition, pipeline, events,
+                             economics, analytics, admin auth, persistence, runtime jobs
 games/
   Games.Dice/ Games.DiceCube/ Games.Darts/ Games.Football/
   Games.Basketball/ Games.Bowling/ Games.Blackjack/ Games.Horse/
   Games.Poker/ Games.SecretHitler/ Games.Challenges/ Games.PixelBattle/
   Games.Redeem/ Games.Leaderboard/ Games.Transfer/ Games.Admin/
 host/
-  CasinoShiz.Host/           Program.cs composition root and Razor admin UI
+  CasinoShiz.Host/           Composition/Program.cs composition root and Razor admin UI
 tests/
   CasinoShiz.Tests/
 ```
 
-Each module owns its handlers, options, migrations, locale strings, and services. The host wires modules through `AddBotFramework().AddModule<T>()`.
+Each game module follows the same physical split:
+
+```text
+Application/      handlers, application services, jobs, projections, use-case results
+Domain/           pure game rules, state, events, commands, options, result records
+Infrastructure/   stores, migrations, module registration, rendering, external integrations
+```
+
+Within those layers, files are grouped into logical subfolders such as `Handlers`, `Services`, `Jobs`, `Results`, `Configuration`, `Events`, `Rules`, `Persistence`, `Modules`, and `Rendering`. The host wires modules through `AddBotFramework().AddModule<T>()`.
 
 ## Setup
 

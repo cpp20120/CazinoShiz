@@ -13,7 +13,7 @@ Diagram-first architecture reference: [arch.md](arch.md).
 | Family | Commands | Chips |
 |---|---|---|
 | Telegram-dice family | 🎰 (slots) · `/dice` 🎲 · `/darts` 🎯 · `/football` ⚽ · `/basket` 🏀 · `/bowling` 🎳 | Native Telegram dice rolls, optional drop of `/redeem` codes |
-| Multi-player table games | `/poker` · `/blackjack` · `/sh` (Secret Hitler) | Full DDD split (Domain / Application / Presentation) |
+| Multi-player table games | `/poker` · `/blackjack` · `/sh` (Secret Hitler) | Layered split (Domain / Application / Infrastructure) |
 | Race | `/horse` (`bet` / `info` / `result`) · admin `/horserun` | SkiaSharp GIF renderer + scheduled daily auto-run |
 | Casino-style pick games | `/pick` · `/picklottery` + `/pickjoin` · `/dailylottery` | Random outcome with configurable house edge, double-or-nothing chain, streak bonus, multi-user pools |
 | PvP | `/challenge` | 1v1 stake duel layered on top of every other game |
@@ -58,9 +58,18 @@ CasinoShiz/
 │   ├── BotFramework.Sdk/             — module contracts: IModule, IUpdateHandler, route attrs,
 │   │                                   IEconomicsService, IAnalyticsService, IDomainEventBus, …
 │   ├── BotFramework.Sdk.Testing/     — xUnit helpers for pure-domain tests
-│   └── BotFramework.Host/            — ASP.NET host, pipeline/router, economics, economics_ledger,
-│                                       IDailyBonusService, IRuntimeTuningAccessor, analytics, CAP,
-│                                       Redis Streams, admin pages, migrations runner
+│   └── BotFramework.Host/            — reusable runtime infrastructure split by feature:
+│       ├── Admin/                    — admin auth, audit, admin endpoint mount
+│       ├── Analytics/                — ClickHouse writer and query/report services
+│       ├── Commands/                 — command bus, command middleware, rate limiting
+│       ├── Composition/              — builder, module loading, framework migrations
+│       ├── Contracts/                — public host contracts exposed to modules
+│       ├── Economics/                — wallet, daily bonus, dice roll gates, tax, stores
+│       ├── Events/                   — event bus, dispatch failures, replay, stores, serialization
+│       ├── Persistence/              — Npgsql, Dapper handlers, EF repository
+│       ├── Pipeline/                 — update middleware and routing
+│       ├── Runtime/                  — hosted services and background jobs
+│       └── Security/                 — captcha services
 ├── games/
 │   ├── Games.Dice/                   — slots 🎰
 │   ├── Games.DiceCube/               — dice cube 🎲
@@ -70,8 +79,8 @@ CasinoShiz/
 │   ├── Games.Basketball/             — basketball 🏀
 │   ├── Games.Blackjack/              — blackjack
 │   ├── Games.Horse/                  — horse racing + GIF renderer
-│   ├── Games.Poker/                  — Texas Hold'em (DDD split)
-│   ├── Games.SecretHitler/           — hidden-role social deduction (DDD split)
+│   ├── Games.Poker/                  — Texas Hold'em
+│   ├── Games.SecretHitler/           — hidden-role social deduction
 │   ├── Games.Pick/                   — /pick, /picklottery + /pickjoin, /dailylottery
 │   ├── Games.Challenges/             — 1v1 PvP challenge layer over the other games
 │   ├── Games.PixelBattle/            — Telegram WebApp pixel canvas + SSE updates
@@ -84,13 +93,41 @@ CasinoShiz/
 │                                       /analytics)
 ├── host/
 │   └── CasinoShiz.Host/              — composition root
-│       ├── Program.cs                — AddBotFramework().AddModule<T>()…Build().UseBotFramework()
+│       ├── Composition/Program.cs    — AddBotFramework().AddModule<T>()…Build().UseBotFramework()
 │       ├── Debug/                    — optional debug module/handlers
 │       ├── appsettings.json
 │       └── Pages/Admin/              — Razor pages for /admin UI
 └── tests/
     └── CasinoShiz.Tests/             — 700+ xUnit tests
 ```
+
+Each `Games.*` module uses the same layer layout:
+
+```text
+Application/
+  Handlers/     Telegram command/callback handlers
+  Services/     application services and public module service interfaces
+  Jobs/         background jobs and timeout workers
+  Projections/  event projections
+  Results/      use-case result records
+  Analytics/    read-model snapshots and analytics DTOs
+Domain/
+  Configuration/ options records
+  Commands/      parsed command/action records
+  Entities/      game state and domain entities
+  Events/        domain events
+  Rules/         pure rules, transition engines, evaluators, registries
+  Results/       domain result records, statuses, errors, snapshots
+Infrastructure/
+  Persistence/   Dapper stores, rows, store interfaces
+  Migrations/    module migrations
+  Modules/       `IModule` registration classes
+  Rendering/     renderers and generated media
+  Integrations/  external adapters such as Telegram WebApp/SSE/bot senders
+  Queues/        Redis/queue adapters
+```
+
+`Games.Meta` is additionally grouped by feature inside layers (`Achievements`, `Clans`, `Quests`, `Risk`, `Seasons`, `Streaks`, `Tournaments`, `Catalog`, `History`) because it owns several progression subsystems.
 
 ## Architecture
 
@@ -358,18 +395,20 @@ Texas Hold'em over multiple chats. Full DDD split:
 ```
 games/Games.Poker/
 ├── Domain/                  — pure hand-level logic, no DB / no I/O
-│   ├── Deck.cs              (BuildShuffled, Draw, Parse)
-│   ├── HandEvaluator.cs     (7-card → HandRank via C(7,5)=21 enumeration)
-│   ├── PokerAction.cs       (PokerActionKind, AutoAction)
-│   ├── Transitions.cs       (ValidationResult, TransitionKind, Transition, ShowdownEntry)
-│   └── PokerDomain.cs       (StartHand, Validate, Apply, ResolveAfterAction, DecideAutoAction)
+│   ├── Commands/            PokerCommand, PokerCommandParser, PokerAction, AutoAction
+│   ├── Configuration/       PokerOptions
+│   ├── Entities/            PokerTable, PokerSeat
+│   ├── Events/              table/player/hand events
+│   ├── Results/             PokerError, TableSnapshot, typed result records
+│   └── Rules/               Deck, HandEvaluator, transitions, PokerDomain
 ├── Application/
-│   ├── PokerResults.cs      (PokerError, TableSnapshot, typed result records)
-│   └── PokerService.cs      (Dapper stores + Gate + domain calls + EconomicsService)
-└── Presentation/
-    ├── PokerCommand.cs          (discriminated union)
-    ├── PokerCommandParser.cs    (text + callback data → PokerCommand)
-    └── PokerStateRenderer.cs    (table + showdown → HTML)
+│   ├── Handlers/PokerHandler.cs
+│   ├── Jobs/PokerTurnTimeoutJob.cs
+│   └── Services/PokerService.cs (stores + gate + domain calls + EconomicsService)
+└── Infrastructure/
+    ├── Persistence/         table/seat stores
+    ├── Rendering/           PokerStateRenderer, PokerBoardRenderer
+    └── Modules/Migrations/  module registration and DDL
 ```
 
 Subcommands: `create`, `join`, `start`, `fold`, `call`, `raise <n>`, `check`, `leave`. Buy-in is debited on join with reason `poker.buyin`; `entry.Won` is credited at showdown with `poker.payout`. **No house rake** — the game is zero-sum among seated players.
@@ -407,15 +446,20 @@ Config: `Games:blackjack:MinBet`, `MaxBet`, `HandTimeoutMs`.
 ```
 games/Games.SecretHitler/
 ├── Domain/
-│   ├── ShPolicyDeck.cs       (17 cards: 6L + 11F, serialized as "LFFL…" strings; auto-reshuffle)
-│   ├── ShRoleDealer.cs       (player count → role distribution; uses RandomNumberGenerator)
-│   └── ShTransitions.cs      (full state machine: StartGame, Nomination, Vote, PresidentDiscard,
-│                                ChancellorEnact, FailElection, AdvancePresident)
+│   ├── Commands/             SecretHitlerCommand, SecretHitlerCommandParser
+│   ├── Configuration/        SecretHitlerOptions
+│   ├── Entities/             SecretHitlerGame, SecretHitlerPlayer
+│   ├── Events/               game/player lifecycle events
+│   ├── Results/              ShError, ShGameSnapshot, typed result records
+│   └── Rules/                ShPolicyDeck, ShRoleDealer, ShTransitions, ShValidation
 ├── Application/
-│   ├── ShResults.cs          (ShError, ShGameSnapshot, typed result records)
-│   └── SecretHitlerService.cs (Dapper + Gate + EconomicsService for buy-ins/refunds)
-└── Presentation/
-    ├── ShCommand.cs, ShCommandParser.cs, ShStateRenderer.cs
+│   ├── Handlers/SecretHitlerHandler.cs
+│   ├── Jobs/SecretHitlerGateCleanupJob.cs
+│   └── Services/SecretHitlerService.cs (Dapper + Gate + EconomicsService for buy-ins/refunds)
+└── Infrastructure/
+    ├── Persistence/          game/player stores
+    ├── Rendering/            SecretHitlerStateRenderer
+    └── Modules/Migrations/   module registration and DDL
 ```
 
 Subcommands: `create`, `join`, `start`, `nominate <user>`, `vote yes/no`, `leave`. Ledger reasons: `sh.buyin`, `sh.winnings`, `sh.refund` (cancelled / disbanded games).

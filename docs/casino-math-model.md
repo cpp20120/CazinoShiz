@@ -3,7 +3,8 @@
 Дата среза: 2026-06-22.
 
 Документ описывает текущую модель кода, а не желаемый баланс. Основные источники:
-`Games.*/*Service.cs`, `Games.*/*Options.cs`, `Games.Meta/*`, `BotFramework.Host/Services/*`.
+`games/Games.*/Application/Services/*`, `games/Games.*/Domain/Configuration/*`,
+`games/Games.Meta/*`, `framework/BotFramework.Host/Economics/*`.
 
 ## 1. Обозначения
 
@@ -545,7 +546,7 @@ reward(place) =
 
 ## 5. Quest rotation
 
-Каталог квестов хранится в `games/Games.Meta/quest-pool.json` и разворачивается в набор `QuestTemplate`.
+Каталог квестов хранится в `games/Games.Meta/Infrastructure/Catalog/quest-pool.json` и разворачивается в набор `QuestTemplate`.
 
 Активная ротация выбирается детерминированно:
 

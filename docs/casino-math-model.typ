@@ -367,7 +367,7 @@ reward(place) =
 
 == 5. Quest rotation
 
-Каталог квестов хранится в `games/Games.Meta/quest-pool.json`.
+Каталог квестов хранится в `games/Games.Meta/Infrastructure/Catalog/quest-pool.json`.
 
 Активная ротация выбирается детерминированно:
 

@@ -255,7 +255,7 @@ Most command paths follow the same dependency direction:
 ```mermaid
 flowchart LR
     route["Route attribute"]
-    handler["Presentation handler"]
+    handler["Application handler"]
     service["Application service"]
     domain["Domain model / rules"]
     store["Store or repository"]
