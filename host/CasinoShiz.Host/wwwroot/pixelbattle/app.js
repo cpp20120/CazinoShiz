@@ -136,7 +136,13 @@ async function updateGrid(index, color) {
   });
 
   if (!response.ok) {
-    const message = await response.json().catch(() => "failed to update grid");
+    let message = "failed to update grid";
+    try {
+      const body = await response.json();
+      message = typeof body === "string" ? body : body?.message ?? JSON.stringify(body);
+    } catch (error) {
+      console.warn("Failed to parse pixel update error response.", error);
+    }
     setStatus(String(message));
     return;
   }
