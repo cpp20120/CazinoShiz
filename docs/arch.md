@@ -172,6 +172,7 @@ sequenceDiagram
     participant Scope as Request DI scope
     participant Error as Exception middleware
     participant Dedup as Deduplication middleware
+    participant Analytics as Update analytics middleware
     participant Log as Logging middleware
     participant Rate as Rate-limit middleware
     participant Known as Known-chats middleware
@@ -182,7 +183,8 @@ sequenceDiagram
     Source->>Scope: create scope and UpdateContext
     Scope->>Error: InvokeAsync
     Error->>Dedup: next
-    Dedup->>Log: next
+    Dedup->>Analytics: next
+    Analytics->>Log: next
     Log->>Rate: next
     Rate->>Known: next
     Known->>Router: dispatch update
@@ -377,6 +379,34 @@ Subscriptions use event-name patterns such as `sh.game_ended`, `sh.*`,
 `*.game_ended`, or `*`. Subscribers must be idempotent because distributed
 delivery is at least once.
 
+## Telegram Outbox
+
+Critical Telegram messages emitted outside the live update response path are
+persisted before sending. This covers event subscribers and background jobs where
+`DB/event -> Telegram side effect` should survive process restarts and transient
+Telegram failures.
+
+```mermaid
+flowchart LR
+    subscriber["Event subscriber / job"]
+    api["ITelegramOutbox"]
+    table[("telegram_outbox")]
+    dispatcher["TelegramOutboxDispatcherService"]
+    bot["Telegram Bot API"]
+
+    subscriber -->|"EnqueueAsync<br/>optional dedupe_key"| api
+    api --> table
+    dispatcher -->|"claim due rows<br/>FOR UPDATE SKIP LOCKED"| table
+    dispatcher -->|"SendMessage"| bot
+    bot -->|"message id"| dispatcher
+    dispatcher -->|"mark sent / schedule retry"| table
+```
+
+`dedupe_key` suppresses duplicate enqueues from repeated event handling. The
+dispatcher records `telegram_message_id` on success and applies exponential retry
+metadata on failure. Live handler replies, validation errors, menus, and other
+immediate user interactions still use direct `ctx.Bot.SendMessage(...)` calls.
+
 ## Seasonal Meta Projections
 
 Game modules publish `meta.game_completed`. The Meta module projects the event into
@@ -555,13 +585,16 @@ monitoring stack are external or disabled by default in that topology.
 flowchart LR
     updateFailure["Update processing failure"]
     eventFailure["Projection/event dispatch failure"]
+    telegramFailure["Async Telegram send failure"]
     infraFailure["Optional analytics failure"]
 
     updateRetry["Redis pending retry<br/>or polling retry"]
     updateDlq["Update DLQ"]
     failureStore[("event_dispatch_failures")]
+    telegramOutbox[("telegram_outbox")]
     retry["Admin/debug retry"]
     replay["Event replay / projection rebuild"]
+    telegramRetry["Outbox dispatcher retry"]
     graceful["Log and continue<br/>core gameplay remains available"]
 
     updateFailure --> updateRetry
@@ -569,6 +602,8 @@ flowchart LR
     eventFailure --> failureStore
     failureStore --> retry
     failureStore --> replay
+    telegramFailure --> telegramOutbox
+    telegramOutbox --> telegramRetry
     infraFailure --> graceful
 ```
 

@@ -35,7 +35,7 @@ Diagram-first architecture reference: [arch.md](arch.md).
 | Analytics | ClickHouse 24.x via `ClickHouse.Client` 7.x (buffered, degrades gracefully) |
 | Dashboards | Grafana 11 with auto-provisioned ClickHouse + Prometheus datasources |
 | Graphics | SkiaSharp 3.x (horse race GIF renderer, offloaded to thread pool) |
-| Tests | xUnit, 700+ tests covering domain + services + router + framework |
+| Tests | xUnit, 879 tests covering domain + services + router + framework |
 | Deploy | Docker Compose (bot + postgres + redis + clickhouse + prometheus + grafana) / Helm chart |
 
 ## Layout
@@ -105,7 +105,7 @@ CasinoShiz/
 │       ├── appsettings.json
 │       └── Pages/Admin/              — Razor pages for /admin UI
 └── tests/
-    └── CasinoShiz.Tests/             — 700+ xUnit tests
+    └── CasinoShiz.Tests/             — 879 xUnit tests
 ```
 
 Each `Games.*` module uses the same layer layout:
@@ -154,16 +154,19 @@ flowchart TD
     C -- No --> F
     
     F --> G[ExceptionMiddleware]
-    G --> H[LoggingMiddleware]
-    H --> I[RateLimitMiddleware]
-    I --> J[UpdateRouter]
+    G --> H[UpdateDeduplicationMiddleware]
+    H --> I[UpdateAnalyticsMiddleware]
+    I --> J[LoggingMiddleware]
+    J --> K[RateLimitMiddleware]
+    K --> L[KnownChatsMiddleware]
+    L --> M[UpdateRouter]
     
-    J -->|Attribute Match| K[IUpdateHandler.HandleAsync]
-    K --> L[Feature Service e.g. DiceService]
-    L --> M[(PostgreSQL / Dapper)]
-    L --> N[IEconomicsService]
-    L --> O[IAnalyticsService]
-    O --> P[(ClickHouse)]
+    M -->|Attribute Match| N[IUpdateHandler.HandleAsync]
+    N --> O[Feature Service e.g. DiceService]
+    O --> P[(PostgreSQL / Dapper)]
+    O --> Q[IEconomicsService]
+    O --> R[IAnalyticsService]
+    R --> S[(ClickHouse)]
 ```
 
 When `Redis:Enabled=true`, the polling loop and webhook both publish updates to Redis Streams instead of dispatching inline. `UpdateStreamWorkerService` reads from N partitioned streams (keyed by `chatId % N`) in consumer groups and invokes the same `UpdatePipeline`.
@@ -1485,7 +1488,7 @@ The `/analytics` Telegram command (admin-only, private DM only) wraps `ClickHous
 
 ## Testing
 
-700+ xUnit tests under `tests/CasinoShiz.Tests/`. No external database in CI — games use in-memory fakes (`FakeEconomicsService`, `InMemoryBlackjackHandStore`, etc.). `DailyBonusMath` unit-tests the bonus coin formula.
+879 xUnit tests under `tests/CasinoShiz.Tests/`. No external database in CI — games use in-memory fakes (`FakeEconomicsService`, `InMemoryBlackjackHandStore`, etc.). `DailyBonusMath` unit-tests the bonus coin formula.
 
 ```bash
 dotnet test
