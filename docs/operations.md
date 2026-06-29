@@ -1,6 +1,5 @@
 # Operations runbook
 
-This document covers runtime operations that are useful before touching deeper Event Sourcing migrations.
 
 CasinoShiz is a simulation-only bot. All balances are virtual credits with no real-money value.
 
