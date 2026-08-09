@@ -18,10 +18,16 @@ public sealed class ShLeaveAction : IGameAction<ShLeaveCommand, SecretHitlerExec
         state.Players.Remove(actor);
         var closed = state.Players.Count == 0;
         if (closed) state.Game.Status = ShStatus.Closed;
+        IDomainEvent[] events = actor.WagerBetId is null
+            ? []
+            : [new SecretHitlerWagerOutcomeDeclared(actor.WagerBetId, actor.UserId.ToString(), "refund",
+                System.Text.Json.JsonSerializer.Serialize(new { payout = state.Game.BuyIn }),
+                input.UtcNow.ToUnixTimeMilliseconds())];
         return new(DecisionStatus.Accepted, state,
             new(ShError.None, closed ? null : SecretHitlerExecutionRules.Snapshot(state), closed),
-            [], [], [], [], [], CustomEffects:
-            [WalletEconomyEffect.Credit(actor.UserId, actor.ChatId, state.Game.BuyIn, "sh.leave")]);
+            [], [], [], events, [], CustomEffects: actor.WagerBetId is null
+                ? [WalletEconomyEffect.Credit(actor.UserId, actor.ChatId, state.Game.BuyIn, "sh.leave")]
+                : []);
     }
 
     private static GameDecision<SecretHitlerExecutionState, ShLeaveResult> Reject(

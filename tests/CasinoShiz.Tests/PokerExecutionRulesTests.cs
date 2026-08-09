@@ -1,5 +1,7 @@
 using BotFramework.Sdk.Execution;
 using Games.Poker.Application.Execution;
+using Games.Poker.Application.Wagering;
+using Games.Poker.Domain.Events;
 using Xunit;
 
 using PokerDeck = Games.Poker.Domain.Rules.Deck;
@@ -136,6 +138,56 @@ public sealed class PokerExecutionRulesTests
         var ended = Assert.IsType<PokerHandEnded>(Assert.Single(resolution.Events));
         Assert.Equal("last_standing", ended.Reason);
         Assert.Equal(50, ended.Winners.Single().Amount);
+    }
+
+    [Fact]
+    public void Resolve_WagerSeatsEmitPerPlayerOutcomesWithoutWalletEffects()
+    {
+        var table = new PokerTable
+        {
+            InviteCode = "ABCDE", Status = PokerTableStatus.HandActive,
+            Phase = PokerPhase.Turn, Pot = 50,
+        };
+        var winner = Seat(1, 0);
+        winner.WagerBetId = "bet-winner";
+        var loser = Seat(2, 1, status: PokerSeatStatus.Folded, stack: 0);
+        loser.WagerBetId = "bet-loser";
+        var resolution = PokerExecutionRules.Resolve(
+            new PokerExecutionState(table, [winner, loser], null), Now);
+
+        Assert.Empty(resolution.Effects);
+        var outcomes = resolution.Events.OfType<PokerWagerOutcomeDeclared>().ToArray();
+        Assert.Equal(2, outcomes.Length);
+        Assert.Contains(outcomes, outcome => outcome.BetId == "bet-winner"
+            && outcome.PlayerId == "1" && outcome.OutcomeCode == "win"
+            && outcome.Evidence.Contains("50", StringComparison.Ordinal));
+        Assert.Contains(outcomes, outcome => outcome.BetId == "bet-loser"
+            && outcome.PlayerId == "2" && outcome.OutcomeCode == "loss"
+            && outcome.Evidence.Contains("0", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void WagerCreateUsesEconomyFreeStateAndEffects()
+    {
+        var stateProperties = typeof(PokerWagerState).GetProperties()
+            .Select(property => property.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Balance", stateProperties);
+        Assert.DoesNotContain("Stake", stateProperties);
+        Assert.DoesNotContain("Payout", stateProperties);
+
+        var decision = new PokerWagerCreateAction().Decide(new GameActionInput<PokerWagerState, PokerCreateCommand>(
+            new PokerCreateCommand(1, "alice", 10, "create", 100, 1, 2, [], "bet-1"),
+            new PokerWagerState(null, []),
+            new WalletSnapshot(0),
+            new Dictionary<string, QuotaSnapshot>(),
+            new EntropyValue([new KeyValuePair<string, double>(PokerExecutionRules.InviteEntropy, 0.1)]),
+            Now));
+
+        Assert.Equal(DecisionStatus.Accepted, decision.Status);
+        Assert.Empty(decision.Economy);
+        Assert.Empty(decision.CustomEffects ?? []);
+        Assert.Equal("bet-1", Assert.Single(decision.NewState.Seats).WagerBetId);
     }
 
     private static readonly DateTimeOffset Now = new(2026, 7, 13, 12, 0, 0, TimeSpan.Zero);

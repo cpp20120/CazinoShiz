@@ -8,7 +8,8 @@ public sealed class ShJoinAction : IGameAction<ShJoinCommand, SecretHitlerExecut
     public GameDecision<SecretHitlerExecutionState, ShJoinResult> Decide(
         GameActionInput<SecretHitlerExecutionState, ShJoinCommand> input)
     {
-        if (input.State.ActorBalance < input.Command.BuyIn) return Reject(input.State, ShError.NotEnoughCoins);
+        if (input.Command.WagerBetId is null && input.State.ActorBalance < input.Command.BuyIn)
+            return Reject(input.State, ShError.NotEnoughCoins);
         if (input.State.ActorAlreadyInGame) return Reject(input.State, ShError.AlreadyInGame);
         if (input.State.Game is not { } source || source.Status is ShStatus.Closed or ShStatus.Completed)
             return Reject(input.State, ShError.GameNotFound);
@@ -24,7 +25,7 @@ public sealed class ShJoinAction : IGameAction<ShJoinCommand, SecretHitlerExecut
         {
             InviteCode = source.InviteCode, Position = position, UserId = input.Command.ActorUserId,
             DisplayName = input.Command.DisplayName, ChatId = input.Command.ActorChatId,
-            IsAlive = true, JoinedAt = now,
+            IsAlive = true, JoinedAt = now, WagerBetId = input.Command.WagerBetId,
         });
         state.Game!.Pot += input.Command.BuyIn;
         state.Game.LastActionAt = now;
@@ -32,8 +33,10 @@ public sealed class ShJoinAction : IGameAction<ShJoinCommand, SecretHitlerExecut
             new(ShError.None, SecretHitlerExecutionRules.Snapshot(state), state.Players.Count, ShRoleDealer.MaxPlayers),
             [], [], [], [new SecretHitlerPlayerJoined(source.InviteCode, input.Command.ActorUserId,
                 position, input.Command.BuyIn, now)], [],
-            CustomEffects: [WalletEconomyEffect.Debit(input.Command.ActorUserId,
-                input.Command.ActorChatId, input.Command.BuyIn, "sh.join")]);
+            CustomEffects: input.Command.WagerBetId is null
+                ? [WalletEconomyEffect.Debit(input.Command.ActorUserId,
+                    input.Command.ActorChatId, input.Command.BuyIn, "sh.join")]
+                : []);
     }
 
     private static GameDecision<SecretHitlerExecutionState, ShJoinResult> Reject(

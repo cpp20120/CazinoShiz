@@ -231,7 +231,7 @@ internal sealed class AtomicGameExecutor<TCommand, TState, TResult>(
             yield return $"game:{descriptor.GameId}:{aggregateId}";
         if (descriptor.UsesPrimaryWallet)
             yield return wallet.LockKey;
-        if (tenantContext?.PlayerId is { } player)
+        if (descriptor.UsesPrimaryWallet && tenantContext?.PlayerId is { } player)
             yield return $"tenant-wallet:{tenantContext.TenantId.Value}:{tenantContext.ScopeId.Value}:{player.Value}";
         foreach (var lockKey in descriptor.AdditionalLockKeys(command))
             yield return lockKey;

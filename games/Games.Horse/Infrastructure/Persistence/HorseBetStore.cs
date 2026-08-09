@@ -10,7 +10,7 @@ public sealed class HorseBetStore(INpgsqlConnectionFactory connections) : IHorse
         var rows = await conn.QueryAsync<HorseBetRow>(new CommandDefinition(
             """
             SELECT id AS Id, race_date AS RaceDate, user_id AS UserId, balance_scope_id AS BalanceScopeId,
-                   horse_id AS HorseId, amount AS Amount
+                   horse_id AS HorseId, amount AS Amount, wager_bet_id AS WagerBetId
             FROM horse_bets WHERE race_date = @raceDate
             """,
             new { raceDate },
@@ -25,7 +25,7 @@ public sealed class HorseBetStore(INpgsqlConnectionFactory connections) : IHorse
         var rows = await conn.QueryAsync<HorseBetRow>(new CommandDefinition(
             """
             SELECT id AS Id, race_date AS RaceDate, user_id AS UserId, balance_scope_id AS BalanceScopeId,
-                   horse_id AS HorseId, amount AS Amount
+                   horse_id AS HorseId, amount AS Amount, wager_bet_id AS WagerBetId
             FROM horse_bets
             WHERE race_date = @raceDate AND balance_scope_id = @balanceScopeId
             """,
@@ -38,8 +38,8 @@ public sealed class HorseBetStore(INpgsqlConnectionFactory connections) : IHorse
     {
         await using var conn = await connections.OpenAsync(ct);
         await conn.ExecuteAsync(new CommandDefinition("""
-            INSERT INTO horse_bets (id, race_date, user_id, balance_scope_id, horse_id, amount)
-            VALUES (@Id, @RaceDate, @UserId, @BalanceScopeId, @HorseId, @Amount)
+            INSERT INTO horse_bets (id, race_date, user_id, balance_scope_id, horse_id, amount, wager_bet_id)
+            VALUES (@Id, @RaceDate, @UserId, @BalanceScopeId, @HorseId, @Amount, @WagerBetId)
             ON CONFLICT (id) DO NOTHING
             """,
             bet,

@@ -54,5 +54,10 @@ public sealed class SecretHitlerMigrations : IModuleMigrations
             ALTER TABLE secret_hitler_games
                 ADD COLUMN IF NOT EXISTS state_message_id INTEGER NULL;
             """),
+        new Migration("003_wager_bet_id", """
+            ALTER TABLE secret_hitler_players ADD COLUMN IF NOT EXISTS wager_bet_id TEXT NULL;
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_sh_players_wager_bet_id
+                ON secret_hitler_players (wager_bet_id) WHERE wager_bet_id IS NOT NULL;
+            """),
     ];
 }

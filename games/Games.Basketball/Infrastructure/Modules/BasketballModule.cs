@@ -2,8 +2,10 @@
 namespace Games.Basketball.Infrastructure.Modules;
 
 using BotFramework.Host.Execution;
+using BotFramework.Host.Wagering;
 using BotFramework.Sdk.Execution;
 using Games.Basketball.Application.Execution;
+using Games.Basketball.Application.Wagering;
 using Games.Basketball.Infrastructure.Configuration;
 
 public sealed class BasketballModule : IModule
@@ -26,7 +28,9 @@ public sealed class BasketballModule : IModule
             .AddScoped<IGameAction<BasketballAbortCommand, BasketballBetState, BasketballAbortResult>, BasketballAbortAction>()
             .AddScoped<GameExecutionDescriptor<BasketballAbortCommand, BasketballBetState, BasketballAbortResult>, BasketballAbortDescriptor>()
             .AddScoped<IGameStateStore<BasketballAbortCommand, BasketballBetState>, BasketballBetStateStore>()
-            .AddScoped<IBasketballBetStore, BasketballBetStore>();
+            .AddScoped<IBasketballBetStore, BasketballBetStore>()
+            .AddScoped<IWagerGameResolver, BasketballWagerResolver>()
+            .AddScoped<IWagerPayoutPolicy, BasketballWagerPayoutPolicy>();
     }
 
     public IModuleMigrations GetMigrations() => new BasketballMigrations();

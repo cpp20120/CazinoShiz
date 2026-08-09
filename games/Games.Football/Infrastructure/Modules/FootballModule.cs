@@ -2,8 +2,10 @@
 namespace Games.Football.Infrastructure.Modules;
 
 using BotFramework.Host.Execution;
+using BotFramework.Host.Wagering;
 using BotFramework.Sdk.Execution;
 using Games.Football.Application.Execution;
+using Games.Football.Application.Wagering;
 using Games.Football.Infrastructure.Configuration;
 
 public sealed class FootballModule : IModule
@@ -26,7 +28,9 @@ public sealed class FootballModule : IModule
             .AddScoped<IGameAction<FootballAbortCommand, FootballBetState, FootballAbortResult>, FootballAbortAction>()
             .AddScoped<GameExecutionDescriptor<FootballAbortCommand, FootballBetState, FootballAbortResult>, FootballAbortDescriptor>()
             .AddScoped<IGameStateStore<FootballAbortCommand, FootballBetState>, FootballBetStateStore>()
-            .AddScoped<IFootballBetStore, FootballBetStore>();
+            .AddScoped<IFootballBetStore, FootballBetStore>()
+            .AddScoped<IWagerGameResolver, FootballWagerResolver>()
+            .AddScoped<IWagerPayoutPolicy, FootballWagerPayoutPolicy>();
     }
 
     public IModuleMigrations GetMigrations() => new FootballMigrations();

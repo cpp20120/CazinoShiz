@@ -47,7 +47,11 @@ public sealed class PostgresJsonGameStateStore<TCommand, TState, TResult>(
                   AND s.scope_id = @scopeId
                   AND a.game_id = @gameId
                   AND a.aggregate_id = @aggregateId
-                FOR UPDATE
+                -- The tenant and scope rows are lookup data shared by every
+                -- aggregate in this scope. Locking a joined query without an
+                -- OF list locks all three relations, serializing unrelated
+                -- players and creating deadlock cycles under write load.
+                FOR UPDATE OF a
                 """,
                 new
                 {

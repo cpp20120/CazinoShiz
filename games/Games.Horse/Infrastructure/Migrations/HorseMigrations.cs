@@ -47,5 +47,11 @@ public sealed class HorseMigrations : IModuleMigrations
                 ON horse_bets (race_date, balance_scope_id);
             DROP INDEX IF EXISTS ix_horse_bets_race_date;
             """),
+
+        new Migration("006_wager_bet_id", """
+            ALTER TABLE horse_bets ADD COLUMN IF NOT EXISTS wager_bet_id TEXT NULL;
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_horse_bets_wager_bet_id
+                ON horse_bets (wager_bet_id) WHERE wager_bet_id IS NOT NULL;
+            """),
     ];
 }

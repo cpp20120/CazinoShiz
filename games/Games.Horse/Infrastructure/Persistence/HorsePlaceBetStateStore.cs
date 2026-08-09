@@ -10,7 +10,7 @@ public sealed class HorsePlaceBetStateStore : IGameStateStore<HorsePlaceBetComma
         HorsePlaceBetCommand command, IGameExecutionContext context, CancellationToken ct) =>
         new(await context.QuerySingleOrDefaultAsync<HorseBetRow>("""
             SELECT id AS Id,race_date AS RaceDate,user_id AS UserId,balance_scope_id AS BalanceScopeId,
-                   horse_id AS HorseId,amount AS Amount
+                   horse_id AS HorseId,amount AS Amount,wager_bet_id AS WagerBetId
             FROM horse_bets WHERE id=@BetId FOR UPDATE
             """, new { command.BetId }, ct));
 

@@ -2,8 +2,10 @@
 namespace Games.DiceCube.Infrastructure.Modules;
 
 using BotFramework.Host.Execution;
+using BotFramework.Host.Wagering;
 using BotFramework.Sdk.Execution;
 using Games.DiceCube.Application.Execution;
+using Games.DiceCube.Application.Wagering;
 using Games.DiceCube.Infrastructure.Persistence;
 using Games.DiceCube.Infrastructure.Configuration;
 
@@ -27,7 +29,9 @@ public sealed class DiceCubeModule : IModule
             .AddScoped<IGameAction<DiceCubeAbortCommand, DiceCubePlaceBetState, DiceCubeAbortResult>, DiceCubeAbortAction>()
             .AddScoped<GameExecutionDescriptor<DiceCubeAbortCommand, DiceCubePlaceBetState, DiceCubeAbortResult>, DiceCubeAbortDescriptor>()
             .AddScoped<IGameStateStore<DiceCubeAbortCommand, DiceCubePlaceBetState>, DiceCubeBetStateStore>()
-            .AddScoped<IDiceCubeBetStore, DiceCubeBetStore>();
+            .AddScoped<IDiceCubeBetStore, DiceCubeBetStore>()
+            .AddScoped<IWagerGameResolver, DiceCubeWagerResolver>()
+            .AddScoped<IWagerPayoutPolicy, DiceCubeWagerPayoutPolicy>();
     }
 
     public IModuleMigrations GetMigrations() => new DiceCubeMigrations();

@@ -18,7 +18,7 @@ public sealed class PokerSeatStore(INpgsqlConnectionFactory connections) : IPoke
         "stack AS Stack, hole_cards AS HoleCards, status AS Status, current_bet AS CurrentBet, " +
         "total_committed AS TotalCommitted, has_acted_round AS HasActedThisRound, " +
         "chat_id AS ChatId, state_message_id AS StateMessageId, " +
-        "joined_at AS JoinedAt";
+        "joined_at AS JoinedAt, wager_bet_id AS WagerBetId";
 
     public async Task<PokerSeat?> FindByUserAsync(long userId, CancellationToken ct)
     {
@@ -74,10 +74,12 @@ public sealed class PokerSeatStore(INpgsqlConnectionFactory connections) : IPoke
         await conn.ExecuteAsync(new CommandDefinition("""
             INSERT INTO poker_seats
                 (invite_code, position, user_id, display_name, stack, hole_cards, status,
-                 current_bet, total_committed, has_acted_round, chat_id, state_message_id, joined_at)
+                 current_bet, total_committed, has_acted_round, chat_id, state_message_id, joined_at,
+                 wager_bet_id)
             VALUES
                 (@InviteCode, @Position, @UserId, @DisplayName, @Stack, @HoleCards, @Status,
-                 @CurrentBet, @TotalCommitted, @HasActedThisRound, @ChatId, @StateMessageId, @JoinedAt)
+                 @CurrentBet, @TotalCommitted, @HasActedThisRound, @ChatId, @StateMessageId, @JoinedAt,
+                 @WagerBetId)
             """,
             SeatRow.From(seat),
             cancellationToken: ct));
@@ -124,12 +126,13 @@ public sealed class PokerSeatStore(INpgsqlConnectionFactory connections) : IPoke
     private sealed record SeatRow(
         string InviteCode, int Position, long UserId, string DisplayName,
         int Stack, string HoleCards, int Status, int CurrentBet,
-        int TotalCommitted, bool HasActedThisRound, long ChatId, int? StateMessageId, long JoinedAt)
+        int TotalCommitted, bool HasActedThisRound, long ChatId, int? StateMessageId, long JoinedAt,
+        string? WagerBetId)
     {
         public static SeatRow From(PokerSeat s) => new(
             s.InviteCode, s.Position, s.UserId, s.DisplayName,
             s.Stack, s.HoleCards, (int)s.Status, s.CurrentBet,
-            s.TotalCommitted, s.HasActedThisRound, s.ChatId, s.StateMessageId, s.JoinedAt);
+            s.TotalCommitted, s.HasActedThisRound, s.ChatId, s.StateMessageId, s.JoinedAt, s.WagerBetId);
 
         public PokerSeat ToEntity() => new()
         {
@@ -146,6 +149,7 @@ public sealed class PokerSeatStore(INpgsqlConnectionFactory connections) : IPoke
             ChatId = ChatId,
             StateMessageId = StateMessageId,
             JoinedAt = JoinedAt,
+            WagerBetId = WagerBetId,
         };
     }
 }

@@ -12,4 +12,18 @@ public sealed class LocalIntegrationCommandPublisher(IServiceProvider services)
         foreach (var handler in handlers)
             await handler.HandleAsync(command, ct);
     }
+
+    public async Task SendAsync(IIntegrationCommand command, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        var handlerType = typeof(IIntegrationCommandHandler<>).MakeGenericType(command.GetType());
+        var method = handlerType.GetMethod(nameof(IIntegrationCommandHandler<IIntegrationCommand>.HandleAsync))
+            ?? throw new InvalidOperationException($"Integration command handler is missing for '{command.GetType().Name}'.");
+        foreach (var handler in services.GetServices(handlerType))
+        {
+            var task = (Task?)method.Invoke(handler, [command, ct])
+                ?? throw new InvalidOperationException($"Integration command handler returned null for '{command.GetType().Name}'.");
+            await task;
+        }
+    }
 }

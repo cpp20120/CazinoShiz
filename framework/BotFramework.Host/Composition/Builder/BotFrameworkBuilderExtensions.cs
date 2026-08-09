@@ -28,8 +28,11 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using BotFramework.Contracts.RateLimiting;
 using BotFramework.Contracts.Tenancy;
 using BotFramework.Contracts.Economics;
+using BotFramework.Contracts.Wagering;
 using BotFramework.Host.Tenancy;
 using BotFramework.Host.Economics;
+using BotFramework.Host.Wagering;
+using BotFramework.Sdk.Execution;
 
 namespace BotFramework.Host.Composition.Builder;
 
@@ -176,6 +179,22 @@ public static class BotFrameworkBuilderExtensions
         services.AddSingleton<ILocalizer, Localizer>();
         services.AddSingleton<INpgsqlConnectionFactory, NpgsqlConnectionFactory>();
         services.AddSingleton<ITenantContextProvisioner, PostgresTenantContextProvisioner>();
+        services.AddScoped<BotFramework.Contracts.Wagering.IWagerOperationStore, BotFramework.Host.Wagering.PostgresWagerOperationStore>();
+        services.AddScoped<BotFramework.Contracts.Wagering.IMultiPartyWagerCoordinator, BotFramework.Host.Wagering.MultiPartyWagerCoordinator>();
+        services.AddScoped<BotFramework.Host.Wagering.PostgresMultiPartyWagerStore>();
+        services.AddScoped<BotFramework.Host.Wagering.MultiPartyWagerWorkflowExecutor>();
+        services.AddScoped<BotFramework.Host.Wagering.WageringCoordinator>();
+        services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationCommandHandler<BotFramework.Contracts.Wagering.WagerRequested>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.WageringCoordinator>());
+        services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationEventHandler<BotFramework.Contracts.Wagering.LedgerReservationCompleted>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.WageringCoordinator>());
+        services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationEventHandler<BotFramework.Contracts.Wagering.GameOutcomeDeclared>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.WageringCoordinator>());
+        services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationEventHandler<BotFramework.Contracts.Wagering.LedgerSettlementCompleted>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.WageringCoordinator>());
+        services.AddScoped<BotFramework.Host.Wagering.PostgresWagerLedgerCommandHandler>();
+        services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationCommandHandler<BotFramework.Contracts.Wagering.LedgerReservationRequested>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.PostgresWagerLedgerCommandHandler>());
+        services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationCommandHandler<BotFramework.Contracts.Wagering.LedgerSettlementRequested>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.PostgresWagerLedgerCommandHandler>());
+        services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationCommandHandler<BotFramework.Contracts.Wagering.LedgerReservationRefundRequested>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.PostgresWagerLedgerCommandHandler>());
+        services.AddScoped<BotFramework.Host.Wagering.RedisWagerOperationProjection>();
+        services.AddSingleton<BotFramework.Contracts.Wagering.IWagerOperationResultCache, BotFramework.Host.Wagering.RedisWagerOperationResultCache>();
+        services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationEventHandler<BotFramework.Contracts.Wagering.WagerSettled>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.RedisWagerOperationProjection>());
         services.AddHealthChecks()
             .AddCheck<PostgresDatabaseHealthCheck>(
                 "postgres",
@@ -209,6 +228,16 @@ public static class BotFrameworkBuilderExtensions
         services.AddSingleton<PostgresGameEventOutbox>();
         services.AddSingleton<PostgresGameScheduleOutbox>();
         services.AddScoped(typeof(IAtomicGameExecutor<,,>), typeof(AtomicGameExecutor<,,>));
+        services.AddScoped(typeof(IGameStateExecutor<,,>), typeof(GameStateExecutor<,,>));
+        services.AddScoped(typeof(IOutcomeOnlyGameExecutor<,,>), typeof(OutcomeOnlyGameExecutor<,,>));
+        services.AddScoped<IGameAction<WagerGameCommand, WagerGameState, WagerGameResult>, WagerGameAction>();
+        services.AddScoped<GameExecutionDescriptor<WagerGameCommand, WagerGameState, WagerGameResult>, WagerGameDescriptor>();
+        services.AddScoped<IGameStateStore<WagerGameCommand, WagerGameState>, PostgresJsonGameStateStore<WagerGameCommand, WagerGameState, WagerGameResult>>();
+        services.AddScoped<WagerGameCommandHandler>();
+        services.AddScoped<IIntegrationCommandHandler<WagerGameCommand>>(sp => sp.GetRequiredService<WagerGameCommandHandler>());
+        services.AddScoped<IWagerGameCommandFactory, WagerGameCommandFactory>();
+        services.AddScoped<IWagerSettlementCommandFactory, WagerGameSettlementFactory>();
+        services.AddSingleton<WagerGameOutcomeIntegrationBridge>();
         services.AddSingleton<PostgresTelegramOutboxStore>();
         services.AddSingleton<ITelegramOutboxStore>(sp => sp.GetRequiredService<PostgresTelegramOutboxStore>());
         services.AddSingleton<ITelegramOutbox>(sp => sp.GetRequiredService<PostgresTelegramOutboxStore>());

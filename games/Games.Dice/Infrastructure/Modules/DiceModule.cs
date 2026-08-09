@@ -22,7 +22,9 @@ using Games.Dice.Contracts.Play;
 using Games.Dice.Infrastructure.Messaging;
 using Games.Dice.Application.Execution;
 using BotFramework.Host.Execution;
+using BotFramework.Host.Wagering;
 using BotFramework.Sdk.Execution;
+using Games.Dice.Application.Wagering;
 using Games.Dice.Infrastructure.Configuration;
 
 public sealed class DiceModule : IModule
@@ -42,7 +44,9 @@ public sealed class DiceModule : IModule
             .AddScoped<IGameRecordWriter, DiceRollRecordWriter>()
             .AddScoped<IRequestHandler<DicePlayRequest, DicePlayResponse>, DicePlayRequestHandler>()
             .AddScoped<MediatR.IRequestHandler<DicePlayRequest, DicePlayResponse>, DicePlayRequestHandler>()
-            .AddScoped<IDiceClient, InProcessDiceClient>();
+            .AddScoped<IDiceClient, InProcessDiceClient>()
+            .AddScoped<IWagerGameResolver, DiceWagerResolver>()
+            .AddScoped<IWagerPayoutPolicy, DiceWagerPayoutPolicy>();
     }
 
     public IModuleMigrations GetMigrations() => new DiceMigrations();

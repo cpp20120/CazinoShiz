@@ -2,8 +2,10 @@
 namespace Games.Pick.Infrastructure.Modules;
 
 using BotFramework.Host.Execution;
+using BotFramework.Host.Wagering;
 using BotFramework.Sdk.Execution;
 using Games.Pick.Application.Execution;
+using Games.Pick.Application.Wagering;
 using Games.Pick.Infrastructure.Configuration;
 
 public sealed class PickModule : IModule
@@ -26,6 +28,10 @@ public sealed class PickModule : IModule
             .AddScoped<IGameEffectHandler, PickChainOfferEffectHandler>()
             .AddScoped<IGameEffectHandler, PickWalletCreditEffectHandler>()
             .AddScoped<IPickAnnouncementPublisher, IntegrationEventPickAnnouncementPublisher>()
+            .AddScoped<IWagerGameResolver, PickWagerResolver>()
+            .AddScoped<IWagerPayoutPolicy, PickWagerPayoutPolicy>()
+            .AddScoped<IMultiPartyWagerGameAdapter, PickPoolMultiPartyWagerAdapter>()
+            .AddScoped<IMultiPartyWagerPayoutPolicy, PickPoolMultiPartyWagerPayoutPolicy>()
 
             // multi-user 5-min lottery
             .AddSingleton<IPickLotteryStore, PickLotteryStore>()

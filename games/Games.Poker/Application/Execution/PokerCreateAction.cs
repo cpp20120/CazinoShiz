@@ -10,7 +10,7 @@ public sealed class PokerCreateAction
     {
         if (input.State.Table is not null)
             return Reject(input.State, PokerError.TableAlreadyExists, input.Command.BuyIn);
-        if (input.State.ActorBalance < input.Command.BuyIn)
+        if (input.Command.WagerBetId is null && input.State.ActorBalance < input.Command.BuyIn)
             return Reject(input.State, PokerError.NotEnoughCoins, input.Command.BuyIn);
 
         var command = input.Command;
@@ -27,13 +27,14 @@ public sealed class PokerCreateAction
         {
             InviteCode = code, Position = 0, UserId = command.ActorUserId,
             DisplayName = command.DisplayName, Stack = command.BuyIn,
-            ChatId = command.ChatId, JoinedAt = now,
+            ChatId = command.ChatId, JoinedAt = now, WagerBetId = command.WagerBetId,
         };
         return new(DecisionStatus.Accepted, new(table, [seat], input.State.ActorBalance),
             new(PokerError.None, code, command.BuyIn), [], [], [],
             [new PokerTableCreated(code, command.ActorUserId, command.BuyIn, now)], [],
-            CustomEffects:
-            [WalletEconomyEffect.Debit(command.ActorUserId, command.ChatId, command.BuyIn, "poker.create")]);
+            CustomEffects: command.WagerBetId is null
+                ? [WalletEconomyEffect.Debit(command.ActorUserId, command.ChatId, command.BuyIn, "poker.create")]
+                : []);
     }
 
     private static GameDecision<PokerExecutionState, CreateResult> Reject(

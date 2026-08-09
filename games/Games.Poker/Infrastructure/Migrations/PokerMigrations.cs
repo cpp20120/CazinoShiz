@@ -55,5 +55,11 @@ public sealed class PokerMigrations : IModuleMigrations
             ALTER TABLE poker_seats
                 ADD COLUMN IF NOT EXISTS total_committed INTEGER NOT NULL DEFAULT 0;
             """),
+        new Migration("004_seat_wager_bet", """
+            ALTER TABLE poker_seats
+                ADD COLUMN IF NOT EXISTS wager_bet_id VARCHAR(128) NULL;
+            CREATE INDEX IF NOT EXISTS ix_poker_seats_wager_bet ON poker_seats (wager_bet_id)
+                WHERE wager_bet_id IS NOT NULL;
+            """),
     ];
 }

@@ -38,6 +38,7 @@ public static class SecretHitlerExecutionRules
         DisplayName = player.DisplayName, ChatId = player.ChatId, Role = player.Role,
         IsAlive = player.IsAlive, LastVote = player.LastVote,
         StateMessageId = player.StateMessageId, JoinedAt = player.JoinedAt,
+        WagerBetId = player.WagerBetId,
     };
 
     public static string InviteCode(double entropy)
@@ -54,7 +55,8 @@ public static class SecretHitlerExecutionRules
     }
 
     public static IReadOnlyList<IGameEffect> Settle(
-        SecretHitlerExecutionState state, List<SecretHitlerPayout> payouts)
+        SecretHitlerExecutionState state, List<SecretHitlerPayout> payouts,
+        List<IDomainEvent>? wagerOutcomes = null)
     {
         var game = state.Game!;
         var winners = game.Winner switch
@@ -63,15 +65,35 @@ public static class SecretHitlerExecutionRules
             ShWinner.Fascists => state.Players.Where(p => p.Role is ShRole.Fascist or ShRole.Hitler).ToList(),
             _ => [],
         };
-        if (winners.Count == 0 || game.Pot == 0) return [];
+        if (winners.Count == 0 || game.Pot == 0)
+        {
+            foreach (var player in state.Players.Where(player => player.WagerBetId is not null))
+                wagerOutcomes?.Add(new SecretHitlerWagerOutcomeDeclared(
+                    player.WagerBetId!, player.UserId.ToString(), "loss",
+                    System.Text.Json.JsonSerializer.Serialize(new { payout = 0 }),
+                    game.LastActionAt));
+            return [];
+        }
         var share = game.Pot / winners.Count;
         var remainder = game.Pot - share * winners.Count;
         var effects = new List<IGameEffect>(winners.Count);
+        var payoutByPlayer = new Dictionary<long, int>();
         foreach (var winner in winners)
         {
             var amount = share + (remainder-- > 0 ? 1 : 0);
-            effects.Add(WalletEconomyEffect.Credit(winner.UserId, winner.ChatId, amount, "sh.winnings"));
-            payouts.Add(new(winner.UserId, amount));
+            payoutByPlayer[winner.UserId] = amount;
+            if (winner.WagerBetId is null)
+            {
+                effects.Add(WalletEconomyEffect.Credit(winner.UserId, winner.ChatId, amount, "sh.winnings"));
+                payouts.Add(new(winner.UserId, amount));
+            }
+        }
+        foreach (var player in state.Players.Where(player => player.WagerBetId is not null))
+        {
+            var payout = payoutByPlayer.GetValueOrDefault(player.UserId);
+            wagerOutcomes?.Add(new SecretHitlerWagerOutcomeDeclared(
+                player.WagerBetId!, player.UserId.ToString(), payout > 0 ? "win" : "loss",
+                System.Text.Json.JsonSerializer.Serialize(new { payout }), game.LastActionAt));
         }
         game.Pot = 0;
         return effects;

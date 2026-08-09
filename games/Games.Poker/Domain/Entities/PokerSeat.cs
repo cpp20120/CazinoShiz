@@ -21,4 +21,7 @@ public sealed class PokerSeat
     public long ChatId { get; set; }
     public int? StateMessageId { get; set; }
     public long JoinedAt { get; set; }
+
+    /// <summary>Wagering BetId; null for the legacy atomic wallet path.</summary>
+    public string? WagerBetId { get; set; }
 }

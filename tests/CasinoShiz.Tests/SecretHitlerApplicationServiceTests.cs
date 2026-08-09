@@ -244,7 +244,8 @@ public sealed class SecretHitlerApplicationServiceTests
     }
 
     private sealed class RecordingExecutor<TCommand, TState, TResult>(TResult result)
-        : IAtomicGameExecutor<TCommand, TState, TResult>
+        : IAtomicGameExecutor<TCommand, TState, TResult>,
+            IGameStateExecutor<TCommand, TState, TResult>
     {
         public Type StateType => typeof(TState);
         public GameExecutionEnvelope<TCommand>? Last { get; private set; }

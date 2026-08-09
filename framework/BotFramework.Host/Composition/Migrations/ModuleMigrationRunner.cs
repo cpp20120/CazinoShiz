@@ -32,6 +32,7 @@ namespace BotFramework.Host.Composition.Migrations;
 public sealed partial class ModuleMigrationRunner(
     INpgsqlConnectionFactory connections,
     LoadedModules loadedModules,
+    IEnumerable<IModuleMigrations> registeredMigrations,
     IConfiguration configuration,
     ILogger<ModuleMigrationRunner> logger) : IHostedService
 {
@@ -71,7 +72,10 @@ public sealed partial class ModuleMigrationRunner(
                              : frameworkMigrations,
                 cancellationToken);
 
-            foreach (var module in loadedModules.Migrations)
+            foreach (var module in loadedModules.Migrations.Concat(
+                         registeredMigrations.Where(registered =>
+                             loadedModules.Migrations.All(loaded =>
+                                 !string.Equals(loaded.ModuleId, registered.ModuleId, StringComparison.Ordinal)))))
                 await ApplyModuleAsync(PrepareModuleMigrations(module, walletRemote), cancellationToken);
 
             // Game deployments are split: the first pod may only have one

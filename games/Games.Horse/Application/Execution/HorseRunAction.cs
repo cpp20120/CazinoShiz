@@ -1,4 +1,6 @@
 using BotFramework.Sdk.Execution;
+using System.Text.Json;
+using Games.Horse.Domain.Events;
 using static Games.Horse.Domain.Rules.HorseResultHelpers;
 
 namespace Games.Horse.Application.Execution;
@@ -29,10 +31,11 @@ public sealed class HorseRunAction
             .Select(bet => new RaceTransaction(bet.UserId, bet.BalanceScopeId,
                 (int)Math.Floor(bet.Amount * coefficients[bet.HorseId])))
             .ToList();
-        var payoutByWallet = transactions
-            .GroupBy(transaction => (transaction.UserId, transaction.BalanceScopeId))
+        var payoutByWallet = input.State.Bets
+            .Where(bet => bet.WagerBetId is null && bet.HorseId == winner)
+            .GroupBy(bet => (bet.UserId, bet.BalanceScopeId))
             .Select(group => new RaceTransaction(group.Key.UserId, group.Key.BalanceScopeId,
-                group.Sum(transaction => transaction.Amount)))
+                group.Sum(bet => checked((int)Math.Floor(bet.Amount * coefficients[bet.HorseId])))))
             .ToList();
         var wonByUser = payoutByWallet.GroupBy(item => item.UserId)
             .ToDictionary(group => group.Key, group => group.Sum(item => item.Amount));
@@ -46,6 +49,22 @@ public sealed class HorseRunAction
             ? betScopeIds.Prepend(0L).Distinct().ToArray()
             : [command.ResultScopeId];
         var pot = input.State.Bets.Sum(bet => bet.Amount);
+        var occurredAt = input.UtcNow.ToUnixTimeMilliseconds();
+        var wagerOutcomes = input.State.Bets
+            .Where(bet => !string.IsNullOrWhiteSpace(bet.WagerBetId))
+            .Select(bet =>
+            {
+                var payout = bet.HorseId == winner
+                    ? checked((int)Math.Floor(bet.Amount * coefficients[bet.HorseId]))
+                    : 0;
+                return (IDomainEvent)new HorseWagerOutcomeDeclared(
+                    bet.WagerBetId!,
+                    bet.UserId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    payout > 0 ? "win" : "loss",
+                    JsonSerializer.Serialize(new { payout }),
+                    occurredAt);
+            })
+            .ToArray();
 
         return new(
             DecisionStatus.Accepted,
@@ -54,7 +73,7 @@ public sealed class HorseRunAction
                 command.RaceDate),
             [], [], [],
             [new HorseRaceFinished(command.RaceDate, winner + 1, input.State.Bets.Count,
-                transactions.Count, pot, input.UtcNow.ToUnixTimeMilliseconds())],
+                transactions.Count, pot, occurredAt), ..wagerOutcomes],
             [],
             CustomEffects: payoutByWallet
                 .Where(item => item.Amount > 0)

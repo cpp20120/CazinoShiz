@@ -17,11 +17,12 @@ public sealed class ShEnactAction : IGameAction<ShEnactCommand, SecretHitlerExec
         var after = ShTransitions.ApplyChancellorEnact(state.Game!, input.Command.EnactIndex, state.Players);
         state.Game!.LastActionAt = input.UtcNow.ToUnixTimeMilliseconds();
         var payouts = new List<SecretHitlerPayout>();
+        var wagerOutcomes = new List<IDomainEvent>();
         var effects = state.Game.Status == ShStatus.Completed
-            ? SecretHitlerExecutionRules.Settle(state, payouts) : [];
+            ? SecretHitlerExecutionRules.Settle(state, payouts, wagerOutcomes) : [];
         IDomainEvent[] events = state.Game.Status == ShStatus.Completed
             ? [new SecretHitlerGameEnded(state.Game.InviteCode, state.Game.Winner,
-                state.Game.WinReason, payouts, state.Game.LastActionAt)] : [];
+                state.Game.WinReason, payouts, state.Game.LastActionAt), ..wagerOutcomes] : [];
         return new(DecisionStatus.Accepted, state,
             new(ShError.None, SecretHitlerExecutionRules.Snapshot(state), after),
             [], [], [], events, [], CustomEffects: effects);

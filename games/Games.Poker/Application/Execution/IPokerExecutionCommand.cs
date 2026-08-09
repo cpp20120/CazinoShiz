@@ -9,4 +9,10 @@ public interface IPokerExecutionCommand
     string CommandId { get; }
     IReadOnlyList<PokerWalletRef> ExpectedWallets { get; }
     bool EnsureActorWallet { get; }
+
+    /// <summary>
+    /// Wagering identity for the optional outcome-only path. Legacy Telegram
+    /// and REST commands leave this null and retain their atomic wallet flow.
+    /// </summary>
+    string? WagerBetId => null;
 }

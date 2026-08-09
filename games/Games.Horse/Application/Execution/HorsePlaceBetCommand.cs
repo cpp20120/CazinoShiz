@@ -9,4 +9,5 @@ public sealed record HorsePlaceBetCommand(
     string RaceDate,
     Guid BetId,
     string CommandId,
-    int HorseCount);
+    int HorseCount,
+    string? WagerBetId = null);

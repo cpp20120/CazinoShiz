@@ -1,8 +1,10 @@
 namespace Games.Darts.Infrastructure.Modules;
 
 using BotFramework.Host.Execution;
+using BotFramework.Host.Wagering;
 using BotFramework.Sdk.Execution;
 using Games.Darts.Application.Execution;
+using Games.Darts.Application.Wagering;
 using Games.Darts.Infrastructure.Configuration;
 
 /// <summary>Backend composition without Telegram roll-delivery worker.</summary>
@@ -30,7 +32,9 @@ public sealed class DartsRemoteModule : IModule
             .AddScoped<IGameStateStore<DartsAbortRoundCommand, DartsQueuedState>, DartsAbortRoundStateStore>()
             .AddScoped<IGameAction<DartsQuickThrowCommand, NoGameState, DartsThrowResult>, DartsQuickThrowAction>()
             .AddScoped<GameExecutionDescriptor<DartsQuickThrowCommand, NoGameState, DartsThrowResult>, DartsQuickThrowDescriptor>()
-            .AddScoped<IGameStateStore<DartsQuickThrowCommand, NoGameState>, DartsNoGameStateStore>();
+            .AddScoped<IGameStateStore<DartsQuickThrowCommand, NoGameState>, DartsNoGameStateStore>()
+            .AddScoped<IWagerGameResolver, DartsWagerResolver>()
+            .AddScoped<IWagerPayoutPolicy, DartsWagerPayoutPolicy>();
     }
 
     public IModuleMigrations GetMigrations() => new DartsMigrations();

@@ -57,10 +57,10 @@ public sealed class PokerExecutionStateStore<TCommand>(IEconomicsService economi
             await context.ExecuteAsync("""
                 INSERT INTO poker_seats
                     (invite_code,position,user_id,display_name,stack,hole_cards,status,current_bet,
-                     total_committed,has_acted_round,chat_id,state_message_id,joined_at)
+                     total_committed,has_acted_round,chat_id,state_message_id,joined_at,wager_bet_id)
                 VALUES
                     (@InviteCode,@Position,@UserId,@DisplayName,@Stack,@HoleCards,@Status,@CurrentBet,
-                     @TotalCommitted,@HasActedThisRound,@ChatId,@StateMessageId,@JoinedAt)
+                     @TotalCommitted,@HasActedThisRound,@ChatId,@StateMessageId,@JoinedAt,@WagerBetId)
                 """, SeatParameters(seat), ct);
         }
     }
@@ -83,7 +83,8 @@ public sealed class PokerExecutionStateStore<TCommand>(IEconomicsService economi
             'InviteCode',invite_code,'Position',position,'UserId',user_id,'DisplayName',display_name,
             'Stack',stack,'HoleCards',hole_cards,'Status',status,'CurrentBet',current_bet,
             'TotalCommitted',total_committed,'HasActedThisRound',has_acted_round,
-            'ChatId',chat_id,'StateMessageId',state_message_id,'JoinedAt',joined_at)
+            'ChatId',chat_id,'StateMessageId',state_message_id,'JoinedAt',joined_at,
+            'WagerBetId',wager_bet_id)
             ORDER BY position),'[]'::json)::text
         FROM (SELECT * FROM poker_seats WHERE invite_code=@InviteCode FOR UPDATE) locked_seats
         """;
@@ -102,5 +103,6 @@ public sealed class PokerExecutionStateStore<TCommand>(IEconomicsService economi
         seat.InviteCode, seat.Position, seat.UserId, seat.DisplayName, seat.Stack, seat.HoleCards,
         Status = (int)seat.Status, seat.CurrentBet, seat.TotalCommitted, seat.HasActedThisRound,
         seat.ChatId, seat.StateMessageId, seat.JoinedAt,
+        seat.WagerBetId,
     };
 }

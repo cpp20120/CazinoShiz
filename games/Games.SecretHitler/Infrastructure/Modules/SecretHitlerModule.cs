@@ -2,8 +2,11 @@
 namespace Games.SecretHitler.Infrastructure.Modules;
 
 using BotFramework.Host.Execution;
+using BotFramework.Contracts.Messaging;
+using BotFramework.Contracts.Wagering;
 using BotFramework.Sdk.Execution;
 using Games.SecretHitler.Application.Execution;
+using Games.SecretHitler.Application.Wagering;
 using Games.SecretHitler.Infrastructure.Configuration;
 
 public sealed class SecretHitlerModule : IModule
@@ -29,7 +32,21 @@ public sealed class SecretHitlerModule : IModule
             .AddShExecution<ShEnactCommand, ShEnactResult, ShEnactAction, ShEnactDescriptor>()
             .AddShExecution<ShLeaveCommand, ShLeaveResult, ShLeaveAction, ShLeaveDescriptor>()
             .AddShExecution<ShPlayerMessageCommand, bool, ShPlayerMessageAction, ShPlayerMessageDescriptor>()
-            .AddShExecution<ShPublicMessageCommand, bool, ShPublicMessageAction, ShPublicMessageDescriptor>();
+            .AddShExecution<ShPublicMessageCommand, bool, ShPublicMessageAction, ShPublicMessageDescriptor>()
+            .AddScoped<IGameAction<ShCreateCommand, SecretHitlerWagerState, ShCreateResult>, SecretHitlerWagerCreateAction>()
+            .AddScoped<GameExecutionDescriptor<ShCreateCommand, SecretHitlerWagerState, ShCreateResult>, SecretHitlerWagerCreateDescriptor>()
+            .AddScoped<IGameStateStore<ShCreateCommand, SecretHitlerWagerState>, SecretHitlerWagerStateStore<ShCreateCommand>>()
+            .AddScoped<IGameAction<ShJoinCommand, SecretHitlerWagerState, ShJoinResult>, SecretHitlerWagerJoinAction>()
+            .AddScoped<GameExecutionDescriptor<ShJoinCommand, SecretHitlerWagerState, ShJoinResult>, SecretHitlerWagerJoinDescriptor>()
+            .AddScoped<IGameStateStore<ShJoinCommand, SecretHitlerWagerState>, SecretHitlerWagerStateStore<ShJoinCommand>>()
+            .AddScoped<IOutcomeOnlyGameExecutor<ShCreateCommand, SecretHitlerWagerState, ShCreateResult>, OutcomeOnlyGameExecutor<ShCreateCommand, SecretHitlerWagerState, ShCreateResult>>()
+            .AddScoped<IOutcomeOnlyGameExecutor<ShJoinCommand, SecretHitlerWagerState, ShJoinResult>, OutcomeOnlyGameExecutor<ShJoinCommand, SecretHitlerWagerState, ShJoinResult>>()
+            .AddScoped<SecretHitlerWagerCommandHandler>()
+            .AddScoped<IIntegrationCommandHandler<SecretHitlerWagerCommand>, SecretHitlerWagerCommandHandler>()
+            .AddScoped<IWagerGameCommandFactory, SecretHitlerWagerGameCommandFactory>()
+            .AddScoped<IWagerSettlementCommandFactory, SecretHitlerWagerSettlementFactory>()
+            .AddDomainEventSubscription<SecretHitlerWagerOutcomeIntegrationBridge>(
+                "sh.wager.outcome_declared");
     }
 
     public IModuleMigrations GetMigrations() => new SecretHitlerMigrations();

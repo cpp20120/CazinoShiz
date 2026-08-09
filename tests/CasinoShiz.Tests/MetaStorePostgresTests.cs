@@ -37,6 +37,19 @@ public sealed class MetaStorePostgresTests(AtomicPostgresFixture database) : IAs
         Assert.Contains("WHERE (status = 'active'::text)", definition, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task GetProfileAsync_NewPlayer_DoesNotPersistAPlayerRow()
+    {
+        var store = new MetaStore(new TestConnectionFactory(database.ConnectionString), new FakeRuntimeTuning());
+
+        var profile = await store.GetProfileAsync(100, 42, "Alice", CancellationToken.None);
+
+        Assert.Equal(42, profile.Player.UserId);
+        Assert.Equal("Alice", profile.Player.DisplayName);
+        Assert.Equal(0, profile.Player.GamesPlayed);
+        Assert.Equal(0, await database.ScalarAsync<int>("SELECT count(*) FROM meta_season_players"));
+    }
+
     private sealed class TestConnectionFactory(string connectionString) : INpgsqlConnectionFactory
     {
         public NpgsqlConnection Create() => new(connectionString);

@@ -23,7 +23,7 @@ public sealed class HorsePlaceBetAction
             return Reject(input.State, BetFail(HorseError.InvalidAmount, command.HorseId, balance), "invalid_amount");
 
         var bet = new HorseBetRow(command.BetId, command.RaceDate, command.UserId,
-            command.BalanceScopeId, command.HorseId - 1, command.Amount);
+            command.BalanceScopeId, command.HorseId - 1, command.Amount, command.WagerBetId);
         return new(
             DecisionStatus.Accepted,
             new HorseBetState(bet),

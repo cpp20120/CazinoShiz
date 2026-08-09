@@ -36,4 +36,6 @@ public interface IMetaStore
     Task<IReadOnlyList<PlayerGameStreakView>> GetGameStreaksAsync(long chatId, long userId, CancellationToken ct);
     Task<SeasonProfile> GetProfileAsync(long chatId, long userId, string displayName, CancellationToken ct);
     Task<IReadOnlyList<SeasonLeaderboardEntry>> GetTopAsync(long chatId, int limit, CancellationToken ct);
+    Task<IReadOnlyList<SeasonLeaderboardEntry>> GetTopSnapshotAsync(long chatId, CancellationToken ct) =>
+        GetTopAsync(chatId, 100, ct);
 }

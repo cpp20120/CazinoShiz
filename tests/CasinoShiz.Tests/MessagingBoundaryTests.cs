@@ -773,7 +773,11 @@ public sealed class MessagingBoundaryTests
     private sealed class PixelExecutorStub : BotFramework.Host.Execution.IAtomicGameExecutor<
         Games.PixelBattle.Application.Execution.PixelBattleCommand,
         Games.PixelBattle.Application.Execution.PixelBattleExecutionState,
-        Games.PixelBattle.Contracts.PixelUpdateResult>
+        Games.PixelBattle.Contracts.PixelUpdateResult>,
+        BotFramework.Host.Execution.IGameStateExecutor<
+            Games.PixelBattle.Application.Execution.PixelBattleCommand,
+            Games.PixelBattle.Application.Execution.PixelBattleExecutionState,
+            Games.PixelBattle.Contracts.PixelUpdateResult>
     {
         public Type StateType => typeof(Games.PixelBattle.Application.Execution.PixelBattleExecutionState);
         public bool Known { get; set; }

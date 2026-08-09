@@ -16,6 +16,12 @@ public sealed class CapIntegrationCommandPublisher(
 
     public Task SendAsync<TCommand>(TCommand command, CancellationToken ct)
         where TCommand : IIntegrationCommand
+        => SendCoreAsync(command, ct);
+
+    public Task SendAsync(IIntegrationCommand command, CancellationToken ct) =>
+        SendCoreAsync(command, ct);
+
+    private Task SendCoreAsync(IIntegrationCommand command, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(command);
 

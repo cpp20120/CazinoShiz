@@ -6,7 +6,7 @@ namespace Games.Redeem.Application.Services;
 
 public sealed partial class RedeemService(
     IRedeemStore store,
-    IAtomicGameExecutor<RedeemIssueCommand, RedeemExecutionState, Guid> issueExecutor,
+    IGameStateExecutor<RedeemIssueCommand, RedeemExecutionState, Guid> issueExecutor,
     IAtomicGameExecutor<RedeemCompleteCommand, RedeemExecutionState, CompleteRedeemResult> completeExecutor,
     IOptions<RedeemOptions> options,
     ILogger<RedeemService> logger) : IRedeemService

@@ -10,11 +10,11 @@ public sealed class PokerService(
     IPokerSeatStore seats,
     IAtomicGameExecutor<PokerCreateCommand, PokerExecutionState, CreateResult> createExecutor,
     IAtomicGameExecutor<PokerJoinCommand, PokerExecutionState, JoinResult> joinExecutor,
-    IAtomicGameExecutor<PokerStartCommand, PokerExecutionState, StartResult> startExecutor,
+    IGameStateExecutor<PokerStartCommand, PokerExecutionState, StartResult> startExecutor,
     IAtomicGameExecutor<PokerPlayerTurnCommand, PokerExecutionState, ActionResult> turnExecutor,
     IAtomicGameExecutor<PokerAutoTurnCommand, PokerExecutionState, ActionResult> autoExecutor,
     IAtomicGameExecutor<PokerLeaveCommand, PokerExecutionState, LeaveResult> leaveExecutor,
-    IAtomicGameExecutor<PokerSetMessageCommand, PokerExecutionState, bool> messageExecutor,
+    IGameStateExecutor<PokerSetMessageCommand, PokerExecutionState, bool> messageExecutor,
     IRuntimeTuningAccessor tuning) : IPokerService
 {
     private PokerOptions CurrentOptions() => tuning.GetSection<PokerOptions>(PokerOptions.SectionName);

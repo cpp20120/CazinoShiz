@@ -131,7 +131,9 @@
     <Project Path="services/CasinoShiz.WalletService/CasinoShiz.WalletService.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests\CasinoShiz.FullRestWriteLoadTest\CasinoShiz.FullRestWriteLoadTest.csproj" />
     <Project Path="tests\CasinoShiz.HorseRestLoadTest\CasinoShiz.HorseRestLoadTest.csproj" />
+    <Project Path="tests\CasinoShiz.MetaRestLoadTest\CasinoShiz.MetaRestLoadTest.csproj" />
     <Project Path="tests\CasinoShiz.Tests\CasinoShiz.Tests.csproj" />
   </Folder>
 </Solution>

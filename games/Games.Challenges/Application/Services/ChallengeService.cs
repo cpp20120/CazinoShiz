@@ -8,7 +8,7 @@ public sealed class ChallengeService(
     IChallengeStore store,
     IAtomicGameExecutor<ChallengeCreateCommand, ChallengeExecutionState, ChallengeCreateResult> createExecutor,
     IAtomicGameExecutor<ChallengeAcceptCommand, ChallengeExecutionState, ChallengeAcceptResult> acceptExecutor,
-    IAtomicGameExecutor<ChallengeDeclineCommand, ChallengeExecutionState, ChallengeAcceptError> declineExecutor,
+    IGameStateExecutor<ChallengeDeclineCommand, ChallengeExecutionState, ChallengeAcceptError> declineExecutor,
     IAtomicGameExecutor<ChallengeCompleteCommand, ChallengeExecutionState, ChallengeAcceptResult> completeExecutor,
     IAtomicGameExecutor<ChallengeFailCommand, ChallengeExecutionState, bool> failExecutor,
     IOptions<ChallengeOptions> options) : IChallengeService

@@ -1,10 +1,15 @@
 
 namespace Games.Blackjack.Infrastructure.Modules;
 
+using BotFramework.Contracts.Messaging;
+using BotFramework.Contracts.Wagering;
 using BotFramework.Host.Execution;
 using BotFramework.Scheduling.Abstractions;
 using BotFramework.Sdk.Execution;
 using Games.Blackjack.Application.Execution;
+using Games.Blackjack.Application.Wagering;
+using Games.Blackjack.Contracts.Domain.Results;
+using Games.Blackjack.Contracts.Integration;
 using Games.Blackjack.Infrastructure.Configuration;
 
 public sealed class BlackjackModule : IModule
@@ -33,6 +38,30 @@ public sealed class BlackjackModule : IModule
             .AddScoped<IGameAction<BlackjackSetMessageCommand, BlackjackGameState, BlackjackResult>, BlackjackSetMessageAction>()
             .AddScoped<GameExecutionDescriptor<BlackjackSetMessageCommand, BlackjackGameState, BlackjackResult>, BlackjackSetMessageDescriptor>()
             .AddScoped<IGameStateStore<BlackjackSetMessageCommand, BlackjackGameState>, PostgresJsonGameStateStore<BlackjackSetMessageCommand, BlackjackGameState, BlackjackResult>>();
+
+        services
+            .AddScoped<IGameAction<BlackjackWagerStart, BlackjackWagerState, BlackjackWagerResult>, BlackjackWagerStartAction>()
+            .AddScoped<GameExecutionDescriptor<BlackjackWagerStart, BlackjackWagerState, BlackjackWagerResult>, BlackjackWagerStartDescriptor>()
+            .AddScoped<IGameStateStore<BlackjackWagerStart, BlackjackWagerState>, PostgresJsonGameStateStore<BlackjackWagerStart, BlackjackWagerState, BlackjackWagerResult>>()
+            .AddScoped<IGameAction<BlackjackWagerHit, BlackjackWagerState, BlackjackWagerResult>, BlackjackWagerHitAction>()
+            .AddScoped<GameExecutionDescriptor<BlackjackWagerHit, BlackjackWagerState, BlackjackWagerResult>, BlackjackWagerHitDescriptor>()
+            .AddScoped<IGameStateStore<BlackjackWagerHit, BlackjackWagerState>, PostgresJsonGameStateStore<BlackjackWagerHit, BlackjackWagerState, BlackjackWagerResult>>()
+            .AddScoped<IGameAction<BlackjackWagerStand, BlackjackWagerState, BlackjackWagerResult>, BlackjackWagerStandAction>()
+            .AddScoped<GameExecutionDescriptor<BlackjackWagerStand, BlackjackWagerState, BlackjackWagerResult>, BlackjackWagerStandDescriptor>()
+            .AddScoped<IGameStateStore<BlackjackWagerStand, BlackjackWagerState>, PostgresJsonGameStateStore<BlackjackWagerStand, BlackjackWagerState, BlackjackWagerResult>>()
+            .AddScoped<IGameAction<BlackjackWagerTimeout, BlackjackWagerState, BlackjackWagerResult>, BlackjackWagerTimeoutAction>()
+            .AddScoped<GameExecutionDescriptor<BlackjackWagerTimeout, BlackjackWagerState, BlackjackWagerResult>, BlackjackWagerTimeoutDescriptor>()
+            .AddScoped<IGameStateStore<BlackjackWagerTimeout, BlackjackWagerState>, PostgresJsonGameStateStore<BlackjackWagerTimeout, BlackjackWagerState, BlackjackWagerResult>>()
+            .AddScoped<IScheduledCommand, GameStateScheduledCommand<BlackjackWagerTimeout, BlackjackWagerState, BlackjackWagerResult>>()
+            .AddScoped<BlackjackWagerCommandHandler>()
+            .AddScoped<IIntegrationCommandHandler<BlackjackWagerStart>, BlackjackWagerCommandHandler>()
+            .AddScoped<IIntegrationCommandHandler<BlackjackWagerHit>, BlackjackWagerCommandHandler>()
+            .AddScoped<IIntegrationCommandHandler<BlackjackWagerStand>, BlackjackWagerCommandHandler>()
+            .AddScoped<IIntegrationCommandHandler<BlackjackWagerTimeout>, BlackjackWagerCommandHandler>()
+            .AddScoped<IWagerGameCommandFactory, BlackjackWagerGameCommandFactory>()
+            .AddScoped<IWagerSettlementCommandFactory, BlackjackWagerSettlementFactory>()
+            .AddDomainEventSubscription<BlackjackWagerOutcomeIntegrationBridge>(
+                "blackjack.wager.outcome_declared");
     }
 
     public IModuleMigrations GetMigrations() => new BlackjackMigrations();

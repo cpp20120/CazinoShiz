@@ -1,4 +1,5 @@
 using BotFramework.Sdk.Execution;
+using Games.Poker.Domain.Events;
 
 namespace Games.Poker.Application.Execution;
 
@@ -15,7 +16,16 @@ public sealed class PokerLeaveAction
         if (seat is null) return Reject(input.State, PokerError.NoTable);
         var effects = new List<IGameEffect>();
         var events = new List<IDomainEvent>();
-        if (seat.Stack > 0)
+        if (seat.WagerBetId is { } betId)
+        {
+            events.Add(new PokerWagerOutcomeDeclared(
+                betId,
+                seat.UserId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                "refund",
+                System.Text.Json.JsonSerializer.Serialize(new { payout = seat.Stack }),
+                input.UtcNow.ToUnixTimeMilliseconds()));
+        }
+        else if (seat.Stack > 0)
             effects.Add(WalletEconomyEffect.Credit(seat.UserId, seat.ChatId, seat.Stack, "poker.leave"));
 
         if (state.Table!.Status == PokerTableStatus.HandActive && seat.Status == PokerSeatStatus.Seated)

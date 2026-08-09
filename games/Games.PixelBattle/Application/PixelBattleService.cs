@@ -8,7 +8,7 @@ namespace Games.PixelBattle.Application;
 
 public sealed class PixelBattleService(
     IPixelBattleStore store,
-    IAtomicGameExecutor<PixelBattleCommand, PixelBattleExecutionState, PixelUpdateResult> executor)
+    IGameStateExecutor<PixelBattleCommand, PixelBattleExecutionState, PixelUpdateResult> executor)
     : IPixelBattleService, IPixelBattleCommandService
 {
     public Task<PixelBattleGrid> GetGridAsync(CancellationToken ct) => store.GetGridAsync(ct);

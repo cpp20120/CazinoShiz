@@ -12,4 +12,5 @@ public sealed class SecretHitlerPlayer
     public ShVote LastVote { get; set; } = ShVote.None;
     public int? StateMessageId { get; set; }
     public long JoinedAt { get; set; }
+    public string? WagerBetId { get; set; }
 }

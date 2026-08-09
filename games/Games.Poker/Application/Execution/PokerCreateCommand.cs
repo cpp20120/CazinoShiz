@@ -8,8 +8,9 @@ public sealed record PokerCreateCommand(
     int BuyIn,
     int SmallBlind,
     int BigBlind,
-    IReadOnlyList<PokerWalletRef> ExpectedWallets) : IPokerExecutionCommand
+    IReadOnlyList<PokerWalletRef> ExpectedWallets,
+    string? WagerBetId = null) : IPokerExecutionCommand
 {
     public string InviteCode => "";
-    public bool EnsureActorWallet => true;
+    public bool EnsureActorWallet => WagerBetId is null;
 }

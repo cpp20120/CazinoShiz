@@ -12,14 +12,14 @@ public sealed class SecretHitlerService(
     ISecretHitlerPlayerStore players,
     IAtomicGameExecutor<ShCreateCommand, SecretHitlerExecutionState, ShCreateResult> createExecutor,
     IAtomicGameExecutor<ShJoinCommand, SecretHitlerExecutionState, ShJoinResult> joinExecutor,
-    IAtomicGameExecutor<ShStartCommand, SecretHitlerExecutionState, ShStartResult> startExecutor,
-    IAtomicGameExecutor<ShNominateCommand, SecretHitlerExecutionState, ShNominateResult> nominateExecutor,
+    IGameStateExecutor<ShStartCommand, SecretHitlerExecutionState, ShStartResult> startExecutor,
+    IGameStateExecutor<ShNominateCommand, SecretHitlerExecutionState, ShNominateResult> nominateExecutor,
     IAtomicGameExecutor<ShVoteCommand, SecretHitlerExecutionState, ShVoteResult> voteExecutor,
-    IAtomicGameExecutor<ShDiscardCommand, SecretHitlerExecutionState, ShDiscardResult> discardExecutor,
+    IGameStateExecutor<ShDiscardCommand, SecretHitlerExecutionState, ShDiscardResult> discardExecutor,
     IAtomicGameExecutor<ShEnactCommand, SecretHitlerExecutionState, ShEnactResult> enactExecutor,
     IAtomicGameExecutor<ShLeaveCommand, SecretHitlerExecutionState, ShLeaveResult> leaveExecutor,
-    IAtomicGameExecutor<ShPlayerMessageCommand, SecretHitlerExecutionState, bool> playerMessageExecutor,
-    IAtomicGameExecutor<ShPublicMessageCommand, SecretHitlerExecutionState, bool> publicMessageExecutor,
+    IGameStateExecutor<ShPlayerMessageCommand, SecretHitlerExecutionState, bool> playerMessageExecutor,
+    IGameStateExecutor<ShPublicMessageCommand, SecretHitlerExecutionState, bool> publicMessageExecutor,
     IOptions<SecretHitlerOptions> options) : ISecretHitlerService
 {
     private readonly SecretHitlerOptions settings = options.Value;

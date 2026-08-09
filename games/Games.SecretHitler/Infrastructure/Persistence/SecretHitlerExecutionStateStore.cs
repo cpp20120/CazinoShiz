@@ -74,10 +74,10 @@ public sealed class SecretHitlerExecutionStateStore<TCommand>(IEconomicsService 
             await context.ExecuteAsync("""
                 INSERT INTO secret_hitler_players
                     (invite_code,position,user_id,display_name,chat_id,role,is_alive,last_vote,
-                     state_message_id,joined_at)
+                     state_message_id,joined_at,wager_bet_id)
                 VALUES
                     (@InviteCode,@Position,@UserId,@DisplayName,@ChatId,@Role,@IsAlive,@LastVote,
-                     @StateMessageId,@JoinedAt)
+                     @StateMessageId,@JoinedAt,@WagerBetId)
                 """, PlayerParameters(player), ct);
         }
     }
@@ -106,7 +106,8 @@ public sealed class SecretHitlerExecutionStateStore<TCommand>(IEconomicsService 
             SELECT COALESCE(json_agg(json_build_object(
                 'InviteCode',invite_code,'Position',position,'UserId',user_id,
                 'DisplayName',display_name,'ChatId',chat_id,'Role',role,'IsAlive',is_alive,
-                'LastVote',last_vote,'StateMessageId',state_message_id,'JoinedAt',joined_at)
+                'LastVote',last_vote,'StateMessageId',state_message_id,'JoinedAt',joined_at,
+                'WagerBetId',wager_bet_id)
                 ORDER BY position),'[]'::json)::text
             FROM (SELECT * FROM secret_hitler_players WHERE invite_code=@code FOR UPDATE) locked_players
             """, new { code }, ct);
@@ -145,5 +146,6 @@ public sealed class SecretHitlerExecutionStateStore<TCommand>(IEconomicsService 
         player.InviteCode, player.Position, player.UserId, player.DisplayName, player.ChatId,
         Role = (int)player.Role, player.IsAlive, LastVote = (int)player.LastVote,
         player.StateMessageId, player.JoinedAt,
+        player.WagerBetId,
     };
 }

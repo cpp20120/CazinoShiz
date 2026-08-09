@@ -8,7 +8,8 @@ public sealed class ShCreateAction : IGameAction<ShCreateCommand, SecretHitlerEx
     public GameDecision<SecretHitlerExecutionState, ShCreateResult> Decide(
         GameActionInput<SecretHitlerExecutionState, ShCreateCommand> input)
     {
-        if (input.State.ActorBalance < input.Command.BuyIn) return Reject(input.State, ShError.NotEnoughCoins);
+        if (input.Command.WagerBetId is null && input.State.ActorBalance < input.Command.BuyIn)
+            return Reject(input.State, ShError.NotEnoughCoins);
         if (input.State.ActorAlreadyInGame) return Reject(input.State, ShError.AlreadyInGame);
         if (input.State.ChatAlreadyHasGame) return Reject(input.State, ShError.GameInProgress);
         var now = input.UtcNow.ToUnixTimeMilliseconds();
@@ -23,14 +24,16 @@ public sealed class ShCreateAction : IGameAction<ShCreateCommand, SecretHitlerEx
         {
             InviteCode = code, Position = 0, UserId = input.Command.ActorUserId,
             DisplayName = input.Command.DisplayName, ChatId = input.Command.ActorChatId,
-            IsAlive = true, JoinedAt = now,
+            IsAlive = true, JoinedAt = now, WagerBetId = input.Command.WagerBetId,
         };
         return new(DecisionStatus.Accepted,
             new(game, [player], input.State.ActorBalance, true, true),
             new(ShError.None, code, input.Command.BuyIn), [], [], [],
             [new SecretHitlerGameCreated(code, input.Command.ActorUserId, input.Command.BuyIn, now)], [],
-            CustomEffects: [WalletEconomyEffect.Debit(input.Command.ActorUserId,
-                input.Command.ActorChatId, input.Command.BuyIn, "sh.create")]);
+            CustomEffects: input.Command.WagerBetId is null
+                ? [WalletEconomyEffect.Debit(input.Command.ActorUserId,
+                    input.Command.ActorChatId, input.Command.BuyIn, "sh.create")]
+                : []);
     }
 
     private static GameDecision<SecretHitlerExecutionState, ShCreateResult> Reject(

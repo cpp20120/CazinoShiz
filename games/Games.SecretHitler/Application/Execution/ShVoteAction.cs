@@ -18,11 +18,12 @@ public sealed class ShVoteAction : IGameAction<ShVoteCommand, SecretHitlerExecut
             SecretHitlerExecutionRules.ReshuffleEntropyNames.Select(input.Entropy.GetDouble).ToArray());
         state.Game!.LastActionAt = input.UtcNow.ToUnixTimeMilliseconds();
         var payouts = new List<SecretHitlerPayout>();
+        var wagerOutcomes = new List<IDomainEvent>();
         var effects = state.Game.Status == ShStatus.Completed
-            ? SecretHitlerExecutionRules.Settle(state, payouts) : [];
+            ? SecretHitlerExecutionRules.Settle(state, payouts, wagerOutcomes) : [];
         IDomainEvent[] events = state.Game.Status == ShStatus.Completed
             ? [new SecretHitlerGameEnded(state.Game.InviteCode, state.Game.Winner,
-                state.Game.WinReason, payouts, state.Game.LastActionAt)] : [];
+                state.Game.WinReason, payouts, state.Game.LastActionAt), ..wagerOutcomes] : [];
         return new(DecisionStatus.Accepted, state,
             new(ShError.None, SecretHitlerExecutionRules.Snapshot(state), after),
             [], [], [], events, [], CustomEffects: effects);

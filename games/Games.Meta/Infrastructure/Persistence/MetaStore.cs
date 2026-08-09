@@ -9,13 +9,35 @@ public sealed class MetaStore(
     public async Task<MetaSeason> GetOrCreateActiveSeasonAsync(CancellationToken ct)
     {
         await using var conn = await connections.OpenAsync(ct);
+        const string findSql = """
+            SELECT id,
+                   name,
+                   starts_at AS StartsAt,
+                   ends_at AS EndsAt,
+                   status,
+                   config::text AS ConfigJson
+            FROM meta_seasons
+            WHERE status = 'active'
+              AND starts_at <= now()
+              AND ends_at > now()
+            ORDER BY starts_at DESC
+            LIMIT 1
+            """;
+
+        // Normal reads must remain lock-free. The scope lock is needed only
+        // while an active season is absent, when several requests could
+        // otherwise create it concurrently.
+        var existing = (await conn.QuerySingleOrDefaultAsync<MetaSeasonRow>(new CommandDefinition(
+            findSql, cancellationToken: ct)))?.ToDomain();
+
+        if (existing is not null)
+            return existing;
+
         await using var tx = await conn.BeginTransactionAsync(ct);
 
-        // A tenant/scope can issue several Meta reads at once (for example,
-        // /menu loads profile, quests and achievements in parallel). Lock the
-        // already-provisioned tenant_scopes row, rather than an advisory key:
-        // unrelated scopes continue concurrently and the lock is visible to
-        // PostgreSQL's normal lock diagnostics.
+        // Lock the already-provisioned tenant_scopes row only for the cold
+        // read-or-create path. Different scopes continue independently and
+        // PostgreSQL exposes this lock through its normal diagnostics.
         var scopeLock = await conn.QuerySingleOrDefaultAsync<long?>(new CommandDefinition(
             """
             SELECT scope_key
@@ -49,23 +71,10 @@ public sealed class MetaStore(
             transaction: tx,
             cancellationToken: ct));
 
-        const string findSql = """
-            SELECT id,
-                   name,
-                   starts_at AS StartsAt,
-                   ends_at AS EndsAt,
-                   status,
-                   config::text AS ConfigJson
-            FROM meta_seasons
-            WHERE status = 'active'
-              AND starts_at <= now()
-              AND ends_at > now()
-            ORDER BY starts_at DESC
-            LIMIT 1
-            """;
-
-        var existing = await conn.QuerySingleOrDefaultAsync<MetaSeason>(new CommandDefinition(
-            findSql, transaction: tx, cancellationToken: ct));
+        // Another request may have created the season while this request was
+        // waiting for the per-scope lock, so read again inside the transaction.
+        existing = (await conn.QuerySingleOrDefaultAsync<MetaSeasonRow>(new CommandDefinition(
+            findSql, transaction: tx, cancellationToken: ct)))?.ToDomain();
 
         if (existing is not null)
         {
@@ -96,10 +105,10 @@ public sealed class MetaStore(
                       config::text AS ConfigJson
             """;
 
-        var activated = await conn.QuerySingleOrDefaultAsync<MetaSeason>(new CommandDefinition(
+        var activated = (await conn.QuerySingleOrDefaultAsync<MetaSeasonRow>(new CommandDefinition(
             activateSql,
             transaction: tx,
-            cancellationToken: ct));
+            cancellationToken: ct)))?.ToDomain();
 
         if (activated is not null)
         {
@@ -109,10 +118,11 @@ public sealed class MetaStore(
         }
 
         var seasonNumber = await NextSeasonNumberAsync(conn, tx, ct);
-        var startsAt = await conn.ExecuteScalarAsync<DateTimeOffset>(new CommandDefinition(
+        var startsAtUtc = await conn.ExecuteScalarAsync<DateTime>(new CommandDefinition(
             "SELECT date_trunc('day', now())",
             transaction: tx,
             cancellationToken: ct));
+        var startsAt = new DateTimeOffset(DateTime.SpecifyKind(startsAtUtc, DateTimeKind.Utc));
         var endsAt = startsAt.AddDays(SeasonPlanFactory.DefaultDurationDays);
 
         const string insertSql = """
@@ -132,7 +142,7 @@ public sealed class MetaStore(
                       config::text AS ConfigJson
             """;
 
-        var created = await conn.QuerySingleAsync<MetaSeason>(new CommandDefinition(
+        var created = (await conn.QuerySingleAsync<MetaSeasonRow>(new CommandDefinition(
             insertSql,
             new
             {
@@ -142,7 +152,7 @@ public sealed class MetaStore(
                 configJson = SeasonPlanFactory.BuildConfigJson(seasonNumber),
             },
             transaction: tx,
-            cancellationToken: ct));
+            cancellationToken: ct))).ToDomain();
 
         await EnsurePreparedSeasonsAsync(conn, tx, ct);
         await tx.CommitAsync(ct);
@@ -549,14 +559,48 @@ public sealed class MetaStore(
         CancellationToken ct)
     {
         var season = await GetOrCreateActiveSeasonAsync(ct);
-        var player = await EnsurePlayerAsync(season, chatId, userId, displayName, ct);
         var progression = SeasonProgressionConfig.FromSeason(season);
+        const string sql = """
+            SELECT season_id AS SeasonId,
+                   chat_id AS ChatId,
+                   user_id AS UserId,
+                   display_name AS DisplayName,
+                   xp,
+                   level,
+                   rating,
+                   games_played AS GamesPlayed,
+                   wins,
+                   losses,
+                   total_staked AS TotalStaked,
+                   total_payout AS TotalPayout,
+                   updated_at AS UpdatedAt
+            FROM meta_season_players
+            WHERE season_id = @seasonId AND chat_id = @chatId AND user_id = @userId
+            """;
+        await using var conn = await connections.OpenAsync(ct);
+        var stored = await conn.QuerySingleOrDefaultAsync<SeasonPlayer>(new CommandDefinition(
+            sql,
+            new { seasonId = season.Id, chatId, userId },
+            cancellationToken: ct));
+        var player = stored is null
+            ? new SeasonPlayer(season.Id, chatId, userId, displayName, 0, 1, progression.RatingStart, 0, 0, 0, 0, 0, DateTimeOffset.UtcNow)
+            : stored with { DisplayName = displayName };
         var floor = progression.XpForLevel(player.Level);
         var next = progression.XpForLevel(player.Level + 1);
         return new SeasonProfile(season, player, DivisionForRating(player.Rating), next, floor);
     }
 
     public async Task<IReadOnlyList<SeasonLeaderboardEntry>> GetTopAsync(long chatId, int limit, CancellationToken ct)
+    {
+        return await GetTopCoreAsync(chatId, Math.Clamp(limit, 1, 100), ct);
+    }
+
+    public async Task<IReadOnlyList<SeasonLeaderboardEntry>> GetTopSnapshotAsync(long chatId, CancellationToken ct)
+    {
+        return await GetTopCoreAsync(chatId, null, ct);
+    }
+
+    private async Task<IReadOnlyList<SeasonLeaderboardEntry>> GetTopCoreAsync(long chatId, int? limit, CancellationToken ct)
     {
         var season = await GetOrCreateActiveSeasonAsync(ct);
         const string sql = """
@@ -572,13 +616,13 @@ public sealed class MetaStore(
             FROM meta_season_players
             WHERE season_id = @seasonId AND chat_id = @chatId
             ORDER BY xp DESC, rating DESC, user_id ASC
-            LIMIT @limit
+            LIMIT COALESCE(@limit, 2147483647)
             """;
 
         await using var conn = await connections.OpenAsync(ct);
         var rows = await conn.QueryAsync<SeasonLeaderboardEntry>(new CommandDefinition(
             sql,
-            new { seasonId = season.Id, chatId, limit = Math.Clamp(limit, 1, 100) },
+            new { seasonId = season.Id, chatId, limit },
             cancellationToken: ct));
         return rows.ToList();
     }
@@ -681,10 +725,11 @@ public sealed class MetaStore(
             WHERE status IN ('active', 'planned')
             """;
 
-        return await conn.ExecuteScalarAsync<DateTimeOffset>(new CommandDefinition(
+        var startsAtUtc = await conn.ExecuteScalarAsync<DateTime>(new CommandDefinition(
             sql,
             transaction: tx,
             cancellationToken: ct));
+        return new DateTimeOffset(DateTime.SpecifyKind(startsAtUtc, DateTimeKind.Utc));
     }
 
     private static async Task<int> NextSeasonNumberAsync(
@@ -697,6 +742,23 @@ public sealed class MetaStore(
             sql,
             transaction: tx,
             cancellationToken: ct));
+    }
+
+    private sealed record MetaSeasonRow(
+        long Id,
+        string Name,
+        DateTime StartsAt,
+        DateTime EndsAt,
+        string Status,
+        string ConfigJson)
+    {
+        public MetaSeason ToDomain() => new(
+            Id,
+            Name,
+            new DateTimeOffset(DateTime.SpecifyKind(StartsAt, DateTimeKind.Utc)),
+            new DateTimeOffset(DateTime.SpecifyKind(EndsAt, DateTimeKind.Utc)),
+            Status,
+            ConfigJson);
     }
 
     private static string DivisionForRating(int rating) => rating switch

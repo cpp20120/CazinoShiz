@@ -2,8 +2,11 @@
 namespace Games.Horse.Infrastructure.Modules;
 
 using BotFramework.Host.Execution;
+using BotFramework.Contracts.Messaging;
+using BotFramework.Contracts.Wagering;
 using BotFramework.Sdk.Execution;
 using Games.Horse.Application.Execution;
+using Games.Horse.Application.Wagering;
 using BotFramework.Rendering;
 using Games.Horse.Rendering;
 using Games.Horse.Infrastructure.Configuration;
@@ -28,6 +31,17 @@ public sealed class HorseModule : IModule
             .AddScoped<IGameAction<HorseRunCommand, HorseRaceState, RaceOutcome>, HorseRunAction>()
             .AddScoped<GameExecutionDescriptor<HorseRunCommand, HorseRaceState, RaceOutcome>, HorseRunDescriptor>()
             .AddScoped<IGameStateStore<HorseRunCommand, HorseRaceState>, HorseRunStateStore>()
+            .AddScoped<IGameAction<HorsePlaceBetCommand, HorseWagerState, BetResult>, HorseWagerPlaceBetAction>()
+            .AddScoped<GameExecutionDescriptor<HorsePlaceBetCommand, HorseWagerState, BetResult>, HorseWagerPlaceBetDescriptor>()
+            .AddScoped<IGameStateStore<HorsePlaceBetCommand, HorseWagerState>, HorseWagerStateStore>()
+            .AddScoped<IOutcomeOnlyGameExecutor<HorsePlaceBetCommand, HorseWagerState, BetResult>,
+                OutcomeOnlyGameExecutor<HorsePlaceBetCommand, HorseWagerState, BetResult>>()
+            .AddScoped<HorseWagerCommandHandler>()
+            .AddScoped<IIntegrationCommandHandler<HorseWagerCommand>, HorseWagerCommandHandler>()
+            .AddScoped<IWagerGameCommandFactory, HorseWagerGameCommandFactory>()
+            .AddScoped<IWagerSettlementCommandFactory, HorseWagerSettlementFactory>()
+            .AddDomainEventSubscription<HorseWagerOutcomeIntegrationBridge>(
+                "horse.wager.outcome_declared")
             .AddScoped<IRenderJob<HorseRaceRenderSpec>, HorseRaceRenderJob>()
             .AddRecurringScheduledCommand<HorseRenderPrewarmScheduledCommand>();
     }

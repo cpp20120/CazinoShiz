@@ -2,8 +2,11 @@
 namespace Games.Poker.Infrastructure.Modules;
 
 using BotFramework.Host.Execution;
+using BotFramework.Contracts.Messaging;
+using BotFramework.Contracts.Wagering;
 using BotFramework.Sdk.Execution;
 using Games.Poker.Application.Execution;
+using Games.Poker.Application.Wagering;
 using Games.Poker.Infrastructure.Configuration;
 
 public sealed class PokerModule : IModule
@@ -25,7 +28,19 @@ public sealed class PokerModule : IModule
             .AddPokerExecution<PokerPlayerTurnCommand, ActionResult, PokerPlayerTurnAction, PokerPlayerTurnDescriptor>()
             .AddPokerExecution<PokerAutoTurnCommand, ActionResult, PokerAutoTurnAction, PokerAutoTurnDescriptor>()
             .AddPokerExecution<PokerLeaveCommand, LeaveResult, PokerLeaveAction, PokerLeaveDescriptor>()
-            .AddPokerExecution<PokerSetMessageCommand, bool, PokerSetMessageAction, PokerSetMessageDescriptor>();
+            .AddPokerExecution<PokerSetMessageCommand, bool, PokerSetMessageAction, PokerSetMessageDescriptor>()
+            .AddScoped<IGameAction<PokerCreateCommand, PokerWagerState, CreateResult>, PokerWagerCreateAction>()
+            .AddScoped<GameExecutionDescriptor<PokerCreateCommand, PokerWagerState, CreateResult>, PokerWagerCreateDescriptor>()
+            .AddScoped<IGameStateStore<PokerCreateCommand, PokerWagerState>, PokerWagerStateStore<PokerCreateCommand>>()
+            .AddScoped<IGameAction<PokerJoinCommand, PokerWagerState, JoinResult>, PokerWagerJoinAction>()
+            .AddScoped<GameExecutionDescriptor<PokerJoinCommand, PokerWagerState, JoinResult>, PokerWagerJoinDescriptor>()
+            .AddScoped<IGameStateStore<PokerJoinCommand, PokerWagerState>, PokerWagerStateStore<PokerJoinCommand>>()
+            .AddScoped<PokerWagerCommandHandler>()
+            .AddScoped<IIntegrationCommandHandler<PokerWagerCommand>, PokerWagerCommandHandler>()
+            .AddScoped<IWagerGameCommandFactory, PokerWagerGameCommandFactory>()
+            .AddScoped<IWagerSettlementCommandFactory, PokerWagerSettlementFactory>()
+            .AddDomainEventSubscription<PokerWagerOutcomeIntegrationBridge>(
+                "poker.wager.outcome_declared");
     }
 
     public IModuleMigrations GetMigrations() => new PokerMigrations();

@@ -15,6 +15,7 @@ public sealed class MetaModule : IModule
             .AddScoped<IMetaHistoryStore, MetaHistoryStore>()
             .AddScoped<IMetaReconstructionStore, MetaReconstructionStore>()
             .AddScoped<IMetaStore, MetaStore>()
+            .AddSingleton<IMetaReadModel, Games.Meta.Infrastructure.ReadModels.RedisMetaReadModel>()
             .AddScoped<IMetaService, MetaService>()
             .AddScoped<ISeasonRewardService, SeasonRewardService>()
             .AddSingleton<IQuestCatalog, JsonQuestCatalog>()

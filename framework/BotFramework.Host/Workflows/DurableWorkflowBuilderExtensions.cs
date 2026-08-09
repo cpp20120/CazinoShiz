@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using BotFramework.Host.Workflows;
+using BotFramework.Host.Wagering;
 using Wolverine;
 using Wolverine.ErrorHandling;
 using Wolverine.Postgresql;
@@ -49,6 +50,11 @@ public static class DurableWorkflowBuilderExtensions
                 TimeSpan.FromMinutes(5));
             opts.MessagePartitioning.UseInferredMessageGrouping();
             opts.Discovery.IncludeAssembly(typeof(DurableWorkflowStepHandler).Assembly);
+            // The multi-party saga deliberately depends on the scoped command
+            // publisher, whose Local implementation resolves handlers through
+            // IServiceProvider. Keep Wolverine codegen strict everywhere else,
+            // but let this workflow use the scoped service location boundary.
+            opts.CodeGeneration.AlwaysUseServiceLocationFor(typeof(MultiPartyWagerWorkflowExecutor));
             foreach (var assembly in handlerAssemblies.Where(static assembly => assembly is not null).Distinct())
             {
                 opts.Discovery.IncludeAssembly(assembly);

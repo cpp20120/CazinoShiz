@@ -1,4 +1,6 @@
+using System.Text.Json;
 using BotFramework.Sdk.Execution;
+using Games.Poker.Domain.Events;
 
 namespace Games.Poker.Application.Execution;
 
@@ -28,7 +30,7 @@ public static class PokerExecutionRules
         DisplayName = seat.DisplayName, Stack = seat.Stack, HoleCards = seat.HoleCards,
         Status = seat.Status, CurrentBet = seat.CurrentBet, TotalCommitted = seat.TotalCommitted,
         HasActedThisRound = seat.HasActedThisRound, ChatId = seat.ChatId,
-        StateMessageId = seat.StateMessageId, JoinedAt = seat.JoinedAt,
+        StateMessageId = seat.StateMessageId, JoinedAt = seat.JoinedAt, WagerBetId = seat.WagerBetId,
     };
 
     public static string InviteCode(double entropy)
@@ -71,15 +73,27 @@ public static class PokerExecutionRules
             TransitionKind.HandEndedRunout => "runout",
             _ => "showdown",
         };
-        var payouts = showdown.Where(entry => entry.Won > 0)
+        var payouts = showdown.Where(entry => entry.Won > 0 && entry.Seat.WagerBetId is null)
             .Select(entry => (IGameEffect)WalletEconomyEffect.Credit(
                 entry.Seat.UserId, entry.Seat.ChatId, entry.Won, "poker.win"))
             .ToArray();
         var winners = showdown.Where(entry => entry.Won > 0)
             .Select(entry => new PokerPayout(entry.Seat.UserId, entry.Won)).ToArray();
+        var payoutByUser = showdown.ToDictionary(entry => entry.Seat.UserId, entry => entry.Won);
+        var wagerEvents = state.Seats
+            .Where(seat => seat.WagerBetId is not null)
+            .Select(seat => new PokerWagerOutcomeDeclared(
+                seat.WagerBetId!,
+                seat.UserId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                payoutByUser.GetValueOrDefault(seat.UserId) > 0 ? "win" : "loss",
+                JsonSerializer.Serialize(new { payout = payoutByUser.GetValueOrDefault(seat.UserId) }),
+                now.ToUnixTimeMilliseconds()))
+            .Cast<IDomainEvent>()
+            .ToList();
         IDomainEvent[] events =
         [
             new PokerHandEnded(table.InviteCode, reason, winners, now.ToUnixTimeMilliseconds()),
+            .. wagerEvents,
         ];
         return new(new ActionResult(PokerError.None, Snapshot(state), HandTransition.HandEnded,
             showdown, null, null), payouts, events);

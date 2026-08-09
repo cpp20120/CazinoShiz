@@ -240,13 +240,17 @@ public sealed class AtomicExecutionContractTests
     }
 
     [Fact]
-    public void PokerService_UsesAtomicAggregateExecutorsAndQuartzTimeouts()
+    public void PokerService_SplitsStateOnlyCommandsFromAtomicEconomicsAndQuartzTimeouts()
     {
         var dependencies = typeof(PokerService).GetConstructors().Single().GetParameters()
             .Select(parameter => parameter.ParameterType).ToArray();
         Assert.Contains(typeof(IAtomicGameExecutor<PokerCreateCommand, PokerExecutionState, CreateResult>), dependencies);
         Assert.Contains(typeof(IAtomicGameExecutor<PokerPlayerTurnCommand, PokerExecutionState, ActionResult>), dependencies);
         Assert.Contains(typeof(IAtomicGameExecutor<PokerLeaveCommand, PokerExecutionState, LeaveResult>), dependencies);
+        Assert.Contains(typeof(IGameStateExecutor<PokerStartCommand, PokerExecutionState, StartResult>), dependencies);
+        Assert.Contains(typeof(IGameStateExecutor<PokerSetMessageCommand, PokerExecutionState, bool>), dependencies);
+        Assert.DoesNotContain(typeof(IAtomicGameExecutor<PokerStartCommand, PokerExecutionState, StartResult>), dependencies);
+        Assert.DoesNotContain(typeof(IAtomicGameExecutor<PokerSetMessageCommand, PokerExecutionState, bool>), dependencies);
         Assert.DoesNotContain(typeof(IEconomicsService), dependencies);
         Assert.DoesNotContain(typeof(IAnalyticsService), dependencies);
         Assert.DoesNotContain(typeof(IDomainEventBus), dependencies);
@@ -254,22 +258,25 @@ public sealed class AtomicExecutionContractTests
     }
 
     [Fact]
-    public void ChallengeService_UsesAtomicLifecycleExecutors()
+    public void ChallengeService_SplitsStateOnlyDeclineFromAtomicLifecycleExecutors()
     {
         var dependencies = typeof(ChallengeService).GetConstructors().Single().GetParameters()
             .Select(parameter => parameter.ParameterType).ToArray();
         Assert.Contains(typeof(IAtomicGameExecutor<ChallengeAcceptCommand, ChallengeExecutionState, ChallengeAcceptResult>), dependencies);
         Assert.Contains(typeof(IAtomicGameExecutor<ChallengeCompleteCommand, ChallengeExecutionState, ChallengeAcceptResult>), dependencies);
+        Assert.Contains(typeof(IGameStateExecutor<ChallengeDeclineCommand, ChallengeExecutionState, ChallengeAcceptError>), dependencies);
+        Assert.DoesNotContain(typeof(IAtomicGameExecutor<ChallengeDeclineCommand, ChallengeExecutionState, ChallengeAcceptError>), dependencies);
         Assert.DoesNotContain(typeof(IEconomicsService), dependencies);
         Assert.DoesNotContain(typeof(IAnalyticsService), dependencies);
     }
 
     [Fact]
-    public void RedeemService_UsesAtomicIssueAndClaimExecutors()
+    public void RedeemService_UsesStateOnlyIssueAndAtomicClaimExecutors()
     {
         var dependencies = typeof(RedeemService).GetConstructors().Single().GetParameters()
             .Select(parameter => parameter.ParameterType).ToArray();
-        Assert.Contains(typeof(IAtomicGameExecutor<RedeemIssueCommand, RedeemExecutionState, Guid>), dependencies);
+        Assert.Contains(typeof(IGameStateExecutor<RedeemIssueCommand, RedeemExecutionState, Guid>), dependencies);
+        Assert.DoesNotContain(typeof(IAtomicGameExecutor<RedeemIssueCommand, RedeemExecutionState, Guid>), dependencies);
         Assert.Contains(typeof(IAtomicGameExecutor<RedeemCompleteCommand, RedeemExecutionState, CompleteRedeemResult>), dependencies);
         Assert.DoesNotContain(typeof(IEconomicsService), dependencies);
         Assert.DoesNotContain(typeof(IAnalyticsService), dependencies);
@@ -278,7 +285,7 @@ public sealed class AtomicExecutionContractTests
     }
 
     [Fact]
-    public void SecretHitlerService_UsesAtomicTurnBasedLifecycleExecutors()
+    public void SecretHitlerService_SplitsStateOnlyTurnCommandsFromAtomicEconomics()
     {
         var dependencies = typeof(SecretHitlerService).GetConstructors().Single().GetParameters()
             .Select(parameter => parameter.ParameterType).ToArray();
@@ -286,6 +293,16 @@ public sealed class AtomicExecutionContractTests
         Assert.Contains(typeof(IAtomicGameExecutor<ShVoteCommand, SecretHitlerExecutionState, ShVoteResult>), dependencies);
         Assert.Contains(typeof(IAtomicGameExecutor<ShEnactCommand, SecretHitlerExecutionState, ShEnactResult>), dependencies);
         Assert.Contains(typeof(IAtomicGameExecutor<ShLeaveCommand, SecretHitlerExecutionState, ShLeaveResult>), dependencies);
+        Assert.Contains(typeof(IGameStateExecutor<ShStartCommand, SecretHitlerExecutionState, ShStartResult>), dependencies);
+        Assert.Contains(typeof(IGameStateExecutor<ShNominateCommand, SecretHitlerExecutionState, ShNominateResult>), dependencies);
+        Assert.Contains(typeof(IGameStateExecutor<ShDiscardCommand, SecretHitlerExecutionState, ShDiscardResult>), dependencies);
+        Assert.Contains(typeof(IGameStateExecutor<ShPlayerMessageCommand, SecretHitlerExecutionState, bool>), dependencies);
+        Assert.Contains(typeof(IGameStateExecutor<ShPublicMessageCommand, SecretHitlerExecutionState, bool>), dependencies);
+        Assert.DoesNotContain(typeof(IAtomicGameExecutor<ShStartCommand, SecretHitlerExecutionState, ShStartResult>), dependencies);
+        Assert.DoesNotContain(typeof(IAtomicGameExecutor<ShNominateCommand, SecretHitlerExecutionState, ShNominateResult>), dependencies);
+        Assert.DoesNotContain(typeof(IAtomicGameExecutor<ShDiscardCommand, SecretHitlerExecutionState, ShDiscardResult>), dependencies);
+        Assert.DoesNotContain(typeof(IAtomicGameExecutor<ShPlayerMessageCommand, SecretHitlerExecutionState, bool>), dependencies);
+        Assert.DoesNotContain(typeof(IAtomicGameExecutor<ShPublicMessageCommand, SecretHitlerExecutionState, bool>), dependencies);
         Assert.DoesNotContain(typeof(IEconomicsService), dependencies);
         Assert.DoesNotContain(typeof(IAnalyticsService), dependencies);
         Assert.DoesNotContain(typeof(IDomainEventBus), dependencies);
@@ -293,11 +310,13 @@ public sealed class AtomicExecutionContractTests
     }
 
     [Fact]
-    public void PixelBattleService_UsesTileScopedAtomicExecutor()
+    public void PixelBattleService_UsesTileScopedStateExecutor()
     {
         var dependencies = typeof(PixelBattleService).GetConstructors().Single().GetParameters()
             .Select(parameter => parameter.ParameterType).ToArray();
-        Assert.Contains(typeof(IAtomicGameExecutor<PixelBattleCommand, PixelBattleExecutionState,
+        Assert.Contains(typeof(IGameStateExecutor<PixelBattleCommand, PixelBattleExecutionState,
+            PixelUpdateResult>), dependencies);
+        Assert.DoesNotContain(typeof(IAtomicGameExecutor<PixelBattleCommand, PixelBattleExecutionState,
             PixelUpdateResult>), dependencies);
         Assert.DoesNotContain(typeof(IWalletReadService), dependencies);
 

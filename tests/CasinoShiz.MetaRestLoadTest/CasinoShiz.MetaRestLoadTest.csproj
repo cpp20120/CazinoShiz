@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CasinoShiz.MetaRestLoadTest</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <AllowMissingPrunePackageData>true</AllowMissingPrunePackageData>
+    <NuGetAuditMode>direct</NuGetAuditMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <ProjectReference Include="..\..\framework\BotFramework.Contracts\BotFramework.Contracts.csproj" />
+    <ProjectReference Include="..\..\framework\BotFramework.Host\BotFramework.Host.csproj" />
+    <ProjectReference Include="..\..\framework\BotFramework.Rest\BotFramework.Rest.csproj" />
+    <ProjectReference Include="..\..\games\Games.Meta\Games.Meta.csproj" />
+    <ProjectReference Include="..\..\games\Games.Meta.Rest\Games.Meta.Rest.csproj" />
+  </ItemGroup>
+</Project>

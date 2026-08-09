@@ -78,6 +78,8 @@ public static class RestFrameworkExtensions
         services.AddAuthorization();
 
         services.AddOpenApi("v1");
+        services.AddSingleton<IRestRouteModule, WagerRestModule>();
+        services.AddSingleton<IRestRouteModule, MultiPartyWagerRestModule>();
         return builder;
     }
 

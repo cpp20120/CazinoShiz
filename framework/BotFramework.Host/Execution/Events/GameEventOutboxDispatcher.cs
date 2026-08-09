@@ -1,11 +1,14 @@
 using System.Text.Json;
 using BotFramework.Contracts.Messaging;
+using BotFramework.Host.Wagering;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace BotFramework.Host.Execution;
 
 internal sealed partial class GameEventOutboxDispatcher(
     PostgresGameEventOutbox outbox,
     IDomainEventBus events,
+    IServiceScopeFactory scopeFactory,
     ILogger<GameEventOutboxDispatcher> logger,
     TimeProvider timeProvider) : BackgroundService
 {
@@ -38,6 +41,7 @@ internal sealed partial class GameEventOutboxDispatcher(
                 var type = Type.GetType(item.TypeName, throwOnError: true)!;
                 var domainEvent = JsonSerializer.Deserialize(item.Payload, type, JsonOptions) as IDomainEvent
                     ?? throw new InvalidOperationException($"Outbox payload is not an {nameof(IDomainEvent)}.");
+                await RelayWagerOutcomeAsync(domainEvent, ct);
                 await events.PublishAsync(domainEvent, ct);
                 await outbox.MarkSentAsync(item.Id, ct);
                 GameExecutionTelemetry.RecordOutboxLag(item.CreatedAt, timeProvider.GetUtcNow());
@@ -59,6 +63,7 @@ internal sealed partial class GameEventOutboxDispatcher(
                     ?? throw new InvalidOperationException($"Tenant outbox payload is not an {nameof(IDomainEvent)}.");
                 using var metadataScope = RequestMetadataContext.Push(
                     RequestMetadata.FromTenantContext(item.Context, "tenant-event-outbox"));
+                await RelayWagerOutcomeAsync(domainEvent, ct);
                 await events.PublishAsync(domainEvent, ct);
                 await outbox.MarkTenantSentAsync(item.Id, ct);
                 GameExecutionTelemetry.RecordOutboxLag(item.CreatedAt, timeProvider.GetUtcNow());
@@ -69,6 +74,17 @@ internal sealed partial class GameEventOutboxDispatcher(
                 await outbox.MarkTenantFailedAsync(item.Id, exception.Message, item.Attempts, ct);
             }
         }
+    }
+
+    private async Task RelayWagerOutcomeAsync(IDomainEvent domainEvent, CancellationToken ct)
+    {
+        if (domainEvent is not WagerGameOutcomeDeclared outcome)
+            return;
+
+        using var scope = scopeFactory.CreateScope();
+        await scope.ServiceProvider
+            .GetRequiredService<WagerGameOutcomeIntegrationBridge>()
+            .HandleAsync(outcome, ct);
     }
 
     [LoggerMessage(LogLevel.Warning, "game.event.outbox.delivery_failed id={OutboxId} attempts={Attempts}")]

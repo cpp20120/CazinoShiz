@@ -2,8 +2,10 @@
 namespace Games.Challenges.Infrastructure.Modules;
 
 using BotFramework.Host.Execution;
+using BotFramework.Host.Wagering;
 using BotFramework.Sdk.Execution;
 using Games.Challenges.Application.Execution;
+using Games.Challenges.Application.Wagering;
 using Games.Challenges.Infrastructure.Configuration;
 
 public sealed class ChallengeModule : IModule
@@ -23,6 +25,8 @@ public sealed class ChallengeModule : IModule
             .AddChallengeExecution<ChallengeDeclineCommand, ChallengeAcceptError, ChallengeDeclineAction, ChallengeDeclineDescriptor>()
             .AddChallengeExecution<ChallengeCompleteCommand, ChallengeAcceptResult, ChallengeCompleteAction, ChallengeCompleteDescriptor>()
             .AddChallengeExecution<ChallengeFailCommand, bool, ChallengeFailAction, ChallengeFailDescriptor>()
+            .AddScoped<IMultiPartyWagerGameAdapter, ChallengeMultiPartyWagerAdapter>()
+            .AddScoped<IMultiPartyWagerPayoutPolicy, ChallengeMultiPartyWagerPayoutPolicy>()
             .AddScoped<IChallengeService, ChallengeService>();
     }
 

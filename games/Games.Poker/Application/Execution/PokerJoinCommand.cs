@@ -8,7 +8,8 @@ public sealed record PokerJoinCommand(
     string CommandId,
     int BuyIn,
     int MaxPlayers,
-    IReadOnlyList<PokerWalletRef> ExpectedWallets) : IPokerExecutionCommand
+    IReadOnlyList<PokerWalletRef> ExpectedWallets,
+    string? WagerBetId = null) : IPokerExecutionCommand
 {
-    public bool EnsureActorWallet => true;
+    public bool EnsureActorWallet => WagerBetId is null;
 }

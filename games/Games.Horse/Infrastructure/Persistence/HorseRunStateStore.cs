@@ -15,7 +15,7 @@ public sealed class HorseRunStateStore : IGameStateStore<HorseRunCommand, HorseR
         var json = await context.QuerySingleOrDefaultAsync<string>($"""
             SELECT COALESCE(json_agg(json_build_object(
                 'Id',id,'RaceDate',race_date,'UserId',user_id,'BalanceScopeId',balance_scope_id,
-                'HorseId',horse_id,'Amount',amount) ORDER BY id)::text,'[]')
+                'HorseId',horse_id,'Amount',amount,'WagerBetId',wager_bet_id) ORDER BY id)::text,'[]')
             FROM (SELECT * FROM horse_bets WHERE race_date=@RaceDate{scopePredicate} FOR UPDATE) locked
             """, new { command.RaceDate, command.ChatScopeId }, ct);
         var bets = JsonSerializer.Deserialize<HorseBetRow[]>(json ?? "[]") ?? [];

@@ -2,8 +2,10 @@
 namespace Games.Bowling.Infrastructure.Modules;
 
 using BotFramework.Host.Execution;
+using BotFramework.Host.Wagering;
 using BotFramework.Sdk.Execution;
 using Games.Bowling.Application.Execution;
+using Games.Bowling.Application.Wagering;
 using Games.Bowling.Infrastructure.Configuration;
 
 public sealed class BowlingModule : IModule
@@ -26,7 +28,9 @@ public sealed class BowlingModule : IModule
             .AddScoped<IGameAction<BowlingAbortCommand, BowlingBetState, BowlingAbortResult>, BowlingAbortAction>()
             .AddScoped<GameExecutionDescriptor<BowlingAbortCommand, BowlingBetState, BowlingAbortResult>, BowlingAbortDescriptor>()
             .AddScoped<IGameStateStore<BowlingAbortCommand, BowlingBetState>, BowlingBetStateStore>()
-            .AddScoped<IBowlingBetStore, BowlingBetStore>();
+            .AddScoped<IBowlingBetStore, BowlingBetStore>()
+            .AddScoped<IWagerGameResolver, BowlingWagerResolver>()
+            .AddScoped<IWagerPayoutPolicy, BowlingWagerPayoutPolicy>();
     }
 
     public IModuleMigrations GetMigrations() => new BowlingMigrations();

@@ -67,6 +67,7 @@ public sealed class SecretHitlerDbContext(INpgsqlConnectionFactory connections) 
         player.Property(x => x.LastVote).HasColumnName("last_vote").HasConversion<int>();
         player.Property(x => x.StateMessageId).HasColumnName("state_message_id");
         player.Property(x => x.JoinedAt).HasColumnName("joined_at");
+        player.Property(x => x.WagerBetId).HasColumnName("wager_bet_id");
         player.HasIndex(x => x.UserId).HasDatabaseName("ix_sh_players_user");
         player.HasIndex(x => x.InviteCode).HasDatabaseName("ix_sh_players_code");
     }

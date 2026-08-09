@@ -2,8 +2,10 @@
 namespace Games.Darts.Infrastructure.Modules;
 
 using BotFramework.Host.Execution;
+using BotFramework.Host.Wagering;
 using BotFramework.Sdk.Execution;
 using Games.Darts.Application.Execution;
+using Games.Darts.Application.Wagering;
 using Games.Darts.Infrastructure.Configuration;
 
 public sealed class DartsModule : IModule
@@ -31,7 +33,9 @@ public sealed class DartsModule : IModule
             .AddScoped<IGameAction<DartsQuickThrowCommand, NoGameState, DartsThrowResult>, DartsQuickThrowAction>()
             .AddScoped<GameExecutionDescriptor<DartsQuickThrowCommand, NoGameState, DartsThrowResult>, DartsQuickThrowDescriptor>()
             .AddScoped<IGameStateStore<DartsQuickThrowCommand, NoGameState>, DartsNoGameStateStore>()
-            .AddBackgroundJob<DartsRollDispatcherJob>();
+            .AddBackgroundJob<DartsRollDispatcherJob>()
+            .AddScoped<IWagerGameResolver, DartsWagerResolver>()
+            .AddScoped<IWagerPayoutPolicy, DartsWagerPayoutPolicy>();
     }
 
     public IModuleMigrations GetMigrations() => new DartsMigrations();
