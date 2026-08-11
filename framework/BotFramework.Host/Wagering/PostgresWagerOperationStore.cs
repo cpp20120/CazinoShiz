@@ -59,13 +59,14 @@ public sealed class PostgresWagerOperationStore(
         WagerOperationStatus status,
         string? outcomeCode,
         string? errorCode,
-        CancellationToken ct)
+        CancellationToken ct,
+        long? payout = null)
     {
         if (inboxContext.Current is { } current)
-            return await TryUpdateAsync(current.Connection, current.Transaction, operationId, expectedStatus, status, outcomeCode, errorCode, ct);
+            return await TryUpdateAsync(current.Connection, current.Transaction, operationId, expectedStatus, status, outcomeCode, errorCode, payout, ct);
 
         await using var connection = await connections.OpenAsync(ct);
-        return await TryUpdateAsync(connection, null, operationId, expectedStatus, status, outcomeCode, errorCode, ct);
+        return await TryUpdateAsync(connection, null, operationId, expectedStatus, status, outcomeCode, errorCode, payout, ct);
     }
 
     private static async Task InsertAsync(
@@ -101,13 +102,14 @@ public sealed class PostgresWagerOperationStore(
         WagerOperationStatus status,
         string? outcomeCode,
         string? errorCode,
+        long? payout,
         CancellationToken ct)
     {
         var affected = await connection.ExecuteAsync(new CommandDefinition("""
             UPDATE wager_operations SET status = @status, outcome_code = @outcomeCode,
-                error_code = @errorCode, updated_at = now()
+                error_code = @errorCode, payout = COALESCE(@payout, payout), updated_at = now()
             WHERE operation_id = @operationId AND status = @expectedStatus
-            """, new { operationId, expectedStatus, status, outcomeCode, errorCode }, transaction, cancellationToken: ct));
+            """, new { operationId, expectedStatus, status, outcomeCode, errorCode, payout }, transaction, cancellationToken: ct));
         return affected == 1
             ? await GetRequiredAsync(connection, transaction, operationId, ct)
             : null;
@@ -146,5 +148,5 @@ public sealed class PostgresWagerOperationStore(
             transaction,
             cancellationToken: ct));
 
-    private const string Select = "SELECT operation_id AS OperationId, bet_id AS BetId, game_id AS GameId, player_id AS PlayerId, game_input::text AS GameInput, terms::text AS TermsJson, status AS Status, outcome_code AS OutcomeCode, error_code AS ErrorCode, created_at AS CreatedAt, updated_at AS UpdatedAt FROM wager_operations";
+    private const string Select = "SELECT operation_id AS OperationId, bet_id AS BetId, game_id AS GameId, player_id AS PlayerId, game_input::text AS GameInput, terms::text AS TermsJson, status AS Status, outcome_code AS OutcomeCode, error_code AS ErrorCode, created_at AS CreatedAt, updated_at AS UpdatedAt, payout AS Payout FROM wager_operations";
 }

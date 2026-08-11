@@ -1,3 +1,4 @@
+using BotFramework.Contracts.Ledger;
 using BotFramework.Contracts.Messaging;
 using BotFramework.Contracts.Tenancy;
 using BotFramework.Contracts.Wagering;
@@ -22,18 +23,21 @@ public sealed class MultiPartyWagerWorkflowExecutor(
         var participants = request.Participants;
         foreach (var participant in participants)
         {
-            await commands.SendAsync(new LedgerReservationRequested(
+            await commands.SendAsync(new LedgerHoldRequested(
                 participant.OperationId,
-                participant.BetId,
+                participant.OperationId,
                 participant.PlayerId,
                 participant.Stake,
                 participant.Currency,
+                request.OccurredAt.AddMinutes(15),
+                "multiparty.wager.hold",
                 request.OccurredAt), ct);
 
             var status = await store.GetReservationStatusAsync(participant.OperationId, ct);
             if (status is null or "processing")
                 throw new InvalidOperationException("multiparty_reservation_pending");
-            if (!string.Equals(status, "reserved", StringComparison.Ordinal))
+            if (!string.Equals(status, "reserved", StringComparison.Ordinal)
+                && !string.Equals(status, "held", StringComparison.Ordinal))
             {
                 await store.SetParticipantStatusAsync(request.WorkflowId, participant.BetId, "rejected", null, null, "participant_reservation_rejected", ct);
                 await CompensateAsync(request, participants, ct);
@@ -71,21 +75,42 @@ public sealed class MultiPartyWagerWorkflowExecutor(
         foreach (var outcome in outcomes)
         {
             var participant = participants.Single(x => string.Equals(x.BetId, outcome.BetId, StringComparison.Ordinal));
-            await commands.SendAsync(new LedgerSettlementRequested(
+            await commands.SendAsync(new LedgerCaptureRequested(
+                $"{participant.OperationId}:capture",
                 participant.OperationId,
-                participant.BetId,
                 participant.PlayerId,
-                outcome.Payout,
+                participant.Stake,
                 participant.Currency,
-                request.OccurredAt), ct);
+                "multiparty.wager.capture",
+                request.OccurredAt,
+                "house"), ct);
 
-            var status = await store.GetReservationStatusAsync(participant.OperationId, ct);
-            if (status is null or "processing")
+            var captureStatus = await store.GetLedgerOperationStatusAsync($"{participant.OperationId}:capture", ct);
+            if (captureStatus is null or "processing")
                 throw new InvalidOperationException("multiparty_settlement_pending");
-            if (!string.Equals(status, "settled", StringComparison.Ordinal))
+            if (!string.Equals(captureStatus, "captured", StringComparison.Ordinal)
+                && !string.Equals(captureStatus, "partially_captured", StringComparison.Ordinal))
             {
                 await store.SetParticipantStatusAsync(request.WorkflowId, participant.BetId, "failed", outcome.OutcomeCode, outcome.Payout, "settlement_rejected", ct);
                 return new(request.WorkflowId, "failed", outcomes, "settlement_rejected");
+            }
+
+            if (outcome.Payout > 0)
+            {
+                await commands.SendAsync(new LedgerTransferRequested(
+                    $"{participant.OperationId}:payout",
+                    "house",
+                    participant.PlayerId,
+                    outcome.Payout,
+                    participant.Currency,
+                    "multiparty.wager.payout",
+                    request.OccurredAt), ct);
+                var payoutStatus = await store.GetLedgerOperationStatusAsync($"{participant.OperationId}:payout", ct);
+                if (!string.Equals(payoutStatus, "completed", StringComparison.Ordinal))
+                {
+                    await store.SetParticipantStatusAsync(request.WorkflowId, participant.BetId, "failed", outcome.OutcomeCode, outcome.Payout, "payout_rejected", ct);
+                    return new(request.WorkflowId, "failed", outcomes, "payout_rejected");
+                }
             }
             await store.SetParticipantStatusAsync(request.WorkflowId, participant.BetId, "settled", outcome.OutcomeCode, outcome.Payout, null, ct);
         }
@@ -112,16 +137,17 @@ public sealed class MultiPartyWagerWorkflowExecutor(
                 throw new InvalidOperationException($"Cannot compensate reservation in status '{status}'.");
 
             await store.SetParticipantStatusAsync(request.WorkflowId, participant.BetId, "refunding", null, null, null, ct);
-            await commands.SendAsync(new LedgerReservationRefundRequested(
-                request.WorkflowId,
+            await commands.SendAsync(new LedgerReleaseRequested(
+                $"{participant.OperationId}:release",
                 participant.OperationId,
-                participant.BetId,
                 participant.PlayerId,
                 participant.Stake,
                 participant.Currency,
+                "multiparty.wager.release",
                 request.OccurredAt), ct);
-            var refundStatus = await store.GetReservationStatusAsync(participant.OperationId, ct);
-            if (string.Equals(refundStatus, "refunded", StringComparison.Ordinal))
+            var refundStatus = await store.GetLedgerOperationStatusAsync($"{participant.OperationId}:release", ct);
+            if (string.Equals(refundStatus, "released", StringComparison.Ordinal)
+                || string.Equals(refundStatus, "partially_released", StringComparison.Ordinal))
                 await store.SetParticipantStatusAsync(request.WorkflowId, participant.BetId, "refunded", "refund", participant.Stake, null, ct);
             else
                 throw new InvalidOperationException("multiparty_refund_pending");

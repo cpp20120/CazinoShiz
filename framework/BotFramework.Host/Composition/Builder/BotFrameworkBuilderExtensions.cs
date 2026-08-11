@@ -28,9 +28,13 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using BotFramework.Contracts.RateLimiting;
 using BotFramework.Contracts.Tenancy;
 using BotFramework.Contracts.Economics;
+using BotFramework.Contracts.Cases;
+using BotFramework.Contracts.Ledger;
 using BotFramework.Contracts.Wagering;
 using BotFramework.Host.Tenancy;
 using BotFramework.Host.Economics;
+using BotFramework.Host.Cases;
+using BotFramework.Host.Ledger;
 using BotFramework.Host.Wagering;
 using BotFramework.Sdk.Execution;
 
@@ -185,13 +189,28 @@ public static class BotFrameworkBuilderExtensions
         services.AddScoped<BotFramework.Host.Wagering.MultiPartyWagerWorkflowExecutor>();
         services.AddScoped<BotFramework.Host.Wagering.WageringCoordinator>();
         services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationCommandHandler<BotFramework.Contracts.Wagering.WagerRequested>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.WageringCoordinator>());
-        services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationEventHandler<BotFramework.Contracts.Wagering.LedgerReservationCompleted>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.WageringCoordinator>());
+        services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationEventHandler<BotFramework.Contracts.Ledger.LedgerOperationCompleted>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.WageringCoordinator>());
         services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationEventHandler<BotFramework.Contracts.Wagering.GameOutcomeDeclared>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.WageringCoordinator>());
-        services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationEventHandler<BotFramework.Contracts.Wagering.LedgerSettlementCompleted>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.WageringCoordinator>());
         services.AddScoped<BotFramework.Host.Wagering.PostgresWagerLedgerCommandHandler>();
         services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationCommandHandler<BotFramework.Contracts.Wagering.LedgerReservationRequested>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.PostgresWagerLedgerCommandHandler>());
         services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationCommandHandler<BotFramework.Contracts.Wagering.LedgerSettlementRequested>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.PostgresWagerLedgerCommandHandler>());
         services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationCommandHandler<BotFramework.Contracts.Wagering.LedgerReservationRefundRequested>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.PostgresWagerLedgerCommandHandler>());
+        if (!walletRemote)
+        {
+            services.AddScoped<PostgresLedgerOperationCommandHandler>();
+            services.AddScoped<IIntegrationCommandHandler<LedgerHoldRequested>>(sp => sp.GetRequiredService<PostgresLedgerOperationCommandHandler>());
+            services.AddScoped<IIntegrationCommandHandler<LedgerCaptureRequested>>(sp => sp.GetRequiredService<PostgresLedgerOperationCommandHandler>());
+            services.AddScoped<IIntegrationCommandHandler<LedgerReleaseRequested>>(sp => sp.GetRequiredService<PostgresLedgerOperationCommandHandler>());
+            services.AddScoped<IIntegrationCommandHandler<LedgerRefundRequested>>(sp => sp.GetRequiredService<PostgresLedgerOperationCommandHandler>());
+            services.AddScoped<IIntegrationCommandHandler<LedgerTransferRequested>>(sp => sp.GetRequiredService<PostgresLedgerOperationCommandHandler>());
+            services.AddScoped<IIntegrationCommandHandler<LedgerAdjustmentRequested>>(sp => sp.GetRequiredService<PostgresLedgerOperationCommandHandler>());
+        }
+        services.AddScoped<PostgresCaseCommandHandler>();
+        services.AddScoped<IIntegrationCommandHandler<CaseOpenRequested>>(sp => sp.GetRequiredService<PostgresCaseCommandHandler>());
+        services.AddScoped<IIntegrationCommandHandler<CaseEvidenceRequested>>(sp => sp.GetRequiredService<PostgresCaseCommandHandler>());
+        services.AddScoped<IIntegrationCommandHandler<CaseReviewRequested>>(sp => sp.GetRequiredService<PostgresCaseCommandHandler>());
+        services.AddScoped<IIntegrationCommandHandler<CaseResolveRequested>>(sp => sp.GetRequiredService<PostgresCaseCommandHandler>());
+        services.AddScoped<IIntegrationCommandHandler<CaseAppealRequested>>(sp => sp.GetRequiredService<PostgresCaseCommandHandler>());
         services.AddScoped<BotFramework.Host.Wagering.RedisWagerOperationProjection>();
         services.AddSingleton<BotFramework.Contracts.Wagering.IWagerOperationResultCache, BotFramework.Host.Wagering.RedisWagerOperationResultCache>();
         services.AddScoped<BotFramework.Contracts.Messaging.IIntegrationEventHandler<BotFramework.Contracts.Wagering.WagerSettled>>(sp => sp.GetRequiredService<BotFramework.Host.Wagering.RedisWagerOperationProjection>());
@@ -324,6 +343,7 @@ public static class BotFrameworkBuilderExtensions
         services.AddSingleton<IEventLog, PostgresEventLog>();
         services.AddSingleton<EventLogSubscriber>();
         services.AddSingleton<ClickHouseEventMirror>();
+        services.AddScoped<BotFramework.Contracts.Operations.IWagerWorkflowTimelineReader, BotFramework.Host.Admin.Operations.PostgresWagerWorkflowTimelineReader>();
         services.AddSingleton<IBackgroundJobStatusService, BackgroundJobStatusService>();
         services.AddScoped<BotFramework.Contracts.Operations.IOperationsAdminService, BotFramework.Host.Admin.Operations.OperationsAdminService>();
 

@@ -1,6 +1,10 @@
 
 # CasinoShiz: distributed domain architecture
 
+> The current execution and consistency source of truth is [`docs/arch.md`](arch.md).
+> This document keeps the detailed distributed-design rationale and protocol notes;
+> if the two documents disagree, `docs/arch.md` wins.
+
 ## 1. Core decision
 
 **PostgreSQL remains the authoritative write-side**, but ownership is split by bounded context. Each service owns its state, migrations, inbox and outbox. **Redpanda/Kafka is the shared integration backbone**, not the source of truth and not a distributed transaction coordinator.
@@ -87,6 +91,42 @@ The initial integration lanes are framework-owned shared command and event lanes
 is the service-side filter; the transport can later be partitioned into the bounded-context topics shown
 in the topology without changing domain contracts. Contract types used across deployables must live in a
 shared contracts assembly, not in an implementation-only service assembly.
+
+### Game state is independent from wagering economics
+
+Game services expose two valid local execution boundaries. `IAtomicGameExecutor`
+is used when a command must include wallet, quota, player-protection or legacy
+refund/payout effects in the same local transaction. `IGameStateExecutor` uses the
+same inbox, aggregate lock, revision and outbox guarantees, but commits only the
+game state and non-economic effects. Its pipeline rejects economy, quota and
+wallet custom effects so a state-only command cannot accidentally reintroduce the
+old coupling.
+
+For wagered play, `IOutcomeOnlyGameExecutor` runs the game command through the
+state-only boundary. Wagering owns the `WagerTermsSnapshot` (stake and payout
+rules version), while the game aggregate contains only game mechanics and the
+terminal outcome:
+
+```text
+Wagering/Ledger: reserve
+        |
+        v
+Game Service: state transition -> GameOutcomeDeclared
+        |
+        v
+Wagering: validate terms -> payout policy -> settlement command
+        |
+        v
+Ledger: settle or release reservation
+```
+
+This makes the game result durable and visible before the balance update arrives.
+Delivery is at-least-once, so reservation, outcome and settlement commands use
+stable ids and idempotent inbox/ledger operations. The current repository keeps
+the legacy Atomic Blackjack flow for compatibility while the parallel
+`BlackjackWagerState` flow is outcome-only; the same arrangement is used for
+generic Dice/Darts/Football/Basketball/Bowling/Pick adapters, specialized
+Horse/Poker/Secret Hitler adapters, and multi-party Challenge/Pick workflows.
 
 ---
 

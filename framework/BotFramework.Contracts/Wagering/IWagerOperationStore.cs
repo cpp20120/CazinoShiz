@@ -13,5 +13,6 @@ public interface IWagerOperationStore
         WagerOperationStatus status,
         string? outcomeCode,
         string? errorCode,
-        CancellationToken ct);
+        CancellationToken ct,
+        long? payout = null);
 }

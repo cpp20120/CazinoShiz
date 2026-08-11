@@ -8,9 +8,10 @@ internal static class WagerOperationMigrationDefinition
         CREATE TABLE IF NOT EXISTS wager_operations (
             operation_id TEXT PRIMARY KEY, bet_id TEXT NOT NULL UNIQUE, game_id TEXT NOT NULL,
             player_id TEXT NOT NULL, game_input JSONB NOT NULL, terms JSONB NOT NULL,
-            status INTEGER NOT NULL, outcome_code TEXT, error_code TEXT,
+            status INTEGER NOT NULL, outcome_code TEXT, error_code TEXT, payout BIGINT,
             created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL
         );
+        ALTER TABLE wager_operations ADD COLUMN IF NOT EXISTS payout BIGINT;
         CREATE INDEX IF NOT EXISTS ix_wager_operations_player_updated
             ON wager_operations (player_id, updated_at DESC);
         """);

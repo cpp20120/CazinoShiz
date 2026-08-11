@@ -1,11 +1,14 @@
 using System.Text.Json;
+using BotFramework.Contracts.Tenancy;
 using BotFramework.Contracts.Wagering;
 using BotFramework.Host.Persistence.Connections;
 using Dapper;
 
 namespace BotFramework.Host.Wagering;
 
-public sealed class PostgresMultiPartyWagerStore(INpgsqlConnectionFactory connections)
+public sealed class PostgresMultiPartyWagerStore(
+    INpgsqlConnectionFactory connections,
+    ITenantContextAccessor tenantContext)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -166,10 +169,39 @@ public sealed class PostgresMultiPartyWagerStore(INpgsqlConnectionFactory connec
 
     public async Task<string?> GetReservationStatusAsync(string operationId, CancellationToken ct)
     {
+        var tenant = tenantContext.RequireCurrent();
         await using var connection = await connections.OpenAsync(ct);
         return await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
-            "SELECT status FROM wager_reservations WHERE operation_id = @OperationId",
-            new { OperationId = operationId },
+            """
+            SELECT COALESCE(
+                (SELECT status FROM wager_reservations WHERE operation_id = @OperationId),
+                (SELECT status FROM ledger_holds
+                 WHERE tenant_key = (SELECT tenant_key FROM tenants WHERE tenant_id = @TenantId)
+                   AND scope_key = (
+                       SELECT scope_key FROM tenant_scopes
+                       WHERE tenant_key = (SELECT tenant_key FROM tenants WHERE tenant_id = @TenantId)
+                         AND scope_id = @ScopeId)
+                   AND operation_id = @OperationId))
+            """,
+            new { OperationId = operationId, TenantId = tenant.TenantId.Value, ScopeId = tenant.ScopeId.Value },
+            cancellationToken: ct));
+    }
+
+    public async Task<string?> GetLedgerOperationStatusAsync(string operationId, CancellationToken ct)
+    {
+        var tenant = tenantContext.RequireCurrent();
+        await using var connection = await connections.OpenAsync(ct);
+        return await connection.QuerySingleOrDefaultAsync<string>(new CommandDefinition(
+            """
+            SELECT status FROM ledger_operations
+            WHERE tenant_key = (SELECT tenant_key FROM tenants WHERE tenant_id = @TenantId)
+              AND scope_key = (
+                  SELECT scope_key FROM tenant_scopes
+                  WHERE tenant_key = (SELECT tenant_key FROM tenants WHERE tenant_id = @TenantId)
+                    AND scope_id = @ScopeId)
+              AND operation_id = @OperationId
+            """,
+            new { OperationId = operationId, TenantId = tenant.TenantId.Value, ScopeId = tenant.ScopeId.Value },
             cancellationToken: ct));
     }
 

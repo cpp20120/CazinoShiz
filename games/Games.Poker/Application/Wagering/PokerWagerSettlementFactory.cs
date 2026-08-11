@@ -1,5 +1,4 @@
 using System.Text.Json;
-using BotFramework.Contracts.Messaging;
 using BotFramework.Contracts.Wagering;
 
 namespace Games.Poker.Application.Wagering;
@@ -10,7 +9,7 @@ public sealed class PokerWagerSettlementFactory : IWagerSettlementCommandFactory
 
     public string GameId => "poker";
 
-    public IIntegrationCommand Create(
+    public WagerSettlementPlan Create(
         WagerOperation operation,
         GameOutcomeDeclared outcome,
         WagerTermsSnapshot terms)
@@ -19,13 +18,7 @@ public sealed class PokerWagerSettlementFactory : IWagerSettlementCommandFactory
             ?? throw new InvalidOperationException("Poker outcome evidence is invalid.");
         if (evidence.Payout < 0)
             throw new InvalidOperationException("Poker payout cannot be negative.");
-        return new LedgerSettlementRequested(
-            operation.OperationId,
-            operation.BetId,
-            operation.PlayerId,
-            evidence.Payout,
-            terms.Currency,
-            outcome.OccurredAt);
+        return new WagerSettlementPlan(evidence.Payout);
     }
 
     private sealed record PokerSettlementEvidence(long Payout);

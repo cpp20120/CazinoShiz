@@ -1,4 +1,5 @@
 using System.Text.Json;
+using BotFramework.Contracts.Ledger;
 using BotFramework.Contracts.Messaging;
 using BotFramework.Contracts.Wagering;
 using BotFramework.Host.Wagering;
@@ -94,10 +95,12 @@ public sealed class BlackjackWagerSliceTests
                 Now),
             CancellationToken.None);
         Assert.Equal(WagerOperationStatus.Reserving, (await store.GetAsync("op-1", CancellationToken.None))!.Status);
-        Assert.IsType<LedgerReservationRequested>(Assert.Single(commands.Sent));
+        Assert.IsType<LedgerHoldRequested>(Assert.Single(commands.Sent));
 
         await coordinator.HandleAsync(
-            new LedgerReservationCompleted("op-1", "bet-1", "player-1", true, null, Now),
+            new LedgerOperationCompleted(
+                "op-1", LedgerOperationKind.Hold, LedgerOperationStatus.Held, true,
+                "player-1", "op-1", 10, 10, "coins", null, Now),
             CancellationToken.None);
         Assert.Equal(WagerOperationStatus.Playing, (await store.GetAsync("op-1", CancellationToken.None))!.Status);
         Assert.IsType<BlackjackWagerStart>(commands.Sent[1]);
@@ -129,14 +132,34 @@ public sealed class BlackjackWagerSliceTests
 
         Assert.Equal(WagerOperationStatus.Settling, (await store.GetAsync("op-1", CancellationToken.None))!.Status);
         Assert.Equal(3, commands.Sent.Count);
-        var settlement = Assert.IsType<LedgerSettlementRequested>(commands.Sent[2]);
-        Assert.Equal(20, settlement.Payout);
+        var capture = Assert.IsType<LedgerCaptureRequested>(commands.Sent[2]);
+        Assert.Equal("op-1:capture", capture.OperationId);
+        Assert.Equal(10, capture.Amount);
 
         await coordinator.HandleAsync(
-            new LedgerSettlementCompleted("op-1", "bet-1", "player-1", true, null, Now),
+            new LedgerOperationCompleted(
+                "op-1:capture", LedgerOperationKind.Capture, LedgerOperationStatus.Captured, true,
+                "player-1", "op-1", 10, 0, "coins", null, Now),
             CancellationToken.None);
         await coordinator.HandleAsync(
-            new LedgerSettlementCompleted("op-1", "bet-1", "player-1", true, null, Now),
+            new LedgerOperationCompleted(
+                "op-1:capture", LedgerOperationKind.Capture, LedgerOperationStatus.Captured, true,
+                "player-1", "op-1", 10, 0, "coins", null, Now),
+            CancellationToken.None);
+
+        var transfer = Assert.IsType<LedgerTransferRequested>(commands.Sent[3]);
+        Assert.Equal("op-1:payout", transfer.OperationId);
+        Assert.Equal(20, transfer.Amount);
+
+        await coordinator.HandleAsync(
+            new LedgerOperationCompleted(
+                "op-1:payout", LedgerOperationKind.Transfer, LedgerOperationStatus.Completed, true,
+                "house", "player-1", 20, null, "coins", null, Now),
+            CancellationToken.None);
+        await coordinator.HandleAsync(
+            new LedgerOperationCompleted(
+                "op-1:payout", LedgerOperationKind.Transfer, LedgerOperationStatus.Completed, true,
+                "house", "player-1", 20, null, "coins", null, Now),
             CancellationToken.None);
 
         Assert.Equal(WagerOperationStatus.Completed, (await store.GetAsync("op-1", CancellationToken.None))!.Status);
@@ -214,12 +237,18 @@ public sealed class BlackjackWagerSliceTests
             WagerOperationStatus status,
             string? outcomeCode,
             string? errorCode,
-            CancellationToken ct)
+            CancellationToken ct,
+            long? payout = null)
         {
             var current = operations.GetValueOrDefault(operationId);
             if (current is null || current.Status != expectedStatus)
                 return null;
-            return await TransitionAsync(operationId, status, outcomeCode, errorCode, ct);
+            var updated = await TransitionAsync(operationId, status, outcomeCode, errorCode, ct);
+            if (payout is null)
+                return updated;
+            updated = updated with { Payout = payout, UpdatedAt = Now };
+            operations[operationId] = updated;
+            return updated;
         }
     }
 

@@ -8,9 +8,11 @@ public sealed class OperationsModel(IOperationsAdminService operations) : PageMo
 {
     [BindProperty(SupportsGet = true)] public string? EventType { get; set; }
     [BindProperty(SupportsGet = true)] public string? OutboxStatus { get; set; }
+    [BindProperty(SupportsGet = true)] public string? OperationId { get; set; }
     public IReadOnlyList<OperationFailure> Failures { get; private set; } = [];
     public IReadOnlyList<OperationOutbox> Outbox { get; private set; } = [];
     public IReadOnlyList<OperationJob> Jobs { get; private set; } = [];
+    public WagerWorkflowTimeline? WagerTimeline { get; private set; }
     public string? Error { get; private set; }
     public string? Flash { get; private set; }
     public bool FlashError { get; private set; }
@@ -26,6 +28,8 @@ public sealed class OperationsModel(IOperationsAdminService operations) : PageMo
             Failures = await operations.ListFailuresAsync(100, Normalize(EventType), ct);
             Outbox = await operations.ListOutboxAsync(100, Normalize(OutboxStatus), ct);
             Jobs = await operations.ListJobsAsync(ct);
+            if (!string.IsNullOrWhiteSpace(OperationId))
+                WagerTimeline = await operations.GetWagerTimelineAsync(OperationId, ct);
         }
         catch (Exception ex)
         {
@@ -53,7 +57,7 @@ public sealed class OperationsModel(IOperationsAdminService operations) : PageMo
         var result = await action();
         TempData["flash"] = result.Message;
         TempData["error"] = !result.Success;
-        return RedirectToPage(new { EventType, OutboxStatus });
+        return RedirectToPage(new { EventType, OutboxStatus, OperationId });
     }
 
     private static string? Normalize(string? value) =>

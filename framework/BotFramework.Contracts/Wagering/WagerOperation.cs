@@ -12,4 +12,5 @@ public sealed record WagerOperation(
     string? OutcomeCode,
     string? ErrorCode,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    long? Payout = null);

@@ -1,4 +1,3 @@
-using BotFramework.Contracts.Messaging;
 using BotFramework.Contracts.Wagering;
 
 namespace BotFramework.Host.Wagering;
@@ -8,7 +7,7 @@ public sealed class WagerGameSettlementFactory(IEnumerable<IWagerPayoutPolicy> p
 {
     public string GameId => "*";
 
-    public IIntegrationCommand Create(
+    public WagerSettlementPlan Create(
         WagerOperation operation,
         GameOutcomeDeclared outcome,
         WagerTermsSnapshot terms)
@@ -22,12 +21,6 @@ public sealed class WagerGameSettlementFactory(IEnumerable<IWagerPayoutPolicy> p
         if (payout < 0)
             throw new InvalidOperationException($"Payout for '{operation.GameId}' cannot be negative.");
 
-        return new LedgerSettlementRequested(
-            operation.OperationId,
-            operation.BetId,
-            operation.PlayerId,
-            payout,
-            terms.Currency,
-            outcome.OccurredAt);
+        return new WagerSettlementPlan(payout);
     }
 }

@@ -400,14 +400,17 @@ namespace do not always have the same suffix: for example, the source project
 framework/
 ├── BotFramework.Contracts/             # public, transport-neutral contracts
 │   ├── Caching/                         # cache ports and cache metadata
+│   ├── Cases/                            # durable human-review case contracts
 │   ├── Economics/                       # wallet and economic service contracts
 │   ├── Games/                           # portable game-facing contracts
 │   ├── Identity/                        # player and identity contracts
 │   ├── Messaging/                       # channel and request metadata
 │   ├── Observability/                   # meters and telemetry contracts
 │   ├── Operations/                      # operational/service contracts
+│   ├── Ledger/                           # hold/capture/release/refund contracts
 │   ├── RateLimiting/                    # limiter decisions and policies
 │   ├── ResponsibleGaming/               # protection and player-stat contracts
+│   ├── Risk/                             # policy decisions and evaluator ports
 │   ├── Tenancy/                         # opaque ids and tenant context
 │   └── Transport/                       # pagination and wire-level contracts
 ├── BotFramework.Sdk/                    # pure module and game abstractions
@@ -447,6 +450,7 @@ framework/
 │   ├── Admin/                            # admin effects and execution
 │   ├── Analytics/                        # analytics/query integrations
 │   ├── Caching/                          # cache implementations
+│   ├── Cases/                             # durable case aggregate adapter
 │   ├── Commands/                         # command middleware and dispatch
 │   ├── Composition/                      # Host builders and migrations
 │   ├── Configuration/                    # runtime configuration
@@ -459,6 +463,7 @@ framework/
 │   ├── Games/                            # game runtime composition
 │   ├── Health/                           # database/dependency health checks
 │   ├── Localization/                     # backend localization services
+│   ├── Ledger/                            # generic ledger operation adapter
 │   ├── Messaging/                        # request/transport support
 │   ├── Persistence/                      # PostgreSQL stores and migrations
 │   ├── Random/                           # framework entropy providers
@@ -636,6 +641,77 @@ the effect executor. Built-in categories are deliberately explicit:
 - `IGameRecord` writes module-specific history through a registered writer;
 - `IDomainEvent` is persisted to the transactional event outbox;
 - `ScheduleEffect` schedules or cancels a durable command through the schedule outbox.
+
+### State-only execution and outcome-only wagering
+
+Not every game command needs the economy boundary. `IGameStateExecutor<TCommand,
+TState,TResult>` uses the same command envelope, idempotency inbox, aggregate
+locks, revision checks, PostgreSQL transaction and post-commit outboxes as the
+atomic executor, but does not load or mutate a wallet, quota, or player-protection
+state. Its effect pipeline rejects typed economy/quota effects and wallet custom
+effects. State-only execution is still transactional for the game aggregate; it
+is not fire-and-forget background work.
+
+Use the executors according to the boundary the command actually needs:
+
+| Command needs | Executor | Commit boundary |
+| --- | --- | --- |
+| Game state, wallet, quota, protection, or legacy payout/refund in one decision | `IAtomicGameExecutor<,,>` | Game state + economic effects + inbox/outbox |
+| Game state, records, domain events or local schedules only | `IGameStateExecutor<,,>` | Game state + inbox/outbox |
+| Wagered game play after a reservation | `IOutcomeOnlyGameExecutor<,,>` over the state-only executor | Game outcome first; Wagering settles economics later |
+
+The wager path deliberately keeps stake, balance and payout out of the game
+aggregate:
+
+```text
+Ledger reserve
+    -> Wagering sends game command
+    -> game commits state and publishes GameOutcomeDeclared
+    -> Wagering validates terms and applies the game payout policy
+    -> Ledger settles or releases the reservation
+```
+
+The outcome-only adapter is used by the generic wager handler and by specialized
+Blackjack, Horse, Poker and Secret Hitler wager slices. Challenge and Pick also
+provide multi-party wager adapters. The game owns rules and deterministic outcome
+state; Wagering owns the frozen terms snapshot, payout policy and settlement
+operation ids.
+
+The repository keeps legacy Atomic paths where they are still the public mode or
+where a command performs dynamic economics, multi-wallet refunds, quotas or
+legacy payout. For example, the old `BlackjackGameState` flow remains Atomic while
+the separate `BlackjackWagerState` flow is outcome-only. Pure state-only commands
+such as Poker start/message, Secret Hitler start/nominate/discard/messages,
+Challenge decline, Redeem issue and PixelBattle updates use `IGameStateExecutor`.
+
+### Generic Ledger, Risk and Case primitives
+
+The framework exposes a domain-neutral operations layer in addition to the
+Wagering compatibility contracts:
+
+- `BotFramework.Contracts.Ledger` provides `Hold`, `Capture`, `Release`,
+  `Refund`, `Transfer` and audited `Adjustment` commands plus the common
+  `LedgerOperationCompleted` event. Hold/capture/release are separate from
+  payout transfers, and refunds are bounded by captured amount.
+- `BotFramework.Contracts.Risk` provides `IRiskEvaluator<TContext>` and
+  `RiskDecision` (`Allow`, `Deny`, `Review`, `Hold`). Policies stay in the
+  application; the framework carries policy version, evidence and workflow refs.
+- `BotFramework.Contracts.Cases` provides the reusable
+  `Open -> Evidence -> Review -> Resolved -> Appealed` lifecycle and integration
+  commands/events. `BotFramework.Host` persists it in Postgres and publishes
+  transitions through the normal outbox.
+
+The local Postgres Ledger adapter is idempotent by operation id and uses the same
+tenant wallet transaction boundary as the existing wallet implementation. A
+remote Ledger or Case service can consume these contracts without changing game
+code. The single-player and multi-party wager slices now compose
+Hold/Capture/Release/Transfer; the old wager-specific messages remain only as a
+drain-compatible handler for already persisted outbox messages.
+
+The admin BFF exposes the read-only wager workflow timeline by operation id. It
+joins the wager status with committed `module_events` (ES) and generic
+`ledger_operations` in one read query. No timeline write is added to a game
+commit, so observability does not add a per-step round trip to the hot path.
 
 Admin mutations use the smaller companion kernel. An admin action produces an
 `AdminEffectPlan<TResult>` containing typed `IAdminEffect` values. The Host opens

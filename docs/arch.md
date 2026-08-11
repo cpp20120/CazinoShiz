@@ -4,6 +4,12 @@ This document is a diagram-first view of the current CasinoShiz architecture.
 For feature details and configuration keys, see [docs.md](docs.md). For operational
 procedures, see [operations.md](operations.md).
 
+This file is the source of truth for execution consistency and service boundaries.
+It defines when a command uses a local Atomic transaction, when it uses the
+state-only executor, and how a distributed Wagering saga coordinates Ledger and
+Game Services. Other architecture notes may explain the rationale or a design
+detail, but must not contradict the flows and ownership rules defined here.
+
 ## Repository Boundaries
 
 ```text
@@ -59,7 +65,8 @@ flowchart LR
     identitypg[("PostgreSQL<br/>micro: identity")]
     walletpg[("PostgreSQL<br/>micro: wallet")]
     aggregator["Admin BFF<br/>composed read models"]
-    redis[("Redis<br/>update streams + CAP transport")]
+    redis[("Redis<br/>update streams + coordination")]
+    capTransport[("CAP integration transport<br/>Local / Redis Streams / Kafka-Redpanda")]
     clickhouse[("ClickHouse<br/>product analytics")]
     monitoring["Prometheus + Grafana"]
 
@@ -92,11 +99,14 @@ flowchart LR
     telegramBff <--> redis
     discordBff <--> redis
     legacy <--> redis
+    backend <--> capTransport
+    legacy <--> capTransport
     backend --> clickhouse
     legacy --> clickhouse
     monitoring -->|"scrape and query"| backend
     monitoring -->|"scrape and query"| legacy
     monitoring --> redis
+    monitoring --> capTransport
     monitoring --> postgres
     monitoring --> clickhouse
 ```
@@ -134,7 +144,8 @@ flowchart TB
     end
 
     pg[("PostgreSQL")]
-    rd[("Redis")]
+    rd[("Redis<br/>update streams + coordination")]
+    cap[("CAP integration transport<br/>Local / Redis Streams / Kafka-Redpanda")]
     ch[("ClickHouse")]
     tg["Telegram Bot API"]
     ds["Discord Gateway / API"]
@@ -158,6 +169,7 @@ flowchart TB
     framework <--> pg
     services <--> pg
     framework <--> rd
+    framework <--> cap
     framework --> ch
     adapters --> tg
     discordAdapters --> ds
@@ -354,6 +366,11 @@ rejection; they do not require a live Discord gateway.
 Redis Streams preserve per-chat ordering by assigning the same chat to the same
 partition. Different partitions can execute concurrently.
 
+This section is intentionally Redis-specific: Telegram/Discord ingress update
+streams currently use Redis Streams. It is separate from the CAP integration
+transport, whose alternatives are shown in the Domain Event Bus, outbox and
+deployment diagrams as Local, Redis Streams, or Kafka/Redpanda.
+
 ```mermaid
 flowchart LR
     publisher["UpdateStreamPublisher"]
@@ -430,9 +447,10 @@ locking, and event behavior belongs to framework services.
 The module contract and registration  are documented in
 [`framework/README.md`](../framework/README.md#atomic-game-execution-and-effects).
 
-Game and economy commands use one linear execution kernel. Deployment transport
-does not change the command semantics: monolith calls and BFF-to-gRPC calls both
-arrive at the same `IAtomicGameExecutor<TCommand,TState,TResult>`.
+Game and economy commands use the same framework envelope but select one of two
+local execution kernels. Deployment transport does not change command semantics:
+monolith calls and BFF-to-gRPC calls arrive at the same logical executor boundary.
+The Atomic path below is the kernel for commands that include economic effects.
 
 ```mermaid
 flowchart LR
@@ -459,6 +477,44 @@ only the command, loaded state, snapshots, named entropy and framework time. It
 returns a `GameDecision` containing the new state, public result and complete
 materialized effect lists. Randomness, clocks, database reads, analytics calls,
 Telegram/Discord sends and service resolution do not occur inside `Decide`.
+
+The framework has a second game-state kernel for commands that do not cross the
+economy boundary. `IGameStateExecutor<TCommand,TState,TResult>` keeps the same
+transactional inbox, aggregate locking, revision and outbox guarantees, but
+provides no wallet or quota snapshot and rejects economy, quota and wallet custom
+effects. This lets high-throughput state transitions avoid taking economic locks
+without weakening game-state consistency.
+
+```mermaid
+flowchart LR
+    request["command"] --> envelope["envelope + idempotency"]
+    envelope --> stateTx["state transaction"]
+    stateTx --> stateLocks["command + aggregate locks"]
+    stateLocks --> stateInbox["state inbox"]
+    stateInbox --> stateAction["pure game action"]
+    stateAction --> stateSave["state + domain events + schedules"]
+    stateSave --> stateCommit["commit"]
+    stateCommit --> stateOutbox["post-commit outbox"]
+```
+
+Wagered play uses this state-only kernel behind `IOutcomeOnlyGameExecutor`.
+Economics is a separate durable workflow:
+
+```text
+reserve funds
+  -> game state transition
+  -> GameOutcomeDeclared
+  -> Wagering terms/payout policy
+  -> Ledger settlement or reservation release
+```
+
+The old `IAtomicGameExecutor` remains the correct boundary for commands that
+must debit/credit wallets, consume quotas, enforce player protection, transfer
+between wallets, or execute a legacy refund/payout in the same decision. The
+current migration therefore keeps legacy Blackjack Atomic mode while the
+separate `BlackjackWagerState` is outcome-only. The same split is used by the
+generic single-player wager adapters, specialized Horse/Poker/Secret Hitler
+adapters and multi-party Challenge/Pick workflows.
 
 ```mermaid
 flowchart TB
@@ -592,6 +648,241 @@ The admin tournament page is deliberately a control plane, not a second mutation
 engine: SuperAdmin can inspect command/result JSON and replay a failed or non-terminal
 step. Replay reuses the original command id. Telegram/Discord client outboxes and
 the CAP domain-event outbox remain unchanged.
+
+### Wagering Saga And Settlement
+
+Wagering is the distributed consistency boundary between a Game Service and
+Wallet/Ledger. It owns the wager operation, immutable `WagerTermsSnapshot`,
+hold, capture and payout operation ids, payout policy selection and the public
+asynchronous status. Ledger owns balances and financial invariants. The Game
+Service owns game rules, game state and the final outcome. No service writes
+another service's database.
+
+#### Single-player wager lifecycle
+
+The normal single-player lifecycle is a durable state machine. The operation and
+outbox transition are committed locally before the next integration command is
+sent:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Pending
+    Pending --> Reserving: WagerRequested accepted
+    Reserving --> Rejected: reservation rejected
+    Reserving --> Playing: reservation completed
+    Playing --> Settling: GameOutcomeDeclared
+    Settling --> Completed: settlement confirmed
+    Settling --> Failed: settlement rejected
+```
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant W as Wagering
+    participant L as Ledger
+    participant G as Game Service
+
+    Client->>W: WagerRequested(operationId, betId, terms)
+    W->>W: Pending -> Reserving + local outbox commit
+    W-->>L: LedgerHoldRequested(op)
+    L->>L: hold funds atomically and idempotently
+    L-->>W: LedgerOperationCompleted(Hold)
+    W->>W: Reserving -> Playing + local outbox commit
+    W-->>G: addressed game command
+    G->>G: state-only transaction: state + inbox + event outbox
+    G-->>W: GameOutcomeDeclared(outcome, evidence)
+    W->>W: validate terms and apply payout policy
+    W->>W: Playing -> Settling + local outbox commit
+    W-->>L: LedgerCaptureRequested(op:capture, holdId=op)
+    L->>L: capture hold atomically; optionally credit house account
+    L-->>W: LedgerOperationCompleted(Capture)
+    W-->>L: LedgerTransferRequested(op:payout, house -> player)
+    L->>L: transfer payout atomically and idempotently
+    L-->>W: LedgerOperationCompleted(Transfer)
+    W->>W: Settling -> Completed or Failed
+    W-->>Client: WagerSettled / status projection
+```
+
+`GameOutcomeDeclared` contains no stake, balance or payout. Wagering evaluates
+the outcome against the original terms snapshot and selects the game-specific
+payout policy. A game result is final before settlement; capture and payout are
+separate idempotent Ledger operations. The deterministic ids are
+`operationId`, `operationId:capture` and `operationId:payout`, so a retry must
+never reroll or rewrite game state. A zero payout still captures the hold and
+finishes without creating a transfer.
+
+The game hot path ends at the committed state/outcome outbox. It does not wait
+for Capture or Transfer. The extra financial steps are asynchronous saga work;
+they improve failure isolation without adding wallet work to a Blackjack,
+Poker, Dice or other state-only action commit.
+
+#### Admin workflow timeline
+
+The admin view is a read-only composition, not another projection on the game
+hot path. Given an operation id, `PostgresWagerWorkflowTimelineReader` reads
+`wager_operations` (or the multi-party participant row), committed ES events
+from `module_events` and game event outbox rows (by `BetId`), plus the three
+generic Ledger operation rows in one `QueryMultiple` round trip. It
+sorts the facts by their committed timestamps and exposes the sources as
+`wagering`, `es` and `ledger`. No timeline row is synchronously inserted when a
+game action executes, and no admin read is allowed to mutate game or Ledger
+state.
+
+The current single-player status enum is:
+
+```text
+Pending -> Reserving -> Playing -> Settling -> Completed
+                    |          |           |
+                    v          |           v
+                 Rejected      |         Failed
+                               (outcome is already final)
+```
+
+#### Multi-party wagers and compensation
+
+Multi-party workflows reserve every participant before starting the game. If one
+reservation is rejected, or game outcome validation/execution fails, the workflow
+enters compensation and refunds every reservation that was successfully created.
+Only after all participant outcomes are validated does it request settlement for
+each participant.
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> reserving
+    reserving --> playing: all reservations reserved
+    reserving --> compensating: participant rejected
+    playing --> settling: outcomes and payout policy valid
+    playing --> compensating: game execution/validation failed
+    settling --> completed: every settlement confirmed
+    settling --> failed: settlement rejected
+    compensating --> compensated: every reservation refunded
+```
+
+Compensation is not a rollback of a distributed transaction. It is a new,
+idempotent Ledger command with its own operation id, recorded in workflow state.
+A pending or failed financial command remains observable and is retried or moved
+to operator review according to workflow policy; it is never marked successful
+merely because the originating process stopped waiting.
+
+#### Atomic versus saga decision table
+
+| Situation | Local boundary | Distributed behavior |
+| --- | --- | --- |
+| Game command debits/credits, consumes quota or enforces protection | `IAtomicGameExecutor` | One local transaction contains state and economic effects |
+| Game command changes state, records, events or local schedules only | `IGameStateExecutor` | One local state transaction; no wallet/quota access |
+| Reserved wager starts or advances game play | `IOutcomeOnlyGameExecutor` over state executor | Commit outcome first, then Wagering requests settlement |
+| Wallet/Ledger reservation or settlement | Wallet/Ledger local transaction | Wagering waits on integration events and retries idempotently |
+| Multi-wallet transfer or legacy refund/payout | Atomic multi-wallet/effect executor | Keep the local economic boundary until migrated |
+
+The current repository uses outcome-only adapters for generic Dice, DiceCube,
+Darts, Football, Basketball, Bowling and Pick wagers; specialized Blackjack,
+Horse, Poker and Secret Hitler wager slices; and multi-party Challenge/Pick
+workflows. The old Blackjack game remains an Atomic compatibility mode beside
+the separate `BlackjackWagerState` model. Pure non-economic commands in legacy
+game services may use `IGameStateExecutor`, but an Atomic path is intentional
+where the command still owns economic effects.
+
+#### Delivery, retry and source of truth
+
+```text
+service-local state + inbox + outbox: PostgreSQL transaction
+integration delivery: CAP Local / Redis Streams / Kafka-Redpanda
+durable workflow delivery and replay: Wolverine + PostgreSQL
+financial truth: Wallet/Ledger database
+workflow recovery timeline: Wagering operation/workflow tables
+```
+
+CAP/Kafka/Redis is a transport, not a source of truth or a distributed
+transaction coordinator. Wolverine's durable workflow store records delivery,
+steps, retries and replay, but the domain aggregate and Ledger records remain
+authoritative. Every integration consumer is at-least-once and therefore uses an
+inbox or equivalent stable operation-id check. Outbox rows are published only
+after the local transaction commits; a relay crash may duplicate delivery, never
+the intended business operation.
+
+### Generic Ledger, Risk And Case Primitives
+
+The framework now provides a broader operations layer beside the existing Wagering
+protocol. New integrations should use the generic contracts in
+`BotFramework.Contracts.Ledger`, `Risk` and `Cases` rather than inventing another
+wager-specific reservation protocol. The local Host
+provides Postgres handlers; a split deployment may replace them with a remote
+Ledger or Case service consuming the same commands and publishing the same events.
+
+```text
+LedgerHoldRequested
+        |
+        v
+      Held
+      /  \
+ Capture Release
+    |       |
+ Captured  Released
+    |
+ Refund(amount)       Transfer is an independent atomic ledger operation
+```
+
+The financial semantics are deliberately explicit:
+
+| Primitive | Meaning | Reference rule |
+| --- | --- | --- |
+| `Hold` | Earmarks funds and reduces available balance | creates `HoldId`; has expiry |
+| `Capture` | Confirms all or part of a hold | references `HoldId`; never pays winnings |
+| `Release` | Returns the uncaptured part of a hold | references `HoldId`; supports partial release |
+| `Refund(amount)` | Reverses already captured funds | references the original hold/capture operation; cumulative amount cannot exceed capture |
+| `Transfer` | Moves funds between accounts | one idempotent operation; local Ledger transaction |
+| `Adjustment` | Signed, audited administrative correction | requires an actor and reason |
+
+`LedgerOperationCompleted` is the common result event. Every command carries a
+stable `OperationId`; retries and duplicate delivery must return the persisted
+operation result. The framework's local wallet adapter currently supports the
+`coins` currency, while the contracts are currency-neutral for a dedicated Ledger
+service.
+
+Risk is a policy decision, not a balance mutation:
+
+```mermaid
+flowchart LR
+    evaluate["Risk Evaluate<T>"] --> allow[Allow]
+    evaluate --> deny[Deny]
+    evaluate --> review[Review]
+    evaluate --> hold[Hold]
+    review --> case[Open Case]
+    hold --> ledger[Ledger Hold]
+    case --> ledger
+```
+
+`IRiskEvaluator<TContext>` returns `RiskDecision` with the policy version,
+reason, optional `CaseId`/`HoldId`, expiry and evidence references. The application
+owns the fraud policy; the framework only transports and composes its decision.
+
+Cases are a generic durable human-in-the-loop aggregate:
+
+```text
+Open -> Evidence -> Review -> Resolved -> Appealed
+```
+
+`PostgresCaseCommandHandler` persists the state with optimistic versioning and
+publishes `CaseOpened`, `CaseEvidenceAdded`, `CaseReviewStarted`, `CaseResolved`,
+`CaseAppealed` or `CaseTransitionRejected` through the configured integration
+outbox. Moderation, disputes and antifraud may use the same lifecycle while
+keeping their own case types, policies and evidence stores.
+
+Typical compositions are therefore:
+
+```text
+Risk Review -> Case + Hold -> DurableWorkflow timeout -> Release
+Risk Allow  -> Hold -> state-only game -> Capture + payout Transfer
+Dispute     -> Case + Hold/Freeze -> Evidence -> human Resolve -> Refund/Release
+Antifraud   -> RiskDecision -> Hold or Case -> Capture/Release
+```
+
+Timeout is an orchestration concern: a durable workflow schedules an idempotent
+`LedgerReleaseRequested` for an expired hold. Ledger still stores `ExpiresAt` and
+enforces the hold state, so a late release or duplicate timeout cannot create a
+second credit. `Refund` remains distinct from `Release`, which prevents a dispute
+workflow from refunding more than was captured.
 
 ### Aggregate and lock scope
 
@@ -922,19 +1213,19 @@ append. Failures are persisted for retry, and event replay can rebuild projectio
 ```mermaid
 flowchart TD
     dispatcher["EventDispatcher"]
-    enabled{"Redis enabled?"}
+    mode{"Messaging:Transport"}
 
     inproc["InProcessEventBus<br/>sequential, same process"]
     cap["CapEventBus"]
     outbox[("PostgreSQL CAP outbox")]
-    transport[("Redis CAP transport")]
+    transport[("CAP transport<br/>Redis Streams or Kafka/Redpanda")]
     consumer["CapEventConsumer"]
     subscribers["Pattern-matched subscribers"]
 
-    dispatcher --> enabled
-    enabled -->|"no"| inproc
+    dispatcher --> mode
+    mode -->|"Local"| inproc
     inproc --> subscribers
-    enabled -->|"yes"| cap
+    mode -->|"Redis or Kafka"| cap
     cap --> outbox
     outbox --> transport
     transport --> consumer
@@ -947,8 +1238,9 @@ delivery is at least once.
 
 In distributed mode the transactional source is the Backend-owned
 `game_event_outbox`. A lease-based dispatcher publishes committed rows through
-the CAP PostgreSQL outbox into Redis Streams; consumers then update only their
-local projections or call another service API. `Backend:ServiceName` determines
+the CAP PostgreSQL outbox into the selected Redis Streams or Kafka/Redpanda
+transport; consumers then update only their local projections or call another
+service API. `Backend:ServiceName` determines
 the logical consumer group: replicas of `game-poker` share one group and load
 balance, while `game-poker` and `game-dice` receive independent fan-out copies.
 
@@ -973,7 +1265,7 @@ flowchart LR
     mode{"TelegramOutbox:Transport"}
     dispatcher["Local dispatcher"]
     relay["Backend CAP relay"]
-    cap["CAP / Redis"]
+    cap["CAP transport<br/>Redis Streams or Kafka/Redpanda"]
     bff["Telegram BFF"]
     bot["Telegram Bot API"]
 
@@ -1241,6 +1533,7 @@ flowchart TB
         bot["Telegram + Discord BFFs"]
         postgres[("PostgreSQL 16<br/>profile-owned databases")]
         redis[("Redis")]
+        cap[("CAP transport<br/>Redis Streams / Kafka-Redpanda")]
         clickhouse[("ClickHouse")]
         prometheus["Prometheus"]
         grafana["Grafana"]
@@ -1253,6 +1546,7 @@ flowchart TB
     internet --> bot
     bot <--> postgres
     bot <--> redis
+    bot <--> cap
     bot --> clickhouse
 
     pgexporter --> postgres
@@ -1322,6 +1616,7 @@ flowchart TB
         walletState[("Wallet PostgreSQL StatefulSet")]
         rdsvc["Redis Service"]
         rdstate[("Redis StatefulSet")]
+        cap["CAP transport<br/>Redis Streams / Kafka-Redpanda"]
         secret["Kubernetes Secret"]
     end
 
@@ -1340,6 +1635,7 @@ flowchart TB
     walletSvc --> walletState
     games --> rdsvc
     rdsvc --> rdstate
+    games --> cap
     secret --> telegramBff
     secret --> discordBff
     secret --> adminBff
@@ -1350,8 +1646,10 @@ The Helm chart uses the same image/configuration model as the distributed Compos
 profile. Each game is a Deployment/Service pair with `Backend:Modules` and
 `Backend:ServiceName`; scaling a game changes only its replica count. Identity,
 Wallet and Backend use separate PostgreSQL StatefulSets/Services and volumes.
-Redis carries CAP/event transport and distributed coordination. ClickHouse,
-MinIO and the monitoring stack may be external or disabled by default.
+Redis carries update streams and distributed coordination. CAP integration
+delivery may use Redis Streams or an external Kafka/Redpanda cluster; Local is
+available for in-process development. ClickHouse, MinIO and the monitoring stack
+may be external or disabled by default.
 
 The chart can be installed without changing application code:
 
@@ -1360,10 +1658,10 @@ helm upgrade --install cazinoshiz ./deploy/helm/cazinoshiz
 kubectl scale deployment game-poker --replicas=3
 ```
 
-Managed PostgreSQL and Redis can replace the chart-managed dependencies by
-overriding service addresses, credentials and storage values. Backups must be
-configured per owned database; restoring Backend, Identity or Wallet does not
-require cross-database joins.
+Managed PostgreSQL, Redis and Kafka/Redpanda can replace the chart-managed
+dependencies by overriding service addresses, credentials and storage values.
+Backups must be configured per owned database; restoring Backend, Identity or
+Wallet does not require cross-database joins.
 
 ## Failure And Recovery Boundaries
 

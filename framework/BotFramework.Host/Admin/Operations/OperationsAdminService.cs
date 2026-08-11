@@ -11,7 +11,8 @@ namespace BotFramework.Host.Admin.Operations;
 public sealed class OperationsAdminService(IEventDispatchFailureStore failures, IEventDispatchRetryService retry,
     ITelegramOutboxStore outbox, IBackgroundJobStatusService jobs, IAdminAuditReader audits, IAdminAuditLog audit,
     IEconomicsService economics, IGameAvailabilityService availability, IReadOnlyEventReplayService replay,
-    IEconomySimulationService simulation, IRandomOutcomeGenerator fairness)
+    IEconomySimulationService simulation, IRandomOutcomeGenerator fairness,
+    IWagerWorkflowTimelineReader wagerTimelines)
     : IOperationsAdminService
 {
     public async Task<IReadOnlyList<OperationFailure>> ListFailuresAsync(int limit, string? eventType, CancellationToken ct) =>
@@ -27,6 +28,10 @@ public sealed class OperationsAdminService(IEventDispatchFailureStore failures, 
         string? details, DateTimeOffset? from, DateTimeOffset? until, CancellationToken ct) =>
         [.. (await audits.ListAsync(Math.Clamp(limit,1,1000),actor,action,details,from,until,ct)).Select(x =>
             new OperationAudit(x.Id,x.ActorId,x.ActorName,x.Action,x.DetailsJson,x.OccurredAt))];
+    public Task<WagerWorkflowTimeline?> GetWagerTimelineAsync(string operationId, CancellationToken ct) =>
+        string.IsNullOrWhiteSpace(operationId)
+            ? Task.FromResult<WagerWorkflowTimeline?>(null)
+            : wagerTimelines.GetAsync(operationId.Trim(), ct);
     public async Task<OperationMutationResult> RetryEventAsync(long id,long actorId,string actorName,CancellationToken ct)
     {
         EventDispatchRetryResult result;

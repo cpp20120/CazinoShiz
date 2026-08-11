@@ -14,5 +14,7 @@ internal sealed class IntegrationInboxMigrations : IModuleMigrations
             WagerOperationMigrationDefinition.Create(),
             WagerReservationMigrationDefinition.Create(),
             MultiPartyWagerMigrationDefinition.Create(),
+            LedgerOperationsMigrationDefinition.Create(),
+            FrameworkCasesMigrationDefinition.Create(),
         ];
 }

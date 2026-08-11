@@ -1,4 +1,3 @@
-using BotFramework.Contracts.Messaging;
 using BotFramework.Contracts.Wagering;
 
 namespace Games.Blackjack.Application.Wagering;
@@ -11,15 +10,9 @@ public sealed class BlackjackWagerSettlementFactory : IWagerSettlementCommandFac
 {
     public string GameId => "blackjack";
 
-    public IIntegrationCommand Create(
+    public WagerSettlementPlan Create(
         WagerOperation operation,
         GameOutcomeDeclared outcome,
         WagerTermsSnapshot terms) =>
-        new LedgerSettlementRequested(
-            operation.OperationId,
-            operation.BetId,
-            operation.PlayerId,
-            BlackjackWagerPayoutPolicy.Calculate(outcome, terms),
-            terms.Currency,
-            outcome.OccurredAt);
+        new(BlackjackWagerPayoutPolicy.Calculate(outcome, terms));
 }

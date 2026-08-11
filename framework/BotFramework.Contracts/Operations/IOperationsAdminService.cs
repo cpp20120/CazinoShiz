@@ -9,6 +9,7 @@ public interface IOperationsAdminService
     Task<IReadOnlyList<OperationJob>> ListJobsAsync(CancellationToken ct);
     Task<IReadOnlyList<OperationAudit>> ListAuditAsync(int limit, string? actor, string? action,
         string? details, DateTimeOffset? from, DateTimeOffset? until, CancellationToken ct);
+    Task<WagerWorkflowTimeline?> GetWagerTimelineAsync(string operationId, CancellationToken ct);
     Task<OperationMutationResult> RetryEventAsync(long id, long actorId, string actorName, CancellationToken ct);
     Task<OperationMutationResult> RescheduleOutboxAsync(long id, long actorId, string actorName, CancellationToken ct);
     Task<OperationMutationResult> AdjustWalletAsync(long userId, long balanceScopeId, int delta,
