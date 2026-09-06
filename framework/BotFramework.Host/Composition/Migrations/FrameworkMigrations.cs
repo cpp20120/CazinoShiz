@@ -1246,6 +1246,151 @@ internal sealed class FrameworkMigrations : IModuleMigrations
             );
             """),
 
+        new Migration("041_game_sessions", """
+            CREATE TABLE IF NOT EXISTS game_sessions (
+                session_id           TEXT        PRIMARY KEY,
+                game_id              TEXT        NOT NULL,
+                owner_id             TEXT        NOT NULL,
+                scope_id             TEXT        NOT NULL,
+                root_correlation_id  TEXT        NOT NULL,
+                last_correlation_id  TEXT        NOT NULL,
+                lifecycle            TEXT        NOT NULL,
+                revision             BIGINT      NOT NULL,
+                data                 JSONB       NOT NULL DEFAULT '{}'::jsonb,
+                failure_code         TEXT,
+                started_at           TIMESTAMPTZ NOT NULL,
+                updated_at           TIMESTAMPTZ NOT NULL,
+                expires_at           TIMESTAMPTZ,
+                CONSTRAINT ck_game_sessions_lifecycle
+                    CHECK (lifecycle IN ('Started', 'Suspended', 'Resumed', 'Completed', 'Failed')),
+                CONSTRAINT ck_game_sessions_revision CHECK (revision >= 0)
+            );
+
+            CREATE INDEX IF NOT EXISTS ix_game_sessions_active_scope
+                ON game_sessions (game_id, owner_id, scope_id, updated_at DESC)
+                WHERE lifecycle IN ('Started', 'Suspended', 'Resumed');
+            CREATE INDEX IF NOT EXISTS ix_game_sessions_expiry
+                ON game_sessions (expires_at)
+                WHERE expires_at IS NOT NULL
+                  AND lifecycle IN ('Started', 'Suspended', 'Resumed');
+
+            CREATE TABLE IF NOT EXISTS game_session_lifecycle (
+                session_id      TEXT        NOT NULL REFERENCES game_sessions (session_id),
+                correlation_id  TEXT        NOT NULL UNIQUE,
+                lifecycle       TEXT        NOT NULL,
+                revision        BIGINT      NOT NULL,
+                failure_code    TEXT,
+                snapshot        JSONB       NOT NULL,
+                occurred_at     TIMESTAMPTZ NOT NULL,
+                PRIMARY KEY (session_id, revision),
+                CONSTRAINT ck_game_session_lifecycle_state
+                    CHECK (lifecycle IN ('Started', 'Suspended', 'Resumed', 'Completed', 'Failed'))
+            );
+            CREATE INDEX IF NOT EXISTS ix_game_session_lifecycle_session_time
+                ON game_session_lifecycle (session_id, occurred_at DESC);
+            """),
+
+        new Migration("042_game_interactions_and_effect_outbox", """
+            CREATE TABLE IF NOT EXISTS game_input_requests (
+                request_id              TEXT        PRIMARY KEY,
+                game_id                 TEXT        NOT NULL,
+                aggregate_id            TEXT        NOT NULL,
+                expected_player_id      TEXT        NOT NULL,
+                scope_id                TEXT        NOT NULL,
+                route                   TEXT        NOT NULL,
+                payload                 JSONB       NOT NULL DEFAULT '{}'::jsonb,
+                allowed_values          JSONB       NOT NULL DEFAULT '[]'::jsonb,
+                session_id              TEXT,
+                expires_at              TIMESTAMPTZ NOT NULL,
+                status                  TEXT        NOT NULL DEFAULT 'pending',
+                created_command_id      TEXT,
+                consumed_correlation_id TEXT,
+                consumed_value          TEXT,
+                created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+                consumed_at             TIMESTAMPTZ,
+                CONSTRAINT ck_game_input_requests_status
+                    CHECK (status IN ('pending', 'consumed', 'expired', 'cancelled')),
+                CONSTRAINT ck_game_input_requests_allowed_values
+                    CHECK (jsonb_typeof(allowed_values) = 'array')
+            );
+            CREATE INDEX IF NOT EXISTS ix_game_input_requests_active_player
+                ON game_input_requests (scope_id, expected_player_id, expires_at, request_id)
+                WHERE status = 'pending';
+            CREATE INDEX IF NOT EXISTS ix_game_input_requests_active_game
+                ON game_input_requests (game_id, aggregate_id, expires_at, request_id)
+                WHERE status = 'pending';
+
+            CREATE TABLE IF NOT EXISTS game_effect_outbox (
+                id                   BIGSERIAL   PRIMARY KEY,
+                command_id           TEXT        NOT NULL,
+                effect_index         INTEGER     NOT NULL,
+                game_id              TEXT        NOT NULL,
+                aggregate_id         TEXT        NOT NULL,
+                type_name            TEXT        NOT NULL,
+                payload              JSONB       NOT NULL,
+                operation_id         TEXT,
+                tenant_id            TEXT,
+                scope_id             TEXT,
+                player_id            TEXT,
+                request_id           TEXT,
+                correlation_id       TEXT,
+                channel              TEXT,
+                channel_container_id TEXT,
+                channel_topic_id     TEXT,
+                status               TEXT        NOT NULL DEFAULT 'pending',
+                attempts             INTEGER     NOT NULL DEFAULT 0,
+                next_attempt_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+                locked_until         TIMESTAMPTZ,
+                last_error           TEXT,
+                created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+                sent_at              TIMESTAMPTZ,
+                UNIQUE (command_id, effect_index),
+                CONSTRAINT ck_game_effect_outbox_status
+                    CHECK (status IN ('pending', 'sending', 'sent')),
+                CONSTRAINT ck_game_effect_outbox_effect_index CHECK (effect_index >= 0)
+            );
+            CREATE INDEX IF NOT EXISTS ix_game_effect_outbox_due
+                ON game_effect_outbox (status, next_attempt_at, id)
+                WHERE status IN ('pending', 'sending');
+            CREATE INDEX IF NOT EXISTS ix_game_effect_outbox_command_order
+                ON game_effect_outbox (command_id, effect_index, status);
+            """),
+
+        new Migration("043_game_execution_history", """
+            CREATE TABLE IF NOT EXISTS game_execution_history (
+                id               BIGSERIAL       PRIMARY KEY,
+                command_id       TEXT            NOT NULL UNIQUE,
+                game_id          TEXT            NOT NULL,
+                aggregate_id     TEXT            NOT NULL,
+                command_type     TEXT            NOT NULL,
+                command_payload  JSONB           NOT NULL,
+                state_type       TEXT            NOT NULL,
+                previous_state   JSONB           NOT NULL,
+                next_state       JSONB           NOT NULL,
+                result_type      TEXT            NOT NULL,
+                result_payload   JSONB           NOT NULL,
+                decision_status  TEXT            NOT NULL,
+                rejection_reason TEXT,
+                entropy          JSONB           NOT NULL DEFAULT '{}'::jsonb,
+                effects          JSONB           NOT NULL DEFAULT '[]'::jsonb,
+                occurred_at      TIMESTAMPTZ     NOT NULL,
+                tenant_key       BIGINT,
+                scope_key        BIGINT,
+                player_id        TEXT,
+                CONSTRAINT ck_game_execution_history_status
+                    CHECK (decision_status IN ('accepted', 'rejected')),
+                CONSTRAINT ck_game_execution_history_entropy
+                    CHECK (jsonb_typeof(entropy) = 'object'),
+                CONSTRAINT ck_game_execution_history_effects
+                    CHECK (jsonb_typeof(effects) = 'array')
+            );
+            CREATE INDEX IF NOT EXISTS ix_game_execution_history_aggregate
+                ON game_execution_history (game_id, aggregate_id, id DESC);
+            CREATE INDEX IF NOT EXISTS ix_game_execution_history_occurred
+                ON game_execution_history (occurred_at DESC);
+            """),
+
         IntegrationInboxMigrationDefinition.Create(),
         IntegrationOutboxMigrationDefinition.Create(),
         IntegrationQuarantineMigrationDefinition.Create(),

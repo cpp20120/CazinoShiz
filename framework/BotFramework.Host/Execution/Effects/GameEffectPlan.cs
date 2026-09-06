@@ -17,12 +17,14 @@ internal sealed class GameEffectPlan
         GameEffectSet effects,
         IReadOnlyDictionary<string, IReadOnlyList<QuotaEffect>> quotaEffects,
         IReadOnlyList<(IGameRecord Record, IGameRecordWriter Writer)> records,
-        IReadOnlyList<(IGameEffectHandler Handler, IReadOnlyList<IGameEffect> Effects)> custom)
+        IReadOnlyList<(IGameEffectHandler Handler, IReadOnlyList<IGameEffect> Effects)> custom,
+        IReadOnlyList<(int EffectIndex, IDurableGameEffect Effect)> durableEffects)
     {
         Effects = effects;
         QuotaEffects = quotaEffects;
         Records = records;
         Custom = custom;
+        DurableEffects = durableEffects;
     }
 
     public GameEffectSet Effects { get; }
@@ -33,15 +35,21 @@ internal sealed class GameEffectPlan
 
     public IReadOnlyList<(IGameEffectHandler Handler, IReadOnlyList<IGameEffect> Effects)> Custom { get; }
 
+    /// <summary>Custom effects persisted in the durable outbox instead of being applied before commit.</summary>
+    public IReadOnlyList<(int EffectIndex, IDurableGameEffect Effect)> DurableEffects { get; }
+
     public static GameEffectPlan Create<TState, TResult>(
         GameDecision<TState, TResult> decision,
         IReadOnlyList<QuotaIdentity> declaredQuotas,
         IReadOnlyDictionary<Type, IGameRecordWriter> writers,
-        IReadOnlyDictionary<Type, IGameEffectHandler>? handlers = null)
+        IReadOnlyDictionary<Type, IGameEffectHandler>? handlers = null,
+        GameCapabilitySet? requiredCapabilities = null,
+        IGameCapabilityValidator? capabilityValidator = null)
     {
         ArgumentNullException.ThrowIfNull(decision);
         var effects = decision.EffectSet;
         ValidateMaterialized(effects);
+        capabilityValidator?.Validate(requiredCapabilities ?? GameCapabilitySet.Empty, effects);
 
         if (decision.Status != DecisionStatus.Accepted
             && (effects.Economy.Count != 0
@@ -89,22 +97,61 @@ internal sealed class GameEffectPlan
         {
             handlers ??= new Dictionary<Type, IGameEffectHandler>();
             plannedCustom = effects.Custom
-                .GroupBy(effect => effect.GetType())
-                .Select(group =>
-                {
-                    if (IsBuiltInEffect(group.Key))
-                        throw new InvalidOperationException($"Built-in effect '{group.Key}' must use its typed decision category.");
-                    if (!handlers.TryGetValue(group.Key, out var handler))
-                        throw new InvalidOperationException($"No game effect handler is registered for '{group.Key}'.");
-                    return (handler, (IReadOnlyList<IGameEffect>)group.ToArray());
-                })
-                .OrderBy(item => item.handler.Order)
-                .ThenBy(item => item.handler.EffectType.FullName, StringComparer.Ordinal)
+                .Select((effect, index) => new PlannedCustomEffect(
+                    effect,
+                    ResolveHandler(effect.GetType(), handlers),
+                    index))
+                .GroupBy(item => item.Handler)
+                .Select(group => new PlannedCustomBatch(
+                    group.Key,
+                    group.Select(item => item.Effect).ToArray(),
+                    group.Min(item => item.Index)))
+                .OrderBy(item => item.Handler.Order)
+                .ThenBy(item => item.FirstEffectIndex)
+                .Select(item => (item.Handler, item.Effects))
                 .ToArray();
         }
 
-        return new GameEffectPlan(effects, groupedQuotas, plannedRecords, plannedCustom);
+        var durableEffects = effects.Custom
+            .Select((effect, index) => (EffectIndex: index, Effect: effect as IDurableGameEffect))
+            .Where(item => item.Effect is not null)
+            .Select(item => (item.EffectIndex, item.Effect!))
+            .ToArray();
+
+        return new GameEffectPlan(effects, groupedQuotas, plannedRecords, plannedCustom, durableEffects);
     }
+
+    private static IGameEffectHandler ResolveHandler(
+        Type effectType,
+        IReadOnlyDictionary<Type, IGameEffectHandler> handlers)
+    {
+        if (IsBuiltInEffect(effectType))
+            throw new InvalidOperationException($"Built-in effect '{effectType}' must use its typed decision category.");
+        if (handlers.TryGetValue(effectType, out var exact))
+            return exact;
+
+        var compatible = handlers
+            .Where(pair => pair.Key.IsAssignableFrom(effectType))
+            .Select(pair => pair.Value)
+            .ToArray();
+        return compatible.Length switch
+        {
+            0 => throw new InvalidOperationException($"No game effect handler is registered for '{effectType}'."),
+            1 => compatible[0],
+            _ => throw new InvalidOperationException(
+                $"More than one compatible game effect handler is registered for '{effectType}'."),
+        };
+    }
+
+    private sealed record PlannedCustomEffect(
+        IGameEffect Effect,
+        IGameEffectHandler Handler,
+        int Index);
+
+    private sealed record PlannedCustomBatch(
+        IGameEffectHandler Handler,
+        IReadOnlyList<IGameEffect> Effects,
+        int FirstEffectIndex);
 
     private static void ValidateMaterialized(GameEffectSet effects)
     {

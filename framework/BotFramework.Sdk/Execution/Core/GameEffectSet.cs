@@ -16,7 +16,19 @@ public sealed record GameEffectSet(
     IReadOnlyList<IDomainEvent> Events,
     IReadOnlyList<ScheduleEffect> Schedules)
 {
+    /// <summary>A reusable empty effect set for decisions with no side effects.</summary>
+    public static GameEffectSet Empty { get; } = new([], [], [], [], [], []);
+
     public int Count => Economy.Count + Quotas.Count + Records.Count + Custom.Count + Events.Count + Schedules.Count;
+
+    /// <summary>Returns a copy that includes one additional custom effect.</summary>
+    public GameEffectSet WithCustom(IGameEffect effect)
+    {
+        ArgumentNullException.ThrowIfNull(effect);
+        return Custom.Contains(effect)
+            ? this
+            : this with { Custom = [.. Custom, effect] };
+    }
 
     public IReadOnlyList<IGameEffect> MaterializeEffects()
     {

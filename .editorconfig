@@ -69,6 +69,68 @@ dotnet_diagnostic.CA1716.severity = none
 # Middleware conventionally names the continuation "next".
 dotnet_diagnostic.CA1716.severity = none
 
+[framework/BotFramework.Sdk/Execution/DeferredOutcome/DeferredOutcomeWagerContracts.cs]
+# These records form one public composition contract; generic marker parameters intentionally partition DI registrations.
+dotnet_diagnostic.MA0048.severity = none
+dotnet_diagnostic.S2326.severity = none
+
+[framework/BotFramework.Sdk/Execution/DeferredOutcome/DeferredOutcomeWagerActions.cs]
+# The three tightly coupled lifecycle actions share internal validation conventions.
+dotnet_diagnostic.MA0048.severity = none
+
+[framework/BotFramework.Sdk/Execution/Core/GameCommandContext.cs]
+# The context and its opt-in command interface form one compact composition contract.
+dotnet_diagnostic.MA0048.severity = none
+
+[framework/BotFramework.Sdk/Execution/Core/GameDefinition.cs]
+# The manifest, stake limits and capabilities are one public game-definition contract.
+dotnet_diagnostic.MA0048.severity = none
+
+[framework/BotFramework.Sdk/Events/Meta/GameCompletionEventFactory.cs]
+# Completion input and the factory are intentionally co-located as one event API.
+dotnet_diagnostic.MA0048.severity = none
+
+[framework/BotFramework.Sdk/Execution/InstantWager/InstantWagerContracts.cs]
+# These records form one public instant-wager composition contract; generic markers partition DI registrations.
+dotnet_diagnostic.MA0048.severity = none
+dotnet_diagnostic.S2326.severity = none
+
+[framework/BotFramework.Sdk/Execution/InstantWager/InstantWagerAction.cs]
+# The action is the sole lifecycle implementation for its tightly coupled instant-wager contracts.
+dotnet_diagnostic.MA0048.severity = none
+
+[framework/BotFramework.Sdk/Execution/Lifecycle/GameSessionContracts.cs]
+# These records and ports form one transport-neutral durable-session contract.
+dotnet_diagnostic.MA0048.severity = none
+
+[framework/BotFramework.Sdk/Execution/Interaction/GameInputRequestContracts.cs]
+# These records and ports form one transport-neutral interaction composition contract.
+dotnet_diagnostic.MA0048.severity = none
+
+[framework/BotFramework.Sdk/Execution/Capabilities/GameCapabilityContracts.cs]
+# Capability descriptors and their standard category catalog form one public composition contract.
+dotnet_diagnostic.MA0048.severity = none
+
+[framework/BotFramework.Host/Execution/Capabilities/GameRuntimeCapabilityValidator.cs]
+# Host validation and its default provider are intentionally co-located.
+dotnet_diagnostic.MA0048.severity = none
+
+[framework/BotFramework.Host/Execution/DeferredOutcome/DeferredOutcomeWagerExecution.cs]
+# Descriptor, executor and registration belong to the same Host-owned execution model.
+dotnet_diagnostic.MA0048.severity = none
+
+[framework/BotFramework.Host/Execution/GameDailyQuotaPolicy.cs]
+# Request and policy are a single public quota composition contract.
+dotnet_diagnostic.MA0048.severity = none
+
+[framework/BotFramework.Host/Execution/GameCatalog.cs]
+# Catalog read API and registration extension intentionally share one composition file.
+dotnet_diagnostic.MA0048.severity = none
+
+[framework/BotFramework.Host/Execution/InstantWager/InstantWagerExecution.cs]
+# Descriptor, executor and registration belong to the same Host-owned instant-wager model.
+dotnet_diagnostic.MA0048.severity = none
+
 [framework/BotFramework.Sdk/Metrics/Metrics.cs]
 # Metrics abstractions are intentionally grouped in one small framework file.
 dotnet_diagnostic.MA0048.severity = none
@@ -369,6 +431,11 @@ dotnet_diagnostic.MA0051.severity = none
 [framework/BotFramework.Host/Execution/Scheduling/TransactionalScheduleCollector.cs]
 # Schedule collection and transactional outbox write are one operation.
 dotnet_diagnostic.MA0051.severity = none
+
+[framework/BotFramework.Host/Execution/Interaction/PostgresGameInputRequestService.cs]
+# Dapper materializes the private row DTO through its init properties.
+dotnet_diagnostic.S3459.severity = none
+dotnet_diagnostic.S1144.severity = none
 
 [framework/BotFramework.Host/Composition/Migrations/FrameworkMigrations.cs]
 # Migration collections are exposed as stable framework migration properties.

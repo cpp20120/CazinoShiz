@@ -1,4 +1,5 @@
 using BotFramework.Host.Composition.Migrations;
+using BotFramework.Narrative.Host;
 using ChatAdministration.Telegram.Infrastructure;
 using Dapper;
 using Games.Dice.Infrastructure.Migrations;
@@ -46,6 +47,8 @@ public sealed class AtomicPostgresFixture : IAsyncLifetime
 
         foreach (var migration in new FrameworkMigrations().Migrations)
             await connection.ExecuteAsync(migration.Sql);
+        foreach (var migration in new NarrativeProjectionMigrations().Migrations)
+            await connection.ExecuteAsync(migration.Sql);
         foreach (var migration in new DiceMigrations().Migrations)
             await connection.ExecuteAsync(migration.Sql);
         foreach (var migration in new DiceCubeMigrations().Migrations)
@@ -90,6 +93,8 @@ public sealed class AtomicPostgresFixture : IAsyncLifetime
         await connection.OpenAsync();
         await connection.ExecuteAsync("""
             TRUNCATE TABLE
+                narrative_projection_deliveries,
+                narrative_projections,
                 processed_update_inbox,
                 integration_inbox_messages,
                 integration_outbox_messages,
@@ -113,6 +118,7 @@ public sealed class AtomicPostgresFixture : IAsyncLifetime
                 tenant_aggregate_states,
                 game_event_outbox,
                 game_schedule_outbox,
+                game_execution_history,
                 admin_audit,
                 game_command_idempotency,
                 game_aggregate_states,

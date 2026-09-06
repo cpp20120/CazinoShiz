@@ -5,7 +5,7 @@ namespace BotFramework.Rendering;
 
 internal static class RenderTelemetry
 {
-    public const string InstrumentationName = "BotFramework.Rendering";
+    private const string InstrumentationName = "BotFramework.Rendering";
     private static readonly Meter Meter = new(InstrumentationName);
     private static readonly Counter<long> CacheHits = Meter.CreateCounter<long>("render.cache.hits");
     private static readonly Counter<long> CacheMisses = Meter.CreateCounter<long>("render.cache.misses");

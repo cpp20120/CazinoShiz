@@ -18,16 +18,36 @@ public static class AtomicGameSchedule
 
     public static string JobKey<TCommand>()
     {
-        var type = typeof(TCommand);
+        return JobKey(typeof(TCommand));
+    }
+
+    /// <summary>Returns the scheduler job key for a concrete command type.</summary>
+    public static string JobKey(Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
         return $"atomic-game:{type.Assembly.GetName().Name}:{type.FullName ?? type.Name}";
     }
 
     public static IReadOnlyDictionary<string, string> SerializeCommand<TCommand>(TCommand command)
     {
         ArgumentNullException.ThrowIfNull(command);
+        return SerializeCommand(command, typeof(TCommand));
+    }
+
+    /// <summary>
+    /// Serializes a command whose concrete runtime type is selected by a
+    /// transport-neutral helper. The matching scheduler registration still
+    /// deserializes it as that exact type.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> SerializeCommand(object command, Type commandType)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentNullException.ThrowIfNull(commandType);
+        if (!commandType.IsInstanceOfType(command))
+            throw new ArgumentException("The command must be an instance of its declared command type.", nameof(command));
         return new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            [CommandDataKey] = JsonSerializer.Serialize(command, JsonOptions),
+            [CommandDataKey] = JsonSerializer.Serialize(command, commandType, JsonOptions),
         };
     }
 

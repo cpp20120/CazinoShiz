@@ -34,6 +34,10 @@
     <ProjectReference Include="..\..\framework\BotFramework.Client\BotFramework.Client.csproj" />
     <ProjectReference Include="..\..\framework\BotFramework.Discord\BotFramework.Discord.csproj" />
     <ProjectReference Include="..\..\framework\BotFramework.Sdk\BotFramework.Sdk.csproj" />
+    <ProjectReference Include="..\..\framework\BotFramework.Narrative\BotFramework.Narrative.csproj" />
+    <ProjectReference Include="..\..\framework\BotFramework.Narrative.Host\BotFramework.Narrative.Host.csproj" />
+    <ProjectReference Include="..\..\framework\BotFramework.Presentation\BotFramework.Presentation.csproj" />
+    <ProjectReference Include="..\..\framework\BotFramework.Presentation.Host\BotFramework.Presentation.Host.csproj" />
     <ProjectReference Include="..\..\framework\BotFramework.Text\BotFramework.Text.csproj" />
     <ProjectReference Include="..\..\framework\BotFramework.Host\BotFramework.Host.csproj" />
     <ProjectReference Include="..\..\framework\BotFramework.Rest\BotFramework.Rest.csproj" />

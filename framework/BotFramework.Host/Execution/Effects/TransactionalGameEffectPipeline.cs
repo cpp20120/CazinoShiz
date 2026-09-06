@@ -10,7 +10,9 @@ internal sealed class TransactionalGameEffectPipeline<TCommand, TState, TResult>
     IGameStateStore<TCommand, TState> stateStore,
     IEnumerable<IGameRecordWriter> recordWriters,
     ITransactionalScheduleCollector? scheduleCollector,
-    IEnumerable<IGameEffectHandler>? effectHandlers = null)
+    IEnumerable<IGameEffectHandler>? effectHandlers = null,
+    IGameCapabilityValidator? capabilityValidator = null,
+    ITransactionalGameEffectOutbox? effectOutbox = null)
 {
     private readonly Dictionary<Type, IGameRecordWriter> _writers = recordWriters
         .GroupBy(writer => writer.RecordType)
@@ -29,9 +31,21 @@ internal sealed class TransactionalGameEffectPipeline<TCommand, TState, TResult>
 
     public GameEffectPlan Plan(
         GameDecision<TState, TResult> decision,
-        IReadOnlyList<QuotaIdentity> quotas)
+        IReadOnlyList<QuotaIdentity> quotas) =>
+        Plan(decision, quotas, GameCapabilitySet.Empty);
+
+    public GameEffectPlan Plan(
+        GameDecision<TState, TResult> decision,
+        IReadOnlyList<QuotaIdentity> quotas,
+        GameCapabilitySet requiredCapabilities)
     {
-        var plan = GameEffectPlan.Create(decision, quotas, _writers, _handlers);
+        var plan = GameEffectPlan.Create(
+            decision,
+            quotas,
+            _writers,
+            _handlers,
+            requiredCapabilities,
+            capabilityValidator);
         if (plan.Effects.Schedules.Count != 0 && scheduleCollector is null)
             throw new InvalidOperationException("No transactional schedule collector is registered.");
         return plan;
@@ -70,7 +84,25 @@ internal sealed class TransactionalGameEffectPipeline<TCommand, TState, TResult>
             await writer.WriteAsync(record, executionContext, ct);
 
         foreach (var (handler, effects) in plan.Custom)
-            await handler.ApplyAsync(effects, executionContext, ct);
+        {
+            var immediateEffects = effects.Where(static effect => effect is not IDurableGameEffect).ToArray();
+            if (immediateEffects.Length != 0)
+                await handler.ApplyAsync(immediateEffects, executionContext, ct);
+        }
+
+        if (plan.DurableEffects.Count != 0)
+        {
+            var durableOutbox = effectOutbox ?? throw new InvalidOperationException(
+                "A durable game effect was emitted but no transactional game effect outbox is registered.");
+            await durableOutbox.AppendAsync(
+                commandId,
+                gameId,
+                aggregateId,
+                plan.DurableEffects,
+                executionContext,
+                session,
+                ct);
+        }
 
         await eventCollector.AppendAsync(
             commandId,

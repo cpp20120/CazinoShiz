@@ -1,3 +1,5 @@
+using BotFramework.Sdk.Execution;
+
 namespace BotFramework.Host.Execution;
 
 public abstract class GameExecutionDescriptor<TCommand, TState, TResult>
@@ -25,6 +27,12 @@ public abstract class GameExecutionDescriptor<TCommand, TState, TResult>
     public virtual IReadOnlyList<QuotaIdentity> Quotas(TCommand command, DateTimeOffset utcNow) => [];
 
     public virtual IReadOnlyList<string> EntropyNames => [];
+
+    /// <summary>
+    /// Runtime features declared by this game. Legacy descriptors intentionally
+    /// return an empty set so adopting capability validation is opt-in.
+    /// </summary>
+    public virtual GameCapabilitySet RequiredCapabilities => GameCapabilitySet.Empty;
 
     /// <summary>
     /// Creates revision zero when the framework JSON state store cannot find an aggregate.

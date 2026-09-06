@@ -129,6 +129,7 @@ internal static class FrameworkTenantBoundaryMigrations
                     'game_aggregate_states',
                     'game_availability_overrides',
                     'game_command_idempotency',
+                    'game_execution_history',
                     'game_event_outbox',
                     'game_schedule_outbox',
                     'known_chats',
@@ -344,6 +345,53 @@ internal static class FrameworkTenantBoundaryMigrations
             CREATE UNIQUE INDEX ux_meta_seasons_active
                 ON meta_seasons (tenant_key, scope_key)
                 WHERE status = 'active';
+            """),
+
+        new Migration("044_game_execution_history_tenant_boundary", """
+            -- 043 can be applied to installations which already completed the
+            -- legacy tenant-boundary migration. Give the new history journal
+            -- the same tenant stamping and RLS policy in that upgrade path.
+            ALTER TABLE game_execution_history ADD COLUMN IF NOT EXISTS tenant_key BIGINT;
+            ALTER TABLE game_execution_history ADD COLUMN IF NOT EXISTS scope_key BIGINT;
+            ALTER TABLE game_execution_history ADD COLUMN IF NOT EXISTS player_id TEXT;
+
+            DO $migration$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'fk_tenant_boundary_game_execution_history_tenant'
+                ) THEN
+                    ALTER TABLE game_execution_history
+                    ADD CONSTRAINT fk_tenant_boundary_game_execution_history_tenant
+                    FOREIGN KEY (tenant_key) REFERENCES tenants(tenant_key);
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'fk_tenant_boundary_game_execution_history_scope'
+                ) THEN
+                    ALTER TABLE game_execution_history
+                    ADD CONSTRAINT fk_tenant_boundary_game_execution_history_scope
+                    FOREIGN KEY (tenant_key, scope_key) REFERENCES tenant_scopes(tenant_key, scope_key);
+                END IF;
+            END
+            $migration$;
+
+            CREATE INDEX IF NOT EXISTS ix_tenant_boundary_game_execution_history_scope
+                ON game_execution_history (tenant_key, scope_key);
+            DROP TRIGGER IF EXISTS casinoshiz_tenant_stamp ON game_execution_history;
+            CREATE TRIGGER casinoshiz_tenant_stamp
+                BEFORE INSERT OR UPDATE ON game_execution_history
+                FOR EACH ROW EXECUTE FUNCTION casinoshiz_stamp_tenant_row();
+            ALTER TABLE game_execution_history ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE game_execution_history FORCE ROW LEVEL SECURITY;
+            DROP POLICY IF EXISTS casinoshiz_tenant_boundary ON game_execution_history;
+            CREATE POLICY casinoshiz_tenant_boundary ON game_execution_history
+                USING (current_setting('casinoshiz.tenant_bound', true) IS DISTINCT FROM 'true'
+                       OR (tenant_key = casinoshiz_current_tenant_key()
+                           AND scope_key = casinoshiz_current_scope_key()))
+                WITH CHECK (current_setting('casinoshiz.tenant_bound', true) IS DISTINCT FROM 'true'
+                            OR (tenant_key = casinoshiz_current_tenant_key()
+                                AND scope_key = casinoshiz_current_scope_key()));
             """)
     ];
 }

@@ -21,7 +21,10 @@ internal sealed class GameStateExecutor<TCommand, TState, TResult>(
     ITransactionalScheduleCollector? scheduleCollector = null,
     IEnumerable<IGameEffectHandler>? effectHandlers = null,
     ITenantContextProvisioner? tenantContextProvisioner = null,
-    ITenantContextAccessor? tenantContextAccessor = null)
+    ITenantContextAccessor? tenantContextAccessor = null,
+    IGameCapabilityValidator? capabilityValidator = null,
+    ITransactionalGameEffectOutbox? effectOutbox = null,
+    ITransactionalGameExecutionHistoryCollector? executionHistoryCollector = null)
     : IGameStateExecutor<TCommand, TState, TResult>
 {
     private readonly GameStateEffectPipeline<TCommand, TState, TResult> effectPipeline = new(
@@ -29,7 +32,9 @@ internal sealed class GameStateExecutor<TCommand, TState, TResult>(
         stateStore,
         recordWriters,
         scheduleCollector,
-        effectHandlers);
+        effectHandlers,
+        capabilityValidator,
+        effectOutbox);
 
     public Type StateType => typeof(TState);
 
@@ -124,7 +129,9 @@ internal sealed class GameStateExecutor<TCommand, TState, TResult>(
             var executionContext = new GameExecutionContext(
                 session,
                 operationId: commandId,
-                tenantContext: tenantContext);
+                tenantContext: tenantContext,
+                gameId: descriptor.GameId,
+                aggregateId: aggregateId);
             var state = await stateStore.LoadAsync(command, executionContext, ct);
             var entropy = CreateEntropy(descriptor.EntropyNames);
             await inbox.StoreEntropyAsync(commandId, entropy, session, ct);
@@ -141,7 +148,7 @@ internal sealed class GameStateExecutor<TCommand, TState, TResult>(
             };
             var decision = action.Decide(input);
             observation.Decided(decision.Status, decision.RejectionReason);
-            var effectPlan = effectPipeline.Plan(decision);
+            var effectPlan = effectPipeline.Plan(decision, descriptor.RequiredCapabilities);
             await effectPipeline.ApplyAsync(
                 commandId,
                 descriptor.GameId,
@@ -154,6 +161,20 @@ internal sealed class GameStateExecutor<TCommand, TState, TResult>(
                 session,
                 tenantContext,
                 ct);
+            if (executionHistoryCollector is not null)
+            {
+                await executionHistoryCollector.AppendAsync(
+                    commandId,
+                    descriptor.GameId,
+                    aggregateId,
+                    command,
+                    state,
+                    decision,
+                    entropy,
+                    utcNow,
+                    session,
+                    ct);
+            }
             await inbox.CompleteAsync(commandId, decision.Result, session, ct);
             observation.Committing();
             await session.CommitAsync(ct);

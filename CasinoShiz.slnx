@@ -7,6 +7,10 @@
     <Project Path="framework\BotFramework.Discord\BotFramework.Discord.csproj" />
     <Project Path="framework\BotFramework.Rest\BotFramework.Rest.csproj" />
     <Project Path="framework\BotFramework.Sdk\BotFramework.Sdk.csproj" />
+    <Project Path="framework\BotFramework.Narrative\BotFramework.Narrative.csproj" />
+    <Project Path="framework\BotFramework.Narrative.Host\BotFramework.Narrative.Host.csproj" />
+    <Project Path="framework\BotFramework.Presentation\BotFramework.Presentation.csproj" />
+    <Project Path="framework\BotFramework.Presentation.Host\BotFramework.Presentation.Host.csproj" />
     <Project Path="framework\BotFramework.Text\BotFramework.Text.csproj" />
     <Project Path="framework\BotFramework.Sdk.Testing\BotFramework.Sdk.Testing.csproj" />
     <Project Path="framework\BotFramework.Host\BotFramework.Host.csproj" />

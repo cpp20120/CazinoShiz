@@ -120,6 +120,35 @@ public sealed class HostExecutionPropertyTests
             .Label($"command={command}, duplicateQuota={duplicateQuota}, exception={exception?.GetType().Name ?? "none"}, locks={session.LockKeys.Count}");
     }
 
+    [Fact]
+    public async Task AtomicExecutor_WritesOneExecutionHistoryEntryInsideItsTransaction()
+    {
+        var session = new RecordingSession();
+        var history = new RecordingHistory();
+        var executor = new AtomicGameExecutor<int, TestState, int>(
+            new RecordingSessionFactory(session),
+            new RecordingInbox(),
+            new RecordingAvailability(),
+            new NoOpEconomics(),
+            new RecordingQuotaStore(),
+            new NoOpProtection(),
+            new RecordingEvents(),
+            new TestDescriptor(duplicateQuota: false),
+            new RejectingAction(),
+            new RecordingStateStore(),
+            [],
+            TimeProvider.System,
+            new GameExecutionTelemetry(NullLogger<GameExecutionTelemetry>.Instance),
+            executionHistoryCollector: history);
+
+        await executor.ExecuteAsync(new GameExecutionEnvelope<int>(7), CancellationToken.None);
+
+        Assert.Equal(1, history.AppendCalls);
+        Assert.Equal(("command:7", "property.game", "aggregate:7", DecisionStatus.Rejected),
+            (history.CommandId, history.GameId, history.AggregateId, history.Status));
+        Assert.Equal(1, session.CommitCalls);
+    }
+
     private sealed class DefaultDescriptor : GameExecutionDescriptor<int, TestState, int>
     {
         public override string GameId => "property.game";
@@ -231,5 +260,34 @@ public sealed class HostExecutionPropertyTests
     {
         public Task<TestState> LoadAsync(int command, IGameExecutionContext context, CancellationToken ct) => Task.FromResult(new TestState(command));
         public Task SaveAsync(int command, TestState state, IGameExecutionContext context, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private sealed class RecordingHistory : ITransactionalGameExecutionHistoryCollector
+    {
+        public int AppendCalls { get; private set; }
+        public string? CommandId { get; private set; }
+        public string? GameId { get; private set; }
+        public string? AggregateId { get; private set; }
+        public DecisionStatus? Status { get; private set; }
+
+        public Task AppendAsync<TCommand, TState, TResult>(
+            string commandId,
+            string gameId,
+            string aggregateId,
+            TCommand command,
+            TState currentState,
+            GameDecision<TState, TResult> decision,
+            EntropyValue entropy,
+            DateTimeOffset occurredAt,
+            IGameExecutionSession session,
+            CancellationToken ct)
+        {
+            AppendCalls++;
+            CommandId = commandId;
+            GameId = gameId;
+            AggregateId = aggregateId;
+            Status = decision.Status;
+            return Task.CompletedTask;
+        }
     }
 }

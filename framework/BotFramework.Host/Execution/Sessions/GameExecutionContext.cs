@@ -8,9 +8,13 @@ internal sealed class GameExecutionContext(
     IGameExecutionSession session,
     IAtomicEconomics? economics = null,
     string? operationId = null,
-    TenantContext? tenantContext = null) : IGameExecutionContext
+    TenantContext? tenantContext = null,
+    string? gameId = null,
+    string? aggregateId = null) : IGameExecutionContext
 {
     public string? OperationId { get; } = operationId;
+    public string? GameId { get; } = gameId;
+    public string? AggregateId { get; } = aggregateId;
     public TenantContext? TenantContext { get; } = tenantContext;
 
     public async Task<bool> ApplyWalletAsync(

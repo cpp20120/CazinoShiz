@@ -18,6 +18,8 @@ using BotFramework.Host.Events.Replay;
 using BotFramework.Host.Fairness;
 using BotFramework.Host.Games;
 using BotFramework.Host.Execution;
+using BotFramework.Host.Execution.Lifecycle;
+using BotFramework.Host.Execution.Telegram;
 using BotFramework.Rendering;
 using BotFramework.Host.Configuration.Validation;
 using BotFramework.Host.Admin.Execution;
@@ -37,6 +39,7 @@ using BotFramework.Host.Cases;
 using BotFramework.Host.Ledger;
 using BotFramework.Host.Wagering;
 using BotFramework.Sdk.Execution;
+using BotFramework.Sdk.Execution.Lifecycle;
 
 namespace BotFramework.Host.Composition.Builder;
 
@@ -220,10 +223,19 @@ public static class BotFrameworkBuilderExtensions
                 failureStatus: Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Unhealthy,
                 tags: ["ready"]);
         services.AddSingleton<IGameExecutionSessionFactory, PostgresGameExecutionSessionFactory>();
+        services.AddSingleton<IGameRuntimeCapabilityProvider, CoreGameRuntimeCapabilityProvider>();
+        services.AddSingleton<IGameCapabilityValidator, GameRuntimeCapabilityValidator>();
+        services.AddSingleton<IGameSessionStore, PostgresGameSessionStore>();
+        services.AddScoped<IGameSessionService, DefaultGameSessionService>();
+        services.AddSingleton<PostgresGameInputRequestService>();
+        services.AddSingleton<IGameInputRequestService>(sp => sp.GetRequiredService<PostgresGameInputRequestService>());
+        services.AddSingleton<ITransactionalGameInputRequestStore>(sp => sp.GetRequiredService<PostgresGameInputRequestService>());
+        services.AddScoped<IGameInputRequestDispatcher, GameInputRequestDispatcher>();
         services.AddSingleton<IGameAggregateStateReader, PostgresGameAggregateStateReader>();
         services.AddSingleton<ICommandInbox, PostgresCommandInbox>();
         services.AddSingleton<ITenantWalletReadService, PostgresTenantWalletReadService>();
         services.AddScoped<IGameEffectHandler, PostgresTenantWalletGameEffectHandler>();
+        services.AddScoped<IGameEffectHandler, InputRequestGameEffectHandler>();
         services.AddScoped<IAtomicEffectHandler, PostgresTenantWalletAtomicEffectHandler>();
         services.AddSingleton<IAtomicQuotaStore, PostgresAtomicQuotaStore>();
         services.AddSingleton<IAtomicGameAvailability, PostgresAtomicGameAvailability>();
@@ -246,6 +258,10 @@ public static class BotFrameworkBuilderExtensions
         services.AddScoped<IAtomicEffectExecutor, AtomicEffectExecutor>();
         services.AddSingleton<PostgresGameEventOutbox>();
         services.AddSingleton<PostgresGameScheduleOutbox>();
+        services.AddSingleton<PostgresGameEffectOutbox>();
+        services.AddSingleton<ITransactionalGameEffectOutbox>(sp => sp.GetRequiredService<PostgresGameEffectOutbox>());
+        services.AddSingleton<ITransactionalGameExecutionHistoryCollector, TransactionalGameExecutionHistoryCollector>();
+        services.AddSingleton<IGameExecutionHistoryReader, PostgresGameExecutionHistoryReader>();
         services.AddScoped(typeof(IAtomicGameExecutor<,,>), typeof(AtomicGameExecutor<,,>));
         services.AddScoped(typeof(IGameStateExecutor<,,>), typeof(GameStateExecutor<,,>));
         services.AddScoped(typeof(IOutcomeOnlyGameExecutor<,,>), typeof(OutcomeOnlyGameExecutor<,,>));
@@ -299,6 +315,7 @@ public static class BotFrameworkBuilderExtensions
 
         services.AddSingleton<RuntimeTuningAccessor>();
         services.AddSingleton<IRuntimeTuningAccessor>(sp => sp.GetRequiredService<RuntimeTuningAccessor>());
+        services.AddSingleton<IGameDailyQuotaPolicy, TelegramDiceGameDailyQuotaPolicy>();
         services.AddSingleton<RuntimeConfigurationValidator>();
         services.AddScoped<IRuntimeConfigurationService, RuntimeConfigurationService>();
         services.AddScoped<IAdminEffectExecutor, AdminEffectExecutor>();
@@ -354,6 +371,7 @@ public static class BotFrameworkBuilderExtensions
         services.AddHostedService<EventAnalyticsBackfillService>();
         services.AddHostedService<GameEventOutboxDispatcher>();
         services.AddHostedService<GameScheduleOutboxDispatcher>();
+        services.AddHostedService<GameEffectOutboxDispatcher>();
         services.AddHostedService(sp => sp.GetRequiredService<RuntimeTuningAccessor>());
         // The catch-up service depends on the locally owned wallet implementation.
         // Game backends use the wallet over gRPC and therefore do not register

@@ -26,7 +26,10 @@ internal sealed class AtomicGameExecutor<TCommand, TState, TResult>(
     IEnumerable<IGameEffectHandler>? effectHandlers = null,
     ITenantWalletReadService? tenantWalletReadService = null,
     ITenantContextProvisioner? tenantContextProvisioner = null,
-    ITenantContextAccessor? tenantContextAccessor = null)
+    ITenantContextAccessor? tenantContextAccessor = null,
+    IGameCapabilityValidator? capabilityValidator = null,
+    ITransactionalGameEffectOutbox? effectOutbox = null,
+    ITransactionalGameExecutionHistoryCollector? executionHistoryCollector = null)
     : IAtomicGameExecutor<TCommand, TState, TResult>
 {
     private readonly TransactionalGameEffectPipeline<TCommand, TState, TResult> effectPipeline = new(
@@ -37,7 +40,9 @@ internal sealed class AtomicGameExecutor<TCommand, TState, TResult>(
         stateStore,
         recordWriters,
         scheduleCollector,
-        effectHandlers);
+        effectHandlers,
+        capabilityValidator,
+        effectOutbox);
 
     public Type StateType => typeof(TState);
 
@@ -128,7 +133,13 @@ internal sealed class AtomicGameExecutor<TCommand, TState, TResult>(
                     session,
                     ct);
             }
-            var executionContext = new GameExecutionContext(session, economics, commandId, tenantContext);
+            var executionContext = new GameExecutionContext(
+                session,
+                economics,
+                commandId,
+                tenantContext,
+                descriptor.GameId,
+                aggregateId);
             var state = await stateStore.LoadAsync(command, executionContext, ct);
 
             var tenantWallet = tenantContext is not null
@@ -154,7 +165,7 @@ internal sealed class AtomicGameExecutor<TCommand, TState, TResult>(
             };
             var decision = action.Decide(input);
             observation.Decided(decision.Status, decision.RejectionReason);
-            var effectPlan = effectPipeline.Plan(decision, quotas);
+            var effectPlan = effectPipeline.Plan(decision, quotas, descriptor.RequiredCapabilities);
             await effectPipeline.ApplyAsync(
                 commandId,
                 descriptor.GameId,
@@ -168,6 +179,20 @@ internal sealed class AtomicGameExecutor<TCommand, TState, TResult>(
                 executionContext,
                 session,
                 ct);
+            if (executionHistoryCollector is not null)
+            {
+                await executionHistoryCollector.AppendAsync(
+                    commandId,
+                    descriptor.GameId,
+                    aggregateId,
+                    command,
+                    state,
+                    decision,
+                    entropy,
+                    utcNow,
+                    session,
+                    ct);
+            }
             await inbox.CompleteAsync(commandId, decision.Result, session, ct);
             observation.Committing();
             await session.CommitAsync(ct);

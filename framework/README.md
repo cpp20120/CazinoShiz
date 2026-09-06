@@ -262,6 +262,267 @@ surface for repository maintainers. It is not the supported package-only SDK
 surface described above; legacy numeric game contracts are staging material
 until the games migration is completed.
 
+### Deferred-outcome wager model
+
+In addition to a one-shot atomic action and the turn-based action base, the
+SDK has a third composition model for a game whose result is delivered later by
+another system: `DeferredOutcomeWager`. It fits a bot animation, remote match
+result, asynchronous renderer or any other flow shaped as:
+
+```text
+place wager -> wait for external outcome -> settle
+                           \-> abort and refund if delivery fails
+```
+
+The model owns idempotent atomic execution, per-user/chat versioned JSONB
+state, wallet debit/credit, optional standard daily quota, and compensation.
+A game owns only its marker type, outcome type, deterministic payout function,
+and optional domain-event factories. The Host adds all three actions,
+descriptors, state stores and a compact executor in one call:
+
+```csharp
+services.AddDeferredOutcomeWagerGame(
+    new DeferredOutcomeWagerDefinition<CoinFlipGame, CoinSide>(
+        gameId: "coin-flip",
+        displayName: "Coin flip",
+        calculatePayout: static (wager, side) =>
+            side == CoinSide.Heads ? wager.Amount * 2 : 0,
+        dailyQuota: new DeferredOutcomeWagerDailyQuota("coin-flip.daily")));
+```
+
+An application service injects
+`IDeferredOutcomeWagerGameExecutor<CoinFlipGame, CoinSide>` and passes the
+three typed `Place`, `Resolve`, and `Abort` commands. The transport remains
+responsible for producing a stable command id and delivering the external
+outcome. The model deliberately does not force the older native-dice modules
+to change their public contracts or relational persistence.
+
+For a custom action with a daily quota, derive its descriptor from
+`DailyGameQuotaExecutionDescriptor`. Override `UserId` and `DailyQuotaId`; the
+descriptor delegates the schedule, limit and exemption rules to
+`IGameDailyQuotaPolicy`. Returning `null` from `DailyQuotaId` opts out, while an
+unlimited policy can still provide a zero-limit snapshot for actions that need
+one. The default runtime policy is the separate
+`TelegramDiceGameDailyQuotaPolicy` adapter for the existing native-dice
+configuration; game code and the common model do not reference Telegram and
+can use another policy unchanged.
+
+### Game manifests and one-shot wagers
+
+New modules can opt into a `GameDefinition` manifest. It contains only stable,
+transport-neutral metadata: game id and display name, supported execution
+styles, stake limits, daily-quota id and named entropy values. Registering a
+definition makes it available through `IGameCatalog`; Telegram, REST and
+Discord adapters can use that catalog without a game depending on any of them.
+
+`GameCommandContext` carries the repeated player/chat/idempotency fields, and
+`PlayerGameExecutionDescriptor` maps it to the standard aggregate and wallet
+identity. Existing command contracts keep working unchanged; this is an opt-in
+shape for new games.
+
+For a synchronous game, use `InstantWagerDefinition`: it validates its declared
+stake limits and optional quota, debits the stake, resolves a deterministic
+outcome from framework entropy, pays the result and emits
+`GameCompletedMetaEvent` in the same atomic decision. The normalized completion
+event feeds meta projections such as quests, achievements, clans and risk
+without making the game depend on the Meta module.
+
+```csharp
+services.AddInstantWagerGame(
+    new InstantWagerDefinition<CoinFlipGame, CoinSide>(
+        new GameDefinition(
+            "coin-flip",
+            "Coin flip",
+            GameCapabilities.InstantWager,
+            new GameStakeLimits(10, 1_000),
+            entropyNames: ["side"]),
+        static context => context.Entropy.GetDouble("side") < 0.5
+            ? CoinSide.Heads
+            : CoinSide.Tails,
+        static (wager, side) => side == CoinSide.Heads ? wager.Amount * 2 : 0));
+```
+
+The Host registers a stateless state store and
+`IInstantWagerGameExecutor<CoinFlipGame, CoinSide>`. A module-specific service
+only creates `InstantWagerCommand<CoinFlipGame>` with a `GameCommandContext` and
+an amount. Deferred-outcome wagers now also expose and register a manifest, and
+by default emit the same completion event when the external outcome settles.
+
+### Atomic registrations and durable game sessions
+
+For an action that is neither an instant nor a deferred wager, the Host offers
+small composition helpers instead of making every module repeat action,
+descriptor and state-store registration:
+
+```csharp
+services.AddAtomicJsonGameAction<MoveCommand, MatchState, MoveAction, MoveResult, MoveDescriptor>();
+// Or, for a stateless command:
+services.AddAtomicStatelessGameAction<RollCommand, RollAction, RollResult, RollDescriptor>();
+```
+
+`AddAtomicGameAction` is the equivalent helper when the module supplies its own
+state-store implementation. `AddAtomicTurnBasedGameAction` remains available;
+it is now the turn-based convenience wrapper over the same JSONB registration
+and additionally registers the scheduled-command adapter.
+
+`IGameSessionService` is a separate, opt-in durable flow layer for games that
+need to pause and resume across messages, requests or workers. It records
+`Started`, `Suspended`, `Resumed`, `Completed` and `Failed` lifecycle entries,
+an optimistic revision, JSON payload and an idempotent correlation id for every
+operation. `GameId`, `OwnerId` and `ScopeId` are opaque strings: a Telegram,
+Discord or REST adapter maps its own identities at the edge, so neither game
+code nor the session model depends on a channel.
+
+```csharp
+var started = await sessions.StartAsync(
+    new GameSessionStartRequest("blackjack", "player:42", "table:main", correlationId), ct);
+var suspended = await sessions.SuspendAsync(
+    new GameSessionTransitionRequest(started.SessionId, suspendCorrelationId, started.Revision), ct);
+var resumed = await sessions.ResumeAsync(
+    new GameSessionTransitionRequest(suspended.SessionId, resumeCorrelationId, suspended.Revision), ct);
+```
+
+Repeating an operation with the same correlation id returns its recorded
+snapshot. `GetByCorrelationAsync` resolves either a root or later operation
+correlation to the current session, which lets a new transport adapter resume a
+flow without needing any Telegram-specific state.
+
+### Runtime capabilities and effect routing
+
+`GameCapabilities` continues to describe execution style (`InstantWager`,
+`DeferredOutcomeWager`, `TurnBased`). Runtime requirements are a separate,
+opt-in `GameCapabilitySet` on `GameDefinition`. This prevents a game being
+coupled to a frontend while still making its requirements explicit:
+
+```csharp
+var game = new GameDefinition(
+    "story-blackjack",
+    "Story blackjack",
+    GameCapabilities.TurnBased,
+    requiredCapabilities:
+    [
+        EconomyCapabilities.Wallet,
+        SchedulingCapabilities.Timers,
+        MessagingCapabilities.Messages,
+        NarrativeCapabilities.Scenes,
+    ]);
+```
+
+The SDK exposes groups for `EconomyCapabilities`, `PersistenceCapabilities`,
+`SchedulingCapabilities`, `MessagingCapabilities`, `NarrativeCapabilities`,
+`TurnBasedCapabilities` and optional `CasinoCapabilities`. The Host already
+provides the transactional economy/persistence/scheduling subset. A Telegram,
+Web or test frontend declares the features it implements through
+`IGameRuntimeCapabilityProvider` and registers an `IGameEffectHandler` for its
+own semantic effects:
+
+```csharp
+services.AddSingleton<IGameRuntimeCapabilityProvider>(
+    new StaticGameRuntimeCapabilityProvider(
+        [MessagingCapabilities.Messages, MessagingCapabilities.Input]));
+```
+
+At action execution the Host rejects a manifest requirement the current runtime
+does not provide, and rejects an emitted effect whose capability was not
+declared by the game. Module-defined effects implement
+`IGameCapabilityEffect`, which names the required feature. Built-in economy,
+quota, record, event and scheduling effects are mapped automatically. This is
+the stable core for frontend-owned effects.
+
+### Narrative effects
+
+`BotFramework.Narrative` supplies the transport-neutral effects `SceneEffect`,
+`DialogEffect`, `ChoiceEffect`, `NarrativeFlagEffect` and
+`NarrativeCheckpointEffect`. `NarrativeText` contains a localization key,
+parameters and an optional fallback—not frontend markup. `NarrativeAddress`
+uses opaque conversation and recipient ids, so games stay independent from
+Telegram chat ids, browser connection ids and any other transport identity.
+
+```csharp
+services.AddNarrativeEffectSink<WebNarrativeSink>();
+
+var scene = new SceneEffect(
+    new NarrativeAddress("table:42", "player:7"),
+    "forest",
+    new NarrativeText("scene.forest.title"));
+```
+
+`BotFramework.Narrative.Host` registers the PostgreSQL `INarrativeProjectionStore`
+and migrations for flags, the latest checkpoint and the active choice. The
+projection is keyed by `NarrativeAddress` and, when supplied by the Host, its
+tenant/scope. It is applied before the frontend sink and de-duplicates an
+at-least-once durable effect by its delivery id. A Web or Telegram sink now owns
+only rendering and delivery; it can read the same projection to render a resumed
+screen. `AddNarrativeEffectSink<TSink>()` enables this persistence by default,
+or `AddNarrativePersistence()` registers it for a query-only frontend. A
+frontend returns `NarrativeChoiceSelection`; the game maps that semantic input
+to its own command. Neither package references a frontend implementation.
+
+### Generic presentation effects
+
+`BotFramework.Presentation` complements narrative with general-purpose,
+transport-independent UI output: `NotificationEffect`, `RichResultEffect`,
+`InputFormEffect` and `MediaEffect`. These are semantic effects, not Telegram
+messages, HTML, browser components or direct media URLs. A frontend implements
+`IPresentationEffectSink` through `BotFramework.Presentation.Host`:
+
+```csharp
+services.AddPresentationEffectSink<WebPresentationSink>();
+
+var request = new InputRequestEffect(
+    requestId: "bet:42",
+    expectedPlayerId: "player:7",
+    scopeId: "table:42",
+    route: "table.bet",
+    expiresAt: now.AddMinutes(1));
+var form = new InputFormEffect(
+    new PresentationAddress("table:42", "player:7"),
+    request.RequestId,
+    new PresentationText("bet.title"),
+    [new PresentationInputField("amount", new PresentationText("bet.amount"), PresentationInputKind.Number)]);
+```
+
+Emit the input request and form in one game decision. The Host stores the
+request before commit; all presentation effects are durable and therefore
+delivered from the transactional effect outbox after commit. A form submits a
+JSON object through the existing `GameInputSubmission` path, which still owns
+one-time consumption, player/scope checks, expiry and correlation. The game
+route validates field values as untrusted input. `MessagingCapabilities` now
+distinguishes ordinary messages, rich results, input and media.
+
+### One-time input and durable effect delivery
+
+`InputRequestEffect` is the transport-independent half of an interaction. It
+binds an opaque request id to an expected player and scope, optional allowed
+values, an expiry, a game route and optional `GameSession`. Emit it with the
+matching `ChoiceEffect`; use the same request id as `ChoiceEffect.InteractionId`.
+
+```csharp
+var input = new InputRequestEffect(
+    requestId: "forest:turn:17",
+    expectedPlayerId: "player:7",
+    scopeId: "table:42",
+    route: "story.choice",
+    expiresAt: now.AddMinutes(2),
+    allowedValues: ["follow", "leave"],
+    sessionId: sessionId);
+```
+
+The Host writes the request in the game transaction. A transport converts its
+callback or HTTP request into `GameInputSubmission`; `IGameInputRequestDispatcher`
+atomically checks request/player/scope/value/expiry and calls the unique
+`IGameInputRouteHandler` for `(GameId, Route)`. Re-delivery with the same
+correlation id calls the handler again, so the handler should use that id as
+the game's normal command idempotency key.
+
+`IDurableGameEffect` marks an external effect that must not be delivered before
+commit. Narrative effects implement it by default. The Host stores them in
+`game_effect_outbox` in the same transaction as state, input requests and
+events. Its lease-based dispatcher deserializes the effect and invokes the
+registered generic effect handler after commit; it retries failures and keeps
+the effects of one command in original order. An adapter should therefore
+implement an idempotent `INarrativeEffectSink`, but it need not own an outbox.
+
 ## Runtime assembly map
 
 Role
@@ -1258,6 +1519,241 @@ because the game has a global read model.
 Turn-based games can use the SDK types in `Execution/TurnBased` for common
 revision, actor, turn and terminal-state validation. They still emit a normal
 materialized `GameDecision`; there is no task tree or hidden saga.
+
+For a conventional multiplayer rotation, `TurnEngine<TPlayerId>` is the
+opt-in state machine above that validation. It owns only generic mechanics:
+admission before start, declared cyclic order, current-player rotation, round
+and turn numbers, deadline-safe timeout handling, suspension/resumption and a
+player leaving. A game embeds `TurnEngineState<TPlayerId>` in its own versioned
+state and continues to own board rules, scoring, win conditions and any wallet
+effects.
+
+```csharp
+var turns = new TurnEngine<PlayerId>();
+var started = turns.Start(
+    turns.CreateWaiting([firstPlayer, secondPlayer]),
+    turnDeadline: clock.UtcNow.AddMinutes(1));
+
+// Persist this token in the input request and in the scheduled timeout command.
+var turn = started.State.CurrentTurn;
+
+var next = turns.Advance(
+    started.State,
+    turn,
+    nextTurnDeadline: clock.UtcNow.AddMinutes(1));
+```
+
+`TurnToken<TPlayerId>` contains both the monotonic turn number and the player.
+Pass it back to `Advance`, `Suspend`, `Resume`, or `Timeout`. A delivery for an
+earlier token is rejected as `stale_turn`, so an old timer or input cannot act
+on a later turn of the same player. `Timeout` additionally rejects an early
+delivery as `turn_not_expired`; it does not create a timer itself because the
+game alone knows the concrete command that should be scheduled. Use the normal
+`ScheduleEffect` for that command and include the token in its payload.
+
+For game rules that need to return state, effects and turn progression together,
+use `TurnResult<TState, TPlayerId>` and apply it with the same `TurnEngine`.
+This keeps game rules pure while ensuring an old input cannot accidentally
+commit its state or effects after the FSM rejects its turn token.
+
+```csharp
+TurnResult<TableState, PlayerId> Handle(TableState state, ChooseMove command)
+{
+    var input = new InputRequestEffect(
+        requestId: $"move:{state.Id}:{state.Revision + 1}",
+        expectedPlayerId: command.PlayerId.ToString(),
+        scopeId: state.Id,
+        route: "table.choose-move",
+        expiresAt: clock.UtcNow.AddMinutes(1));
+
+    return new(
+        State: state with { PendingMove = true },
+        Effects: GameEffectSet.Empty,
+        Completion: TurnCompletion.WaitFor<PlayerId>(input));
+}
+
+var applied = turns.Apply(
+    currentState: state,
+    turns: state.Turns,
+    expectedTurn: command.Turn,
+    result: Handle(state, command),
+    bindTurns: static (nextState, nextTurns) => nextState with { Turns = nextTurns });
+```
+
+`Continue()` retains the player and deadline, `Complete()` finishes the game,
+and `PassTo(player, deadline)` starts a new numbered turn for an admitted
+player. `WaitFor(input)` retains the current player, uses the input expiry as
+the turn deadline, and adds that ordinary `InputRequestEffect` to the effect
+set. The input request is still consumed and correlated by the generic input
+runtime; neither the result nor the turn engine knows whether Telegram, web or
+a test harness delivers it. If a wait has a timeout policy, emit the matching
+token-bearing `ScheduleEffect` beside the result as usual.
+
+`TurnResultTransition.ToGameDecision(...)` maps the applied result back to the
+ordinary atomic action contract, including all six effect categories. This lets
+an existing `IGameAction` use the primitive without a separate effect adapter.
+
+### Phases, rounds and deadline commands
+
+`RoundEngine<TPhase>` is the companion for games whose flow is not merely a
+cyclic player order: quizzes, card-game stages, voting, draft/pick phases,
+waves, and multi-round contests. It deliberately has no fixed phase graph. The
+game chooses `Setup -> Play -> Vote -> Resolve` (or any other graph), while the
+engine owns lifecycle, monotonically numbered phase occurrences and stale-input
+protection.
+
+```csharp
+var rounds = new RoundEngine<TablePhase>();
+var started = rounds.Start(
+    rounds.CreateWaiting(TablePhase.Deal),
+    firstPhaseDeadline: clock.UtcNow.AddMinutes(1));
+
+var phase = started.State.CurrentPhase; // (round: 1, phaseNumber: 1, Deal)
+var next = rounds.AdvanceTo(
+    started.State,
+    phase,
+    TablePhase.Betting,
+    nextPhaseDeadline: clock.UtcNow.AddMinutes(2));
+```
+
+`RoundPhaseToken<TPhase>` contains the logical round, a monotonically increasing
+phase number, and the game-defined phase id. Persist that exact token in input
+and timeout commands. `RoundResult<TState, TPhase>` is the phase analogue of
+`TurnResult`: a pure rule returns state, a `GameEffectSet`, and one of
+`Continue`, `AdvanceTo`, `NextRound`, `WaitFor`, or `Complete`. Calling
+`Apply(...)` validates the token before returning any new state or effects;
+`ApplyTimeout(...)` additionally rejects a timer delivered before its deadline.
+
+The scheduler is already durable: `ScheduleEffect` is committed into the
+schedule outbox and only then delivered to the configured scheduler. Use
+`IRoundDeadlineCommand<TPhase>` and `RoundDeadlineSchedule` to bind a scheduled
+atomic command to the exact phase without a transport dependency:
+
+```csharp
+public sealed record PhaseExpired(RoundPhaseToken<TablePhase> ExpectedPhase)
+    : IRoundDeadlineCommand<TablePhase>;
+
+var timeout = new PhaseExpired(next.State.CurrentPhase);
+var effect = RoundDeadlineSchedule.Schedule(next.State.PhaseDeadline!.Value, timeout);
+
+// When a phase changes early, atomically cancel the old timer and schedule the new one.
+var timerEffects = RoundDeadlineSchedule.Replace(
+    phase,
+    next.State.PhaseDeadline!.Value,
+    timeout);
+```
+
+The `AtomicGameScheduledCommand<PhaseExpired, ...>` registration remains the
+same as for any other scheduled command. Its handler passes `ExpectedPhase` to
+`ApplyTimeout`; an old Quartz delivery is therefore harmless even if it races a
+phase transition or its cancellation. Declare `round-based.rounds`,
+`round-based.phases`, `round-based.deadlines`, and `scheduling.timers` in a game
+manifest when that module exposes these mechanics.
+
+### Multiplayer lobby, visibility and rules
+
+`LobbyEngine<TPlayerId>` is a pure aggregate component for multiplayer setup:
+players and spectators, deterministic numbered seats, player limits, readiness,
+teams, roles, start and cancellation. It has no concept of an invite transport,
+wallet or UI. `MatchmakingEngine<TPlayerId, TMatchKey>` is a separate pure FIFO
+queue: it forms the earliest exact compatible bucket of a requested size, then
+the application creates a regular lobby for those players. The game defines the
+compatibility key and owns rating windows, invites and bot-fill policy. A game embeds `LobbyState<TPlayerId>` and uses
+the started players as the input order for its own `TurnEngine`, `RoundEngine`,
+or another rule model.
+
+```csharp
+var lobby = new LobbyEngine<string>(new LobbyConfiguration(2, 6));
+var first = lobby.JoinPlayer(lobby.Create(), "alice", teamId: "red");
+var second = lobby.JoinPlayer(first.State, "bob", teamId: "blue");
+var ready = lobby.SetReady(lobby.SetReady(second.State, "alice").State, "bob");
+var started = lobby.Start(ready.State);
+```
+
+`GameAudience` selects `Public`, `Participants`, `Spectators`, one `Player`, a
+`Team`, or a `Role`. `LobbyAudienceResolver<TPlayerId>` resolves that selector
+against the durable lobby snapshot for a game projection. Presentation effects
+can carry the same selector in `PresentationAddress.Audience`, so a Web or
+another frontend can deliver a role/team-private effect without any Telegram
+type entering a game. Direct `RecipientId` and an audience are intentionally
+exclusive. This is a routing/visibility primitive, not encryption: do not put a
+private game state snapshot in a public effect or read model.
+
+Use `GameRuleSet<TContext>` to keep shared validation ordered and explicit:
+
+```csharp
+var rules = new GameRuleSet<PlayContext>(
+[
+    GameRule.Require<PlayContext>("active", c => c.IsActive, GameRuleRejection.GameNotActive),
+    GameRule.Require<PlayContext>("member", c => c.IsMember, GameRuleRejection.PlayerNotJoined),
+    GameRule.Require<PlayContext>("turn", c => c.IsCurrentPlayer, GameRuleRejection.NotYourTurn),
+]);
+
+var check = rules.Evaluate(context); // first stable Code, e.g. "not_your_turn"
+```
+
+Standard reasons include `not_your_turn`, `insufficient_players`,
+`phase_closed`, `stale_input`, `deadline_expired` and `invalid_input`; games can
+also create a namespaced `GameRuleRejection.Custom(...)` without losing a common
+shape.
+
+### Cards and grid boards
+
+`Card<TCardId, TFace>`, `Deck<TCardId, TFace>` and `Hand<TCardId, TFace>` are
+immutable card-state primitives. A card id identifies a physical copy, so a
+deck can contain several equal faces. `Deck.Draw` returns both the drawn cards
+and its remaining deck; `Deck.Shuffle` accepts `IGameRandom`, preserving the
+normal entropy/replay guarantees. A game owns dealing order, discard piles,
+hand visibility and card-specific rules.
+
+```csharp
+var draw = deck.Shuffle(random, "deal").Draw(2);
+var nextHand = hand.Add(draw.Cards);
+var nextDeck = draw.RemainingDeck;
+```
+
+`GridBoard<TPieceId, TValue>` combines `GridBounds`, `GridPosition` and unique
+`BoardPiece` values. A `BoardMove` includes its expected source location, so
+`TryMove` detects stale input. It handles empty-destination moves and an
+explicit generic capture mode; chess/poker-style ownership, legal paths,
+promotion, score and win conditions remain game rules.
+
+```csharp
+var move = new BoardMove<string>("white-knight", new(0, 1), new(2, 2));
+var result = board.TryMove(move, BoardMoveMode.RequireEmptyDestination);
+if (result.Applied)
+    board = result.Board;
+```
+
+### Deterministic randomness and execution history
+
+An executor supplies named cryptographic `EntropyValue` values and persists them
+with command idempotency. Use `EntropyGameRandom` inside the pure action rather
+than `Random.Shared`: it consumes each declared name at most once, supports
+integers, chance, picks and Fisher-Yates shuffle, and exposes a `GameRandomTrace`
+for game-level audit records. `EntropyNames.ForDraws` and `ForShuffle` generate
+the matching descriptor names.
+
+```csharp
+var random = new EntropyGameRandom(input.Entropy);
+var card = random.Pick("deal:0", deck);
+var shuffled = random.Shuffle("deck", deck);
+```
+
+For commit/reveal outcomes exposed to players, Host's existing
+`IRandomOutcomeGenerator` remains the verifiable SHA-256 fairness service. The
+new random facade does not generate seeds or bypass that audit; it makes normal
+game rules deterministic from the executor-provided entropy.
+
+Host now records every normal atomic or state-only decision in
+`game_execution_history` in the same transaction as state, inbox and outboxes.
+Each `GameExecutionHistoryEntry` contains command and result payloads, before/
+after state snapshots, decision/rejection, entropy and every declared effect or
+domain event. `IGameExecutionHistoryReader` exposes lookup by command and a
+bounded aggregate timeline. Rollback writes no entry. Raw payloads can include
+private cards, roles or input, therefore the reader is for an authorized
+internal/admin projection only; the normal tenant RLS boundary applies to its
+rows and public clients must receive a separate safe view.
 
 ### Idempotency and retry behavior
 

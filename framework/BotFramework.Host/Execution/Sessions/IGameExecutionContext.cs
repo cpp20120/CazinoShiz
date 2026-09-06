@@ -6,6 +6,9 @@ namespace BotFramework.Host.Execution;
 public interface IGameExecutionContext
 {
     string? OperationId => null;
+    string? GameId => null;
+    string? AggregateId => null;
+    string? EffectDeliveryId => null;
     TenantContext? TenantContext => null;
 
     /// <summary>

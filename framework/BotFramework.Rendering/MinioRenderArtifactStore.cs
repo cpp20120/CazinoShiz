@@ -95,7 +95,7 @@ internal sealed partial class MinioRenderArtifactStore : IRenderArtifactStore, I
         await foreach (var item in _client.ListObjectsEnumAsync(args, ct))
             names.Add(item.Key);
 
-        foreach (var name in names.OrderDescending().Take(Math.Max(0, take)))
+        foreach (var name in names.OrderDescending(StringComparer.Ordinal).Take(Math.Max(0, take)))
         {
             ct.ThrowIfCancellationRequested();
             var json = await DownloadAsync(name, ct);
